@@ -58,10 +58,18 @@ services:
       - whatsmontrack
 
   frontend:
-    build: ./frontend
+    build: 
+      context: ./frontend
+      target: deps
     container_name: whatsmon-frontend
+    command: npm run dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
     environment:
       - NEXT_PUBLIC_DEFAULT_PHONE_NUMBER=${DEFAULT_PHONE_NUMBER}
+      - WATCHPACK_POLLING=true
     networks:
       - whatsmontrack
 
@@ -88,6 +96,8 @@ services:
       - /app/node_modules
     environment:
       - NODE_OPTIONS=--dns-result-order=ipv4first
+      - CHOKIDAR_USEPOLLING=true
+      - TSC_WATCHFILE=UsePolling
     networks:
       - whatsmontrack
 
@@ -100,6 +110,8 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - NODE_OPTIONS=--dns-result-order=ipv4first
+      - CHOKIDAR_USEPOLLING=true
+      - TSC_WATCHFILE=UsePolling
     networks:
       - whatsmontrack
 
@@ -112,6 +124,8 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgpool:5432/postgres?schema=public
       - NODE_OPTIONS=--dns-result-order=ipv4first
+      - CHOKIDAR_USEPOLLING=true
+      - TSC_WATCHFILE=UsePolling
     depends_on:
       - pgpool
     networks:
