@@ -57,12 +57,24 @@ services:
     networks:
       - whatsmontrack
 
+  frontend:
+    build: ./frontend
+    container_name: whatsmon-frontend
+    environment:
+      - NEXT_PUBLIC_DEFAULT_PHONE_NUMBER=${DEFAULT_PHONE_NUMBER}
+    networks:
+      - whatsmontrack
+
   nginx:
-    image: nginx:alpine
+    image: nginx:latest
+    container_name: whatsmon-nginx
     ports:
       - "80:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - gateway
+      - frontend
     networks:
       - whatsmontrack
 
