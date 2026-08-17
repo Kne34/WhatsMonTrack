@@ -38,12 +38,20 @@ export class AppService {
         
       if (!subcategory) subcategory = 'Lainnya';
 
+      // Simple heuristic for type
+      let type = 'EXPENSE';
+      if (text.toLowerCase().includes('gaji') || text.toLowerCase().includes('terima') || text.toLowerCase().includes('masuk')) {
+        type = 'INCOME';
+      } else if (text.toLowerCase().includes('transfer') || text.toLowerCase().includes('top up') || text.toLowerCase().includes('isi')) {
+        type = 'TRANSFER';
+      }
+
       return {
         source: 'regex',
         status: 'success',
         data: {
           amount,
-          type: 'EXPENSE',
+          type: type,
           category: 'UNCATEGORIZED',
           subcategory,
           account: (accountMatch?.[1] || 'CASH').toUpperCase(),

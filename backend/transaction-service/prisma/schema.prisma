@@ -27,6 +27,19 @@ model Category {
   icon           String?
 }
 
+enum TransactionType {
+  EXPENSE
+  INCOME
+  TRANSFER
+  DEBT_OUT
+  DEBT_IN
+}
+
+enum TransactionStatus {
+  CONFIRMED
+  NEEDS_REVIEW
+}
+
 model Account {
   id          String        @id @default(uuid())
   userId      String
@@ -34,24 +47,29 @@ model Account {
   balance     Float         @default(0)
   
   user        User          @relation(fields: [userId], references: [id])
-  transactions Transaction[]
+  transactionsFrom Transaction[] @relation("FromAccount")
+  transactionsTo   Transaction[] @relation("ToAccount")
 }
 
 model Transaction {
-  id            String    @id @default(uuid())
-  userId        String
-  type          String    // e.g. 'EXPENSE', 'INCOME', 'TRANSFER'
-  amount        Float
-  category      String
-  subcategory   String?
-  accountId     String
-  rawText       String?
-  createdAt     DateTime  @default(now())
-  isDeleted     Boolean   @default(false)
-  deletedAt     DateTime?
+  id              String            @id @default(uuid())
+  userId          String
+  type            TransactionType   @default(EXPENSE)
+  amount          Float
+  category        String
+  subcategory     String?
+  fromAccountId   String?
+  toAccountId     String?
+  rawText         String?
+  confidenceScore Float             @default(1.0)
+  status          TransactionStatus @default(CONFIRMED)
+  createdAt       DateTime          @default(now())
+  isDeleted       Boolean           @default(false)
+  deletedAt       DateTime?
 
-  user          User      @relation(fields: [userId], references: [id])
-  account       Account   @relation(fields: [accountId], references: [id])
+  user            User      @relation(fields: [userId], references: [id])
+  fromAccount     Account?  @relation("FromAccount", fields: [fromAccountId], references: [id])
+  toAccount       Account?  @relation("ToAccount", fields: [toAccountId], references: [id])
 }
 
 model Session {
