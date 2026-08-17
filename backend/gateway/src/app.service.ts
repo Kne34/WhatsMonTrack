@@ -36,11 +36,19 @@ export class AppService {
     return lastValueFrom(this.transactionClient.send({ cmd: 'get_accounts' }, { phoneNumber }));
   }
 
-  async getTransactions(phoneNumber: string) {
-    return lastValueFrom(this.transactionClient.send({ cmd: 'get_transactions' }, { phoneNumber }));
+  async createAccount(phoneNumber: string, name: string, type: string, initialBalance: number) {
+    return lastValueFrom(this.transactionClient.send({ cmd: 'create_account' }, { phoneNumber, name, type, initialBalance }));
+  }
+
+  async getTransactions(phoneNumber: string, query?: any) {
+    return lastValueFrom(this.transactionClient.send({ cmd: 'get_transactions' }, { phoneNumber, ...query }));
   }
 
   async confirmTransaction(id: string) {
     return lastValueFrom(this.transactionClient.send({ cmd: 'confirm_transaction' }, { id }));
+  }
+
+  async updateTransaction(id: string, data: any) {
+    return lastValueFrom(this.transactionClient.send({ cmd: 'update_transaction' }, { id, data }));
   }
 }

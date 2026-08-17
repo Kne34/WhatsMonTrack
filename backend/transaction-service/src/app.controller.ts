@@ -17,12 +17,22 @@ export class AppController {
   }
 
   @MessagePattern({ cmd: 'get_transactions' })
-  getTransactions(data: { phoneNumber: string }) {
-    return this.appService.getTransactions(data.phoneNumber);
+  getTransactions(data: { phoneNumber: string; month?: number; year?: number; page?: number; limit?: number }) {
+    return this.appService.getTransactions(data.phoneNumber, data);
   }
 
   @MessagePattern({ cmd: 'confirm_transaction' })
   confirmTransaction(data: { id: string }) {
     return this.appService.confirmTransaction(data.id);
+  }
+
+  @MessagePattern({ cmd: 'create_account' })
+  createAccount(data: { phoneNumber: string; name: string; type: string; initialBalance: number }) {
+    return this.appService.createAccount(data.phoneNumber, data.name, data.type, data.initialBalance);
+  }
+
+  @MessagePattern({ cmd: 'update_transaction' })
+  updateTransaction(data: { id: string; data: any }) {
+    return this.appService.updateTransaction(data.id, data.data);
   }
 }
