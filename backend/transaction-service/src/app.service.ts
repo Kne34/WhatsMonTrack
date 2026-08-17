@@ -144,12 +144,40 @@ export class AppService {
     });
   }
 
+  async getBudgets(phoneNumber: string) {
+    const user = await this.prisma.user.findUnique({ where: { phoneNumber } });
+    if (!user) return [];
+    return this.prisma.budget.findMany({ where: { userId: user.id } });
+  }
+
+  async upsertBudget(phoneNumber: string, categoryName: string, limit: number) {
+    let user = await this.prisma.user.findUnique({ where: { phoneNumber } });
+    if (!user) {
+      user = await this.prisma.user.create({ data: { phoneNumber } });
+    }
+
+    return this.prisma.budget.upsert({
+      where: {
+        userId_categoryName: {
+          userId: user.id,
+          categoryName: categoryName.toUpperCase()
+        }
+      },
+      update: { limit },
+      create: {
+        userId: user.id,
+        categoryName: categoryName.toUpperCase(),
+        limit
+      }
+    });
+  }
+
   async getTransactions(phoneNumber: string, query?: { month?: number, year?: number, day?: number, page?: number, limit?: number }) {
     const user = await this.prisma.user.findUnique({ where: { phoneNumber } });
     if (!user) return { data: [], total: 0, page: 1, limit: 100, totalPages: 0 };
 
     const { month, year, day, page = 1, limit = 100 } = query || {};
-    
+
     let whereClause: any = { userId: user.id };
 
     if (month && year) {
@@ -165,7 +193,7 @@ export class AppService {
         // Month is 1-indexed (1=Jan, 12=Dec)
         const startDate = new Date(year, month - 1, 1);
         const endDate = new Date(year, month, 1); // 1st of next month
-        
+
         whereClause.createdAt = {
           gte: startDate,
           lt: endDate
@@ -299,5 +327,73 @@ export class AppService {
     });
 
     return { success: true };
+  }
+
+  async deleteTransaction(transactionId: string) {
+    const transaction = await this.prisma.transaction.findUnique({
+      where: { id: transactionId }
+    });
+
+    if (!transaction) return { success: false, message: 'Transaction not found' };
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Reverse balance impact if CONFIRMED
+      if (transaction.status === 'CONFIRMED') {
+        if (transaction.type === 'EXPENSE' && transaction.fromAccountId) {
+          await tx.account.update({ where: { id: transaction.fromAccountId }, data: { balance: { increment: transaction.amount } } });
+        }
+        if (transaction.type === 'INCOME' && transaction.toAccountId) {
+          await tx.account.update({ where: { id: transaction.toAccountId }, data: { balance: { decrement: transaction.amount } } });
+        }
+        if (transaction.type === 'TRANSFER') {
+          if (transaction.fromAccountId) await tx.account.update({ where: { id: transaction.fromAccountId }, data: { balance: { increment: transaction.amount } } });
+          if (transaction.toAccountId) await tx.account.update({ where: { id: transaction.toAccountId }, data: { balance: { decrement: transaction.amount } } });
+        }
+      }
+
+      // 2. Delete transaction
+      await tx.transaction.delete({ where: { id: transactionId } });
+    });
+
+    return { success: true };
+  }
+
+  async createTransactionManual(phoneNumber: string, data: any) {
+    let user = await this.prisma.user.findUnique({ where: { phoneNumber } });
+    if (!user) {
+      user = await this.prisma.user.create({ data: { phoneNumber } });
+    }
+
+    const transaction = await this.prisma.$transaction(async (tx) => {
+      const txRecord = await tx.transaction.create({
+        data: {
+          userId: user.id,
+          type: data.type,
+          amount: data.amount,
+          category: data.category || 'UNCATEGORIZED',
+          fromAccountId: data.fromAccountId || null,
+          toAccountId: data.toAccountId || null,
+          status: 'CONFIRMED',
+          confidenceScore: 1.0,
+          rawText: 'Manual Input',
+          createdAt: data.createdAt ? new Date(data.createdAt) : new Date()
+        }
+      });
+
+      if (data.type === 'EXPENSE' && data.fromAccountId) {
+        await tx.account.update({ where: { id: data.fromAccountId }, data: { balance: { decrement: data.amount } } });
+      }
+      if (data.type === 'INCOME' && data.toAccountId) {
+        await tx.account.update({ where: { id: data.toAccountId }, data: { balance: { increment: data.amount } } });
+      }
+      if (data.type === 'TRANSFER') {
+        if (data.fromAccountId) await tx.account.update({ where: { id: data.fromAccountId }, data: { balance: { decrement: data.amount } } });
+        if (data.toAccountId) await tx.account.update({ where: { id: data.toAccountId }, data: { balance: { increment: data.amount } } });
+      }
+
+      return txRecord;
+    });
+
+    return { success: true, transaction };
   }
 }

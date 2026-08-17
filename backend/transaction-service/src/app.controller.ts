@@ -31,8 +31,28 @@ export class AppController {
     return this.appService.createAccount(data.phoneNumber, data.name, data.type, data.initialBalance);
   }
 
+  @MessagePattern({ cmd: 'get_budgets' })
+  getBudgets(data: { phoneNumber: string }) {
+    return this.appService.getBudgets(data.phoneNumber);
+  }
+
+  @MessagePattern({ cmd: 'upsert_budget' })
+  upsertBudget(data: { phoneNumber: string; categoryName: string; limit: number }) {
+    return this.appService.upsertBudget(data.phoneNumber, data.categoryName, data.limit);
+  }
+
   @MessagePattern({ cmd: 'update_transaction' })
   updateTransaction(data: { id: string; data: any }) {
     return this.appService.updateTransaction(data.id, data.data);
+  }
+
+  @MessagePattern({ cmd: 'delete_transaction' })
+  deleteTransaction(data: { id: string }) {
+    return this.appService.deleteTransaction(data.id);
+  }
+
+  @MessagePattern({ cmd: 'create_transaction' })
+  createTransaction(data: { phoneNumber: string; data: any }) {
+    return this.appService.createTransactionManual(data.phoneNumber, data.data);
   }
 }
