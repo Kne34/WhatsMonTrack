@@ -47,7 +47,7 @@ export default function EditTransactionModal({
 
           <div className="space-y-1">
             <label className="text-xs font-mono text-muted-foreground uppercase">Category</label>
-            <Input className="bg-background rounded-xl" value={editTxData.category || ''} onChange={e => setEditTxData({ ...editTxData, category: e.target.value })} />
+            <Input className="bg-background rounded-xl uppercase" value={editTxData.category || ''} onChange={e => setEditTxData({ ...editTxData, category: e.target.value.toUpperCase() })} />
           </div>
 
           <div className="space-y-1">

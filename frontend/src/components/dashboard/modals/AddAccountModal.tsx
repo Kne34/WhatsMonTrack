@@ -25,9 +25,6 @@ export default function AddAccountModal({
 }: AddAccountModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger className="fixed bottom-24 right-6 w-14 h-14 bg-emerald-500 text-[#0B101E] rounded-full shadow-lg shadow-emerald-500/20 flex items-center justify-center hover:bg-emerald-400 active:scale-95 transition-all z-40 outline-none">
-        <Plus className="w-6 h-6" strokeWidth={2.5} />
-      </DialogTrigger>
       <DialogContent className="bg-card border-border sm:max-w-[425px] rounded-3xl">
         <DialogHeader>
           <DialogTitle className="font-heading">Create New Account</DialogTitle>
