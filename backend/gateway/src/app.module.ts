@@ -14,6 +14,14 @@ import { AppService } from './app.service';
           port: 3001,
         },
       },
+      {
+        name: 'TRANSACTION_SERVICE',
+        transport: Transport.TCP,
+        options: {
+          host: 'transaction-service',
+          port: 3002,
+        },
+      },
     ]),
   ],
   controllers: [AppController],
