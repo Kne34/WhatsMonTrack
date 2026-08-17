@@ -5,9 +5,10 @@ An LLM-powered WhatsApp bot that allows users to log expenses in natural Indones
 ## Architecture
 
 The project is fully dockerized and uses a robust **Microservices Architecture**:
-- **Gateway Service (`/backend/gateway`)**: A NestJS API that serves as the entry point, handling incoming requests and routing them to internal microservices via TCP.
-- **Parser Service (`/backend/parser-service`)**: A NestJS TCP microservice dedicated to category intelligence. It runs a fast-path Regex pipeline and falls back to a Gemini 2.5 LLM for parsing natural language expenses.
+- **Gateway Service (`/backend/gateway`)**: Serves a dual purpose. First, it connects directly to WhatsApp servers via WebSockets using `@whiskeysockets/baileys`. Second, it exposes REST APIs for the Frontend Dashboard. It routes business logic to internal microservices via TCP.
+- **Parser Service (`/backend/parser-service`)**: A NestJS TCP microservice dedicated to category intelligence. It runs a fast-path Regex pipeline and falls back to a Gemini 1.5/2.5 LLM for parsing natural language expenses.
 - **Transaction Service (`/backend/transaction-service`)**: A NestJS TCP microservice handling all database business logic (users, accounts, and transactions).
+- **Frontend Dashboard (`/frontend`)**: A Next.js (App Router) web application for monitoring and confirming transactions (WIP).
 - **Database**: PostgreSQL (Master/Slave Replication) managed via Docker Compose
 - **Connection Pooling/Load Balancing**: [Pgpool-II](https://www.pgpool.net/)
 - **Reverse Proxy**: NGINX (Routing HTTP traffic to the backend gateway)
@@ -15,8 +16,9 @@ The project is fully dockerized and uses a robust **Microservices Architecture**
 
 ```mermaid
 graph TD
-    User(WhatsApp/Frontend) -->|POST /parse| Nginx(Reverse Proxy)
-    Nginx -->|HTTP 3000| Gateway(API Gateway)
+    WA[WhatsApp Servers] <-->|WebSockets| Gateway(Gateway Service)
+    Frontend[Next.js UI] -->|HTTP REST| Nginx(Reverse Proxy)
+    Nginx -->|HTTP 3000| Gateway
     
     Gateway <-->|TCP 3001| Parser(Parser Service)
     Gateway <-->|TCP 3002| Transaction(Transaction Service)
@@ -97,3 +99,12 @@ docker compose exec -e DATABASE_URL="postgresql://postgres:mysecretpassword@post
 - Bypassed Meta Cloud API and Twilio restrictions using the unofficial socket approach.
 - Handled QR Code generation inside the Docker logs.
 - Prevented infinite loops during self-replies and accommodated WhatsApp's Local Identifier (`@lid`) for "Message Yourself" chats.
+
+## Phase 5: Next.js Frontend Dashboard & Inbox (Completed)
+- Designed a mobile-first UI using Next.js App Router, Tailwind CSS, Shadcn UI, and Recharts.
+- Expanded the Prisma schema with `confidenceScore` and `TransactionStatus`. Ambiguous AI parsing (confidence < 0.85) defaults to `NEEDS_REVIEW`.
+- Implemented an interactive Inbox where users can manually confirm transactions with a single click, triggering atomic balance updates.
+
+## Phase 6: Frontend Dockerization & Reverse Proxy (Completed)
+- Built a multi-stage `Dockerfile` leveraging Next.js `standalone` output for minimal image size.
+- Configured Nginx as the primary Reverse Proxy on Port 80, intelligently routing `/api/` traffic to the Gateway and `/` traffic to the Frontend container.
