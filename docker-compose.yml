@@ -75,10 +75,7 @@ services:
       - ./backend/gateway:/app
       - /app/node_modules
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgpool:5432/postgres?schema=public
       - NODE_OPTIONS=--dns-result-order=ipv4first
-    depends_on:
-      - pgpool
     networks:
       - whatsmontrack
 
@@ -91,6 +88,20 @@ services:
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - NODE_OPTIONS=--dns-result-order=ipv4first
+    networks:
+      - whatsmontrack
+
+  transaction-service:
+    build: ./backend/transaction-service
+    container_name: whatsmon-transaction
+    volumes:
+      - ./backend/transaction-service:/app
+      - /app/node_modules
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgpool:5432/postgres?schema=public
+      - NODE_OPTIONS=--dns-result-order=ipv4first
+    depends_on:
+      - pgpool
     networks:
       - whatsmontrack
 
