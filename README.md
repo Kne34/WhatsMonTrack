@@ -10,9 +10,29 @@ The project is fully dockerized and uses a robust **Microservices Architecture**
 - **Transaction Service (`/backend/transaction-service`)**: A NestJS TCP microservice handling all database business logic (users, accounts, and transactions).
 - **Frontend Dashboard (`/frontend`)**: A Next.js (App Router) web application for monitoring and confirming transactions (WIP).
 - **Database**: PostgreSQL (Master/Slave Replication) managed via Docker Compose
-- **Connection Pooling/Load Balancing**: [Pgpool-II](https://www.pgpool.net/)
+- **Connection Pooling**: [Pgpool-II](https://www.pgpool.net/)
 - **Reverse Proxy**: NGINX (Routing HTTP traffic to the backend gateway)
 - **ORM**: [Prisma](https://www.prisma.io/)
+
+## Tech Stack
+**Frontend:**
+- **Framework:** Next.js 15 (App Router, Client Components)
+- **Styling:** Tailwind CSS, Shadcn UI, Lucide Icons
+- **Data Visualization:** Recharts
+- **State Management:** React Hooks (`useState`, `useEffect`) and URL Query Parameters
+
+**Backend:**
+- **Framework:** NestJS (Node.js)
+- **Microservices:** TCP Transport
+- **WhatsApp Integration:** `@whiskeysockets/baileys`
+- **AI/LLM:** Google Gemini 1.5/2.5 via `@google/generative-ai`
+
+**Infrastructure:**
+- **Database:** PostgreSQL (with Master-Slave Replication)
+- **ORM:** Prisma (with `@prisma/adapter-pg`)
+- **Containerization:** Docker & Docker Compose
+- **Proxy:** Nginx
+- **Connection Pooler:** Pgpool-II
 
 ```mermaid
 graph TD
@@ -103,7 +123,13 @@ docker compose exec -e DATABASE_URL="postgresql://postgres:mysecretpassword@post
 ## Phase 5: Next.js Frontend Dashboard & Inbox (Completed)
 - Designed a mobile-first UI using Next.js App Router, Tailwind CSS, Shadcn UI, and Recharts.
 - Expanded the Prisma schema with `confidenceScore` and `TransactionStatus`. Ambiguous AI parsing (confidence < 0.85) defaults to `NEEDS_REVIEW`.
-- Implemented an interactive Inbox where users can manually confirm transactions with a single click, triggering atomic balance updates.
+- Implemented an interactive **Inbox** where users can manually confirm transactions with a single click, triggering atomic balance updates.
+- Added comprehensive **Dashboard Analytics** (Expense Breakdown, Income Breakdown, Top Categories).
+- Implemented an **Interactive Calendar Filter**: Users can click specific days on the Ledger calendar to instantly filter the transaction table down to that date, backed by separated un-paginated and paginated API data streams.
+- Integrated **Transaction Editing** functionality inside the Ledger, mapping all balance changes securely in the database.
+- **Frontend Architecture Refactoring**: Splitted the monolithic `Dashboard.tsx` into modular components (`HomeView`, `LedgerView`, `InboxView`, `DashboardHeader`, `BottomNav`, Modals) for extreme maintainability.
+- **SPA Routing**: Used Next.js `useRouter` and query parameters (`/?tab=ledger`) to maintain proper browser history and URL paths, avoiding expensive component unmounts and preserving React state.
+- **Live Polling**: The frontend utilizes a seamless `setInterval` hook fetching data every 5 seconds, keeping the dashboard strictly in sync with incoming WhatsApp transactions without requiring a page refresh.
 
 ## Phase 6: Frontend Dockerization & Reverse Proxy (Completed)
 - Built a multi-stage `Dockerfile` leveraging Next.js `standalone` output for minimal image size.
