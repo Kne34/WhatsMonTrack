@@ -17,6 +17,7 @@ model User {
   
   accounts        Account[]
   transactions    Transaction[]
+  budgets         Budget[]
   session         Session?      // For WhatsApp correction loop state
 }
 
@@ -79,4 +80,14 @@ model Session {
   updatedAt         DateTime @updatedAt
   
   user              User     @relation(fields: [userId], references: [id])
+}
+
+model Budget {
+  id           String @id @default(uuid())
+  userId       String
+  categoryName String
+  limit        Float  @default(0)
+
+  user         User   @relation(fields: [userId], references: [id])
+  @@unique([userId, categoryName])
 }
