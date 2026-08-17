@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { fetchTransactions, fetchAccounts, confirmTransaction, createAccount, updateTransaction } from "@/lib/api";
+import { fetchTransactions, fetchAccounts, confirmTransaction, createAccount, updateTransaction, fetchBudgets, setBudget, createTransaction, deleteTransaction } from "@/lib/api";
 
 import DashboardHeader from "./dashboard/shared/DashboardHeader";
 import BottomNav from "./dashboard/shared/BottomNav";
@@ -11,6 +11,9 @@ import LedgerView from "./dashboard/views/LedgerView";
 import InboxView from "./dashboard/views/InboxView";
 import AddAccountModal from "./dashboard/modals/AddAccountModal";
 import EditTransactionModal from "./dashboard/modals/EditTransactionModal";
+import SetBudgetModal from "./dashboard/modals/SetBudgetModal";
+import AddTransactionModal from "./dashboard/modals/AddTransactionModal";
+import FloatingActionMenu from "./dashboard/shared/FloatingActionMenu";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -24,6 +27,7 @@ export default function Dashboard() {
   const [monthlyTxs, setMonthlyTxs] = useState<any[]>([]);
   const [tableTxs, setTableTxs] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [budgets, setBudgets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters and Pagination
@@ -44,17 +48,23 @@ export default function Dashboard() {
   const [editTxData, setEditTxData] = useState<any>({});
   const [isEditTxOpen, setIsEditTxOpen] = useState(false);
 
+  // New Modals State
+  const [isSetBudgetOpen, setIsSetBudgetOpen] = useState(false);
+  const [isAddTxOpen, setIsAddTxOpen] = useState(false);
+
   const loadData = async () => {
     try {
-      const [monthlyData, tableData, accs] = await Promise.all([
+      const [monthlyData, tableData, accs, budgs] = await Promise.all([
         fetchTransactions(undefined, { month: selectedMonth, year: selectedYear, page: 1, limit: 1000 }),
         fetchTransactions(undefined, { month: selectedMonth, year: selectedYear, day: selectedDay || undefined, page, limit }),
-        fetchAccounts()
+        fetchAccounts(),
+        fetchBudgets()
       ]);
       setMonthlyTxs(monthlyData.data || monthlyData);
       setTableTxs(tableData.data || tableData);
       setTotalPages(tableData.totalPages || 1);
       setAccounts(accs);
+      setBudgets(budgs);
     } catch (e) {
       console.error(e);
     } finally {
@@ -72,6 +82,22 @@ export default function Dashboard() {
     setSelectedDay(null);
     setPage(1);
   }, [selectedMonth, selectedYear]);
+
+  useEffect(() => {
+    const handleOpenBudget = () => setIsSetBudgetOpen(true);
+    const handleOpenAddTx = () => setIsAddTxOpen(true);
+    const handleOpenAddAcc = () => setIsAddAccountOpen(true);
+    
+    document.addEventListener('openSetBudgetModal', handleOpenBudget);
+    document.addEventListener('openAddTransactionModal', handleOpenAddTx);
+    document.addEventListener('openAddAccountModal', handleOpenAddAcc);
+    
+    return () => {
+      document.removeEventListener('openSetBudgetModal', handleOpenBudget);
+      document.removeEventListener('openAddTransactionModal', handleOpenAddTx);
+      document.removeEventListener('openAddAccountModal', handleOpenAddAcc);
+    };
+  }, []);
 
   const handleConfirm = async (id: string) => {
     await confirmTransaction(id);
@@ -120,36 +146,43 @@ export default function Dashboard() {
     }
   };
 
+  const handleSaveBudget = async (cat: string, limit: number) => {
+    try {
+      await setBudget(cat, limit);
+      loadData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSaveNewTx = async (data: any) => {
+    try {
+      await createTransaction(data);
+      loadData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteClick = async (id: string) => {
+    if (window.confirm("Are you sure you want to delete this transaction? This will reverse its balance impact.")) {
+      try {
+        await deleteTransaction(id);
+        loadData();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
+
   // Derive data from MONTHLY transactions for Analytics, Inbox, and Calendar
   const monthlyConfirmedTxs = monthlyTxs.filter(t => t.status === "CONFIRMED");
   const needsReviewTxs = monthlyTxs.filter(t => t.status === "NEEDS_REVIEW");
-  
+
   // Derive table transactions from TABLE data
   const tableConfirmedTxs = tableTxs.filter(t => t.status === "CONFIRMED");
 
   const totalBalance = accounts.reduce((acc, a) => acc + a.balance, 0);
-
-  const expenseData = monthlyTxs
-    .filter(t => t.type === 'EXPENSE')
-    .reduce((acc, t) => {
-      const cat = t.category || 'UNCATEGORIZED';
-      const existing = acc.find((x: any) => x.name === cat);
-      if (existing) existing.value += t.amount;
-      else acc.push({ name: cat, value: t.amount });
-      return acc;
-    }, [] as any[])
-    .sort((a: any, b: any) => b.value - a.value);
-
-  const incomeData = monthlyTxs
-    .filter(t => t.type === 'INCOME')
-    .reduce((acc, t) => {
-      const cat = t.category || 'UNCATEGORIZED';
-      const existing = acc.find((x: any) => x.name === cat);
-      if (existing) existing.value += t.amount;
-      else acc.push({ name: cat, value: t.amount });
-      return acc;
-    }, [] as any[])
-    .sort((a: any, b: any) => b.value - a.value);
 
   const formatRupiah = (val: number) =>
     new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(val);
@@ -165,34 +198,36 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden font-sans antialiased">
-      <DashboardHeader 
-        selectedMonth={selectedMonth} 
-        selectedYear={selectedYear} 
-        setSelectedMonth={setSelectedMonth} 
-        setSelectedYear={setSelectedYear} 
+      <DashboardHeader
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+        setSelectedMonth={setSelectedMonth}
+        setSelectedYear={setSelectedYear}
       />
 
       <main className="flex-1 overflow-y-auto px-6 pb-28">
         {activeTab === "dashboard" && (
-          <HomeView 
-            totalBalance={totalBalance} 
-            accounts={accounts} 
-            expenseData={expenseData} 
-            incomeData={incomeData} 
-            formatRupiah={formatRupiah} 
+          <HomeView
+            monthlyTxs={monthlyTxs}
+            budgets={budgets}
+            selectedMonth={selectedMonth}
+            selectedYear={selectedYear}
+            totalBalance={totalBalance}
+            accounts={accounts}
+            formatRupiah={formatRupiah}
           />
         )}
 
         {activeTab === "inbox" && (
-          <InboxView 
-            needsReviewTxs={needsReviewTxs} 
-            handleConfirm={handleConfirm} 
-            formatRupiah={formatRupiah} 
+          <InboxView
+            needsReviewTxs={needsReviewTxs}
+            handleConfirm={handleConfirm}
+            formatRupiah={formatRupiah}
           />
         )}
 
         {activeTab === "transactions" && (
-          <LedgerView 
+          <LedgerView
             selectedMonth={selectedMonth}
             selectedYear={selectedYear}
             monthlyConfirmedTxs={monthlyConfirmedTxs}
@@ -205,18 +240,21 @@ export default function Dashboard() {
             setLimit={setLimit}
             setPage={setPage}
             handleEditClick={handleEditClick}
+            handleDeleteClick={handleDeleteClick}
             formatRupiah={formatRupiah}
           />
         )}
       </main>
 
-      <BottomNav 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        needsReviewCount={needsReviewTxs.length} 
+      <BottomNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        needsReviewCount={needsReviewTxs.length}
       />
 
-      <AddAccountModal 
+      <FloatingActionMenu />
+
+      <AddAccountModal
         isOpen={isAddAccountOpen}
         setIsOpen={setIsAddAccountOpen}
         newAccountName={newAccountName}
@@ -226,13 +264,26 @@ export default function Dashboard() {
         handleAddAccount={handleAddAccount}
       />
 
-      <EditTransactionModal 
+      <EditTransactionModal
         isOpen={isEditTxOpen}
         setIsOpen={setIsEditTxOpen}
         editTxData={editTxData}
         setEditTxData={setEditTxData}
         accounts={accounts}
         handleSaveEdit={handleSaveEdit}
+      />
+
+      <SetBudgetModal
+        isOpen={isSetBudgetOpen}
+        onClose={() => setIsSetBudgetOpen(false)}
+        onSave={handleSaveBudget}
+      />
+
+      <AddTransactionModal
+        isOpen={isAddTxOpen}
+        onClose={() => setIsAddTxOpen(false)}
+        onSave={handleSaveNewTx}
+        accounts={accounts}
       />
     </div>
   );

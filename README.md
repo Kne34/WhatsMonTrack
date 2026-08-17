@@ -124,9 +124,17 @@ docker compose exec -e DATABASE_URL="postgresql://postgres:mysecretpassword@post
 - Designed a mobile-first UI using Next.js App Router, Tailwind CSS, Shadcn UI, and Recharts.
 - Expanded the Prisma schema with `confidenceScore` and `TransactionStatus`. Ambiguous AI parsing (confidence < 0.85) defaults to `NEEDS_REVIEW`.
 - Implemented an interactive **Inbox** where users can manually confirm transactions with a single click, triggering atomic balance updates.
-- Added comprehensive **Dashboard Analytics** (Expense Breakdown, Income Breakdown, Top Categories).
+- **Advanced Dashboard Analytics**: Upgraded the dashboard with 5 professional Recharts visualizations: 
+  1. **Cumulative Net Flow** (Area Chart) showing intra-month balance growth.
+  2. **Daily Cash Flow** (Grouped Bar Chart) comparing Income vs Expense per day.
+  3. **Spending Velocity** (Bar Chart) with an automatic Daily Average Budget threshold line.
+  4. **Expense Breakdown** (Donut Chart) with percentage calculations.
+  5. **Budget vs Actual** (Progress Bars) measuring category expenses against defined limits.
+- **Backend Budget Infrastructure**: Added a `Budget` Prisma model linked to users and categories, exposing robust CRUD and TCP/REST APIs to power the budget analytics.
 - Implemented an **Interactive Calendar Filter**: Users can click specific days on the Ledger calendar to instantly filter the transaction table down to that date, backed by separated un-paginated and paginated API data streams.
-- Integrated **Transaction Editing** functionality inside the Ledger, mapping all balance changes securely in the database.
+- **Full Manual CRUD**: Empowered the dashboard with complete native control—users can Add, Edit, and Delete transactions manually with absolute atomic safety (e.g. deleting an expense securely restores the account balance).
+- **Floating Action Menu (FAB)**: Centralized "Add" operations (Transactions, Accounts, Budgets) into a single sleek, animated pop-up menu for a cleaner UI.
+- **Strict Data Consistency**: Fortified the Gemini LLM schema and frontend forms to strictly enforce `UPPERCASE` category parsing, ensuring flawless data alignment between AI-predicted categories and manual budgets.
 - **Frontend Architecture Refactoring**: Splitted the monolithic `Dashboard.tsx` into modular components (`HomeView`, `LedgerView`, `InboxView`, `DashboardHeader`, `BottomNav`, Modals) for extreme maintainability.
 - **SPA Routing**: Used Next.js `useRouter` and query parameters (`/?tab=ledger`) to maintain proper browser history and URL paths, avoiding expensive component unmounts and preserving React state.
 - **Live Polling**: The frontend utilizes a seamless `setInterval` hook fetching data every 5 seconds, keeping the dashboard strictly in sync with incoming WhatsApp transactions without requiring a page refresh.

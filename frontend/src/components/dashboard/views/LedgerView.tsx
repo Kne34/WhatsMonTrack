@@ -1,7 +1,7 @@
 import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowDownIcon, ArrowUpIcon, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react";
 
 interface LedgerViewProps {
   selectedMonth: number;
@@ -16,6 +16,7 @@ interface LedgerViewProps {
   setLimit: (l: number) => void;
   setPage: React.Dispatch<React.SetStateAction<number>>;
   handleEditClick: (tx: any) => void;
+  handleDeleteClick: (id: string) => void;
   formatRupiah: (val: number) => string;
 }
 
@@ -32,6 +33,7 @@ export default function LedgerView({
   setLimit,
   setPage,
   handleEditClick,
+  handleDeleteClick,
   formatRupiah
 }: LedgerViewProps) {
   return (
@@ -114,7 +116,7 @@ export default function LedgerView({
                 <th className="px-4 py-3 font-medium">Description</th>
                 <th className="px-4 py-3 font-medium">Account</th>
                 <th className="px-4 py-3 font-medium text-right">Amount</th>
-                <th className="px-4 py-3 font-medium text-right"></th>
+                <th className="px-4 py-3 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
@@ -160,9 +162,14 @@ export default function LedgerView({
                       {tx.type === 'INCOME' ? '+' : tx.type === 'EXPENSE' ? '-' : ''}{formatRupiah(tx.amount)}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button onClick={() => handleEditClick(tx)} className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors">
-                        <Pencil className="w-4 h-4" />
-                      </button>
+                      <div className="flex justify-end gap-1">
+                        <button onClick={() => handleEditClick(tx)} className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Edit">
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleDeleteClick(tx.id)} className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors" title="Delete">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
