@@ -1,5 +1,5 @@
 # Project Files
-PLAN.md
+PLAN*.md
 *.env
 
 # Docker Volumes
