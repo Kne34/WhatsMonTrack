@@ -17,52 +17,51 @@ export class AppService {
   async parseMessage(text: string) {
     this.logger.log(`[Parser] Received text: ${text}`);
 
-    // 1. FAST PATH (Regex Parser)
-    // Matches patterns like "50k makan siang bca" or "makan siang 50k"
-    const regexPattern = /^(?:(.+?)\s+)?(\d+)(k|rb|jt)?(?:\s+(.+?))?(?:\s+(bca|gopay|ovo|dana|cash))?$/i;
-    // Let's use a simpler approach: extract amount anywhere, account anywhere, rest is subcategory.
-    const amountMatch = text.match(/(\d+)(k|rb|jt)?/i);
-    const accountMatch = text.match(/\b(bca|gopay|ovo|dana|cash)\b/i);
-    
-    if (amountMatch) {
-      this.logger.log('[Parser] Hit Regex Fast-Path!');
-      let amount = parseInt(amountMatch[1]);
-      const multiplier = amountMatch[2]?.toLowerCase();
-      if (multiplier === 'k' || multiplier === 'rb') amount *= 1000;
-      if (multiplier === 'jt') amount *= 1000000;
+    // Call Gemini LLM Parser as the primary parser
+    try {
+      return await this.callGemini(text);
+    } catch (e) {
+      this.logger.warn('[Parser] Gemini failed, falling back to Regex...', e);
+      // Fallback (Regex Parser)
+      const amountMatch = text.match(/(\d+)(k|rb|jt)?/i);
+      const accountMatch = text.match(/\b(bca|gopay|ovo|dana|cash)\b/i);
+      
+      if (amountMatch) {
+        let amount = parseInt(amountMatch[1]);
+        const multiplier = amountMatch[2]?.toLowerCase();
+        if (multiplier === 'k' || multiplier === 'rb') amount *= 1000;
+        if (multiplier === 'jt') amount *= 1000000;
 
-      let subcategory = text
-        .replace(amountMatch[0], '')
-        .replace(accountMatch?.[0] || '', '')
-        .trim();
-        
-      if (!subcategory) subcategory = 'Lainnya';
+        let subcategory = text
+          .replace(amountMatch[0], '')
+          .replace(accountMatch?.[0] || '', '')
+          .trim();
+          
+        if (!subcategory) subcategory = 'Lainnya';
 
-      // Simple heuristic for type
-      let type = 'EXPENSE';
-      if (text.toLowerCase().includes('gaji') || text.toLowerCase().includes('terima') || text.toLowerCase().includes('masuk')) {
-        type = 'INCOME';
-      } else if (text.toLowerCase().includes('transfer') || text.toLowerCase().includes('top up') || text.toLowerCase().includes('isi')) {
-        type = 'TRANSFER';
-      }
-
-      return {
-        source: 'regex',
-        status: 'success',
-        data: {
-          amount,
-          type: type,
-          category: 'UNCATEGORIZED',
-          subcategory,
-          account: (accountMatch?.[1] || 'CASH').toUpperCase(),
-          confidence: 1.0
+        let type = 'EXPENSE';
+        if (text.toLowerCase().includes('gaji') || text.toLowerCase().includes('terima') || text.toLowerCase().includes('masuk')) {
+          type = 'INCOME';
+        } else if (text.toLowerCase().includes('transfer') || text.toLowerCase().includes('top up') || text.toLowerCase().includes('isi')) {
+          type = 'TRANSFER';
         }
-      };
-    }
 
-    // 2. FALLBACK (Gemini LLM Parser)
-    this.logger.log('[Parser] Regex failed, falling back to Gemini LLM...');
-    return await this.callGemini(text);
+        return {
+          source: 'regex_fallback',
+          status: 'success',
+          data: {
+            amount,
+            type: type,
+            category: 'UNCATEGORIZED',
+            subcategory,
+            account: (accountMatch?.[1] || 'CASH').toUpperCase(),
+            confidence: 0.5
+          }
+        };
+      }
+      
+      return { source: 'regex_fallback', status: 'error', message: 'Could not parse message' };
+    }
   }
 
   private async callGemini(text: string) {
