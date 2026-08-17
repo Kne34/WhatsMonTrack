@@ -30,6 +30,22 @@ export const createAccount = async (
   const { data } = await api.post('/accounts', { phoneNumber, name, type, initialBalance });
   return data;
 };
+
+// Helper to fetch budgets
+export const fetchBudgets = async (phoneNumber: string = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER || '') => {
+  const { data } = await api.get('/budgets', { params: { phoneNumber } });
+  return data;
+};
+
+// Helper to upsert a budget
+export const setBudget = async (
+  categoryName: string,
+  limit: number,
+  phoneNumber: string = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER || ''
+) => {
+  const { data } = await api.post('/budgets', { phoneNumber, categoryName, limit });
+  return data;
+};
 // Helper to confirm a transaction
 export const confirmTransaction = async (id: string) => {
   const { data } = await api.put(`/transactions/${id}/confirm`);
@@ -37,8 +53,20 @@ export const confirmTransaction = async (id: string) => {
 };
 
 export const updateTransaction = async (id: string, data: any) => {
-  const res = await api.put(`/transactions/${id}`, data);
-  return res.data;
+  const response = await api.put(`/transactions/${id}`, data);
+  return response.data;
+};
+
+// Helper to delete a transaction
+export const deleteTransaction = async (id: string) => {
+  const { data } = await api.delete(`/transactions/${id}`);
+  return data;
+};
+
+// Helper to create a transaction manually
+export const createTransaction = async (txData: any, phoneNumber: string = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER || '') => {
+  const { data } = await api.post('/transactions/manual', { phoneNumber, data: txData });
+  return data;
 };
 
 export default api;

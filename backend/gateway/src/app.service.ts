@@ -40,6 +40,14 @@ export class AppService {
     return lastValueFrom(this.transactionClient.send({ cmd: 'create_account' }, { phoneNumber, name, type, initialBalance }));
   }
 
+  async getBudgets(phoneNumber: string) {
+    return lastValueFrom(this.transactionClient.send({ cmd: 'get_budgets' }, { phoneNumber }));
+  }
+
+  async upsertBudget(phoneNumber: string, categoryName: string, limit: number) {
+    return lastValueFrom(this.transactionClient.send({ cmd: 'upsert_budget' }, { phoneNumber, categoryName, limit }));
+  }
+
   async getTransactions(phoneNumber: string, query?: any) {
     return lastValueFrom(this.transactionClient.send({ cmd: 'get_transactions' }, { phoneNumber, ...query }));
   }
@@ -50,5 +58,13 @@ export class AppService {
 
   async updateTransaction(id: string, data: any) {
     return lastValueFrom(this.transactionClient.send({ cmd: 'update_transaction' }, { id, data }));
+  }
+
+  async deleteTransaction(id: string) {
+    return lastValueFrom(this.transactionClient.send({ cmd: 'delete_transaction' }, { id }));
+  }
+
+  async createTransactionManual(phoneNumber: string, data: any) {
+    return lastValueFrom(this.transactionClient.send({ cmd: 'create_transaction' }, { phoneNumber, data }));
   }
 }
