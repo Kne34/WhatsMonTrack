@@ -75,7 +75,7 @@ export class AppService {
             properties: {
               amount: { type: SchemaType.NUMBER, description: "Exact transaction amount (e.g., 50000 for 50k, 10000 for ceban)" },
               type: { type: SchemaType.STRING, format: "enum", enum: ["EXPENSE", "INCOME", "TRANSFER"], description: "Type of transaction" },
-              category: { type: SchemaType.STRING, format: "enum", enum: ["Food & Drink", "Transport", "Shopping", "Bills", "Health", "Entertainment", "Income", "Other"], description: "Top level category" },
+              category: { type: SchemaType.STRING, format: "enum", enum: ["FOOD", "TRANSPORT", "SHOPPING", "BILLS", "HEALTH", "ENTERTAINMENT", "INCOME", "OTHER"], description: "Top level category (uppercase)" },
               subcategory: { type: SchemaType.STRING, description: "Specific subcategory, item name, or merchant" },
               account: { type: SchemaType.STRING, description: "Payment method/bank (e.g., BCA, GoPay, Cash)" },
               confidence: { type: SchemaType.NUMBER, description: "Confidence score (0.0 to 1.0)" }
@@ -96,11 +96,15 @@ export class AppService {
 
       const result = await model.generateContent(prompt);
       const jsonText = result.response.text();
+      const parsedData = JSON.parse(jsonText);
+      if (parsedData.category) {
+        parsedData.category = parsedData.category.toUpperCase();
+      }
 
       return {
         source: 'gemini',
         status: 'success',
-        data: JSON.parse(jsonText)
+        data: parsedData
       };
     } catch (error) {
       this.logger.error('[Parser] Gemini failed', error);
