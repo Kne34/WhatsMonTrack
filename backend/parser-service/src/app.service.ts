@@ -18,16 +18,25 @@ export class AppService {
     this.logger.log(`[Parser] Received text: ${text}`);
 
     // 1. FAST PATH (Regex Parser)
-    // Matches patterns like "50k makan siang bca"
-    const regexPattern = /^(\d+)(k|rb|jt)?\s+(.+?)\s+(bca|gopay|ovo|dana|cash)$/i;
-    const match = text.match(regexPattern);
-
-    if (match) {
+    // Matches patterns like "50k makan siang bca" or "makan siang 50k"
+    const regexPattern = /^(?:(.+?)\s+)?(\d+)(k|rb|jt)?(?:\s+(.+?))?(?:\s+(bca|gopay|ovo|dana|cash))?$/i;
+    // Let's use a simpler approach: extract amount anywhere, account anywhere, rest is subcategory.
+    const amountMatch = text.match(/(\d+)(k|rb|jt)?/i);
+    const accountMatch = text.match(/\b(bca|gopay|ovo|dana|cash)\b/i);
+    
+    if (amountMatch) {
       this.logger.log('[Parser] Hit Regex Fast-Path!');
-      let amount = parseInt(match[1]);
-      const multiplier = match[2]?.toLowerCase();
+      let amount = parseInt(amountMatch[1]);
+      const multiplier = amountMatch[2]?.toLowerCase();
       if (multiplier === 'k' || multiplier === 'rb') amount *= 1000;
       if (multiplier === 'jt') amount *= 1000000;
+
+      let subcategory = text
+        .replace(amountMatch[0], '')
+        .replace(accountMatch?.[0] || '', '')
+        .trim();
+        
+      if (!subcategory) subcategory = 'Lainnya';
 
       return {
         source: 'regex',
@@ -35,9 +44,9 @@ export class AppService {
         data: {
           amount,
           type: 'EXPENSE',
-          category: 'UNCATEGORIZED', // We leave category mapping for Regex to a dictionary later
-          subcategory: match[3].trim(),
-          account: match[4].toUpperCase(),
+          category: 'UNCATEGORIZED',
+          subcategory,
+          account: (accountMatch?.[1] || 'CASH').toUpperCase(),
           confidence: 1.0
         }
       };

@@ -92,5 +92,8 @@ docker compose exec -e DATABASE_URL="postgresql://postgres:mysecretpassword@post
 - Achieved ACID-compliant transaction balance deductions.
 - Migrated Prisma to use `@prisma/adapter-pg` driver for Prisma 7 support.
 
-## Phase 4 (Coming Soon)
-- Integrating real WhatsApp Cloud API webhooks so users can send live messages to the bot!
+## Phase 4: WhatsApp Integration (Completed)
+- Integrated `@whiskeysockets/baileys` to turn the Gateway into a WhatsApp Web client.
+- Bypassed Meta Cloud API and Twilio restrictions using the unofficial socket approach.
+- Handled QR Code generation inside the Docker logs.
+- Prevented infinite loops during self-replies and accommodated WhatsApp's Local Identifier (`@lid`) for "Message Yourself" chats.
