@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { fetchTransactions, fetchAccounts, confirmTransaction, createAccount, updateTransaction, fetchBudgets, setBudget, createTransaction, deleteTransaction } from "@/lib/api";
+import { fetchTransactions, fetchAccounts, confirmTransaction, createAccount, updateTransaction, fetchBudgets, setBudget, createTransaction, deleteTransaction, updateAccount, deleteAccount, deleteBudget } from "@/lib/api";
 
 import DashboardHeader from "./dashboard/shared/DashboardHeader";
 import BottomNav from "./dashboard/shared/BottomNav";
@@ -11,8 +11,11 @@ import LedgerView from "./dashboard/views/LedgerView";
 import InboxView from "./dashboard/views/InboxView";
 import AddAccountModal from "./dashboard/modals/AddAccountModal";
 import EditTransactionModal from "./dashboard/modals/EditTransactionModal";
+import EditAccountModal from "./dashboard/modals/EditAccountModal";
 import SetBudgetModal from "./dashboard/modals/SetBudgetModal";
 import AddTransactionModal from "./dashboard/modals/AddTransactionModal";
+import ConfirmModal from "./dashboard/modals/ConfirmModal";
+import AlertModal from "./dashboard/modals/AlertModal";
 import FloatingActionMenu from "./dashboard/shared/FloatingActionMenu";
 
 export default function Dashboard() {
@@ -48,9 +51,18 @@ export default function Dashboard() {
   const [editTxData, setEditTxData] = useState<any>({});
   const [isEditTxOpen, setIsEditTxOpen] = useState(false);
 
-  // New Modals State
+  // Edit Account State
+  const [accountToEdit, setAccountToEdit] = useState<any>(null);
+  const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
+
+  // Budget State
+  const [budgetToEdit, setBudgetToEdit] = useState<any>(null);
   const [isSetBudgetOpen, setIsSetBudgetOpen] = useState(false);
   const [isAddTxOpen, setIsAddTxOpen] = useState(false);
+
+  // Global Confirm/Alert State
+  const [confirmState, setConfirmState] = useState<{isOpen: boolean, txId: string}>({isOpen: false, txId: ''});
+  const [alertState, setAlertState] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
 
   const loadData = async () => {
     try {
@@ -84,7 +96,7 @@ export default function Dashboard() {
   }, [selectedMonth, selectedYear]);
 
   useEffect(() => {
-    const handleOpenBudget = () => setIsSetBudgetOpen(true);
+    const handleOpenBudget = () => { setBudgetToEdit(null); setIsSetBudgetOpen(true); };
     const handleOpenAddTx = () => setIsAddTxOpen(true);
     const handleOpenAddAcc = () => setIsAddAccountOpen(true);
     
@@ -114,6 +126,37 @@ export default function Dashboard() {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleEditAccountClick = (acc: any) => {
+    setAccountToEdit(acc);
+    setIsEditAccountOpen(true);
+  };
+
+  const handleUpdateAccount = async (id: string, name: string, balance: number) => {
+    try {
+      await updateAccount(id, { name, balance });
+      loadData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteAccount = async (id: string) => {
+    try {
+      await deleteAccount(id);
+      loadData();
+    } catch (e: any) {
+      setAlertState({
+        isOpen: true,
+        message: e.response?.data?.message || 'Failed to delete account. Ensure it has no transactions.'
+      });
+    }
+  };
+
+  const handleEditBudgetClick = (budget: any) => {
+    setBudgetToEdit(budget);
+    setIsSetBudgetOpen(true);
   };
 
   const handleEditClick = (tx: any) => {
@@ -155,6 +198,15 @@ export default function Dashboard() {
     }
   };
 
+  const handleDeleteBudget = async (id: string) => {
+    try {
+      await deleteBudget(id);
+      loadData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleSaveNewTx = async (data: any) => {
     try {
       await createTransaction(data);
@@ -164,14 +216,16 @@ export default function Dashboard() {
     }
   };
 
-  const handleDeleteClick = async (id: string) => {
-    if (window.confirm("Are you sure you want to delete this transaction? This will reverse its balance impact.")) {
-      try {
-        await deleteTransaction(id);
-        loadData();
-      } catch (e) {
-        console.error(e);
-      }
+  const handleDeleteClick = (id: string) => {
+    setConfirmState({ isOpen: true, txId: id });
+  };
+
+  const confirmDeleteTransaction = async () => {
+    try {
+      await deleteTransaction(confirmState.txId);
+      loadData();
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -215,6 +269,8 @@ export default function Dashboard() {
             totalBalance={totalBalance}
             accounts={accounts}
             formatRupiah={formatRupiah}
+            onEditAccount={handleEditAccountClick}
+            onEditBudget={handleEditBudgetClick}
           />
         )}
 
@@ -277,6 +333,16 @@ export default function Dashboard() {
         isOpen={isSetBudgetOpen}
         onClose={() => setIsSetBudgetOpen(false)}
         onSave={handleSaveBudget}
+        initialBudget={budgetToEdit}
+        onDelete={handleDeleteBudget}
+      />
+
+      <EditAccountModal
+        isOpen={isEditAccountOpen}
+        setIsOpen={setIsEditAccountOpen}
+        account={accountToEdit}
+        onSave={handleUpdateAccount}
+        onDelete={handleDeleteAccount}
       />
 
       <AddTransactionModal
@@ -284,6 +350,22 @@ export default function Dashboard() {
         onClose={() => setIsAddTxOpen(false)}
         onSave={handleSaveNewTx}
         accounts={accounts}
+      />
+
+      <ConfirmModal
+        isOpen={confirmState.isOpen}
+        onClose={() => setConfirmState({ isOpen: false, txId: '' })}
+        onConfirm={confirmDeleteTransaction}
+        title="Delete Transaction"
+        description="Are you sure you want to delete this transaction? This will reverse its balance impact."
+        confirmText="Delete"
+      />
+
+      <AlertModal
+        isOpen={alertState.isOpen}
+        onClose={() => setAlertState({ isOpen: false, message: '' })}
+        title="Action Failed"
+        description={alertState.message}
       />
     </div>
   );

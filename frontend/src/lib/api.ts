@@ -31,6 +31,18 @@ export const createAccount = async (
   return data;
 };
 
+// Helper to update an account
+export const updateAccount = async (id: string, accountData: any) => {
+  const { data } = await api.put(`/accounts/${id}`, accountData);
+  return data;
+};
+
+// Helper to delete an account
+export const deleteAccount = async (id: string) => {
+  const { data } = await api.delete(`/accounts/${id}`);
+  return data;
+};
+
 // Helper to fetch budgets
 export const fetchBudgets = async (phoneNumber: string = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER || '') => {
   const { data } = await api.get('/budgets', { params: { phoneNumber } });
@@ -44,6 +56,12 @@ export const setBudget = async (
   phoneNumber: string = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER || ''
 ) => {
   const { data } = await api.post('/budgets', { phoneNumber, categoryName, limit });
+  return data;
+};
+
+// Helper to delete a budget
+export const deleteBudget = async (id: string) => {
+  const { data } = await api.delete(`/budgets/${id}`);
   return data;
 };
 // Helper to confirm a transaction

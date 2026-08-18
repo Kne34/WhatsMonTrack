@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from "react";
-import { 
-  ResponsiveContainer, PieChart, Pie, Cell, Tooltip, 
+import {
+  ResponsiveContainer, PieChart, Pie, Cell, Tooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, AreaChart, Area, ReferenceLine, Legend
 } from "recharts";
+import { Pencil } from "lucide-react";
 
 const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 
@@ -14,16 +15,18 @@ interface HomeViewProps {
   totalBalance: number;
   accounts: any[];
   formatRupiah: (val: number) => string;
+  onEditAccount?: (acc: any) => void;
+  onEditBudget?: (budget: any) => void;
 }
 
-export default function HomeView({ 
-  monthlyTxs, budgets, selectedMonth, selectedYear, totalBalance, accounts, formatRupiah 
+export default function HomeView({
+  monthlyTxs, budgets, selectedMonth, selectedYear, totalBalance, accounts, formatRupiah, onEditAccount, onEditBudget
 }: HomeViewProps) {
-  
+
   // 1. Data Parsing
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
   const [breakdownType, setBreakdownType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
-  
+
   // Confirmed transactions only for analytics
   const confirmedTxs = monthlyTxs.filter(t => t.status === "CONFIRMED");
 
@@ -63,7 +66,7 @@ export default function HomeView({
         return acc;
       }, [] as any[])
       .sort((a: any, b: any) => b.value - a.value);
-    
+
     const total = data.reduce((sum: number, item: any) => sum + item.value, 0);
     return data.map((d: any) => ({ ...d, percent: total > 0 ? (d.value / total) * 100 : 0 }));
   }, [confirmedTxs]);
@@ -79,7 +82,7 @@ export default function HomeView({
         return acc;
       }, [] as any[])
       .sort((a: any, b: any) => b.value - a.value);
-    
+
     const total = data.reduce((sum: number, item: any) => sum + item.value, 0);
     return data.map((d: any) => ({ ...d, percent: total > 0 ? (d.value / total) * 100 : 0 }));
   }, [confirmedTxs]);
@@ -90,7 +93,7 @@ export default function HomeView({
       const spent = confirmedTxs
         .filter(t => t.type === 'EXPENSE' && (t.category || 'UNCATEGORIZED').toUpperCase() === b.categoryName)
         .reduce((sum, t) => sum + t.amount, 0);
-      
+
       const percent = b.limit > 0 ? Math.min((spent / b.limit) * 100, 100) : 0;
       let status = "SAFE";
       let color = "bg-green-500";
@@ -98,6 +101,7 @@ export default function HomeView({
       else if (percent >= 80) { status = "WARNING"; color = "bg-orange-500"; }
 
       return {
+        id: b.id,
         categoryName: b.categoryName,
         limit: b.limit,
         spent,
@@ -131,7 +135,7 @@ export default function HomeView({
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      
+
       {/* 1. Header & Net Worth */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="flex flex-col justify-end">
@@ -140,11 +144,14 @@ export default function HomeView({
             {formatRupiah(totalBalance)}
           </span>
         </div>
-        
+
         {/* Accounts Summary */}
         <div className="grid grid-cols-2 gap-3">
           {accounts.map(acc => (
-            <div key={acc.id} className="bg-card border border-border/50 rounded-2xl p-4 flex flex-col justify-between h-24 shadow-sm">
+            <div key={acc.id} className="bg-card border border-border/50 rounded-2xl p-4 flex flex-col justify-between h-24 shadow-sm relative group cursor-pointer hover:border-primary/50 transition-colors" onClick={() => onEditAccount?.(acc)}>
+              <div className="absolute top-3 right-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                <Pencil size={14} />
+              </div>
               <span className="text-xs text-muted-foreground font-medium">{acc.name}</span>
               <span className="text-lg font-heading font-semibold tabular-nums">{formatRupiah(acc.balance)}</span>
             </div>
@@ -160,8 +167,8 @@ export default function HomeView({
             <AreaChart data={dailyData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorFlow" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
@@ -174,7 +181,7 @@ export default function HomeView({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
+
         {/* 3. Cash Flow Trend (Grouped Bar Chart) */}
         <div className="bg-card border border-border/50 rounded-3xl p-5 shadow-sm">
           <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-4">Daily Cash Flow</h3>
@@ -218,13 +225,13 @@ export default function HomeView({
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Category Breakdown</h3>
             <div className="flex gap-2">
-              <button 
+              <button
                 onClick={() => setBreakdownType('EXPENSE')}
                 className={`text-[10px] px-2 py-1 rounded-md font-mono transition-colors ${breakdownType === 'EXPENSE' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary'}`}
               >
                 EXPENSE
               </button>
-              <button 
+              <button
                 onClick={() => setBreakdownType('INCOME')}
                 className={`text-[10px] px-2 py-1 rounded-md font-mono transition-colors ${breakdownType === 'INCOME' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary'}`}
               >
@@ -232,7 +239,7 @@ export default function HomeView({
               </button>
             </div>
           </div>
-          
+
           {(breakdownType === 'EXPENSE' ? expenseData : incomeData).length > 0 ? (
             <div className="flex items-center h-48">
               <div className="w-1/2 h-full relative">
@@ -243,17 +250,17 @@ export default function HomeView({
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip 
+                    <Tooltip
                       contentStyle={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: '8px' }}
                       itemStyle={{ color: 'var(--foreground)', fontFamily: 'var(--font-heading)', fontSize: '12px' }}
-                      formatter={(value: any, name: any, props: any) => [`${formatRupiah(value as number)} (${props.payload.percent.toFixed(1)}%)`, name]} 
+                      formatter={(value: any, name: any, props: any) => [`${formatRupiah(value as number)} (${props.payload.percent.toFixed(1)}%)`, name]}
                     />
                   </PieChart>
                 </ResponsiveContainer>
                 {/* Center Label */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                   <span className="text-[10px] text-muted-foreground font-mono">TOTAL</span>
-                  <span className="text-sm font-bold">{formatRupiah((breakdownType === 'EXPENSE' ? expenseData : incomeData).reduce((a:any, b:any) => a + b.value, 0) / 1000)}k</span>
+                  <span className="text-sm font-bold">{formatRupiah((breakdownType === 'EXPENSE' ? expenseData : incomeData).reduce((a: any, b: any) => a + b.value, 0) / 1000)}k</span>
                 </div>
               </div>
               <div className="w-1/2 flex flex-col pl-4 space-y-2 overflow-y-auto max-h-full">
@@ -269,7 +276,7 @@ export default function HomeView({
               </div>
             </div>
           ) : (
-             <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">No data for {breakdownType.toLowerCase()}.</div>
+            <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">No data for {breakdownType.toLowerCase()}.</div>
           )}
         </div>
 
@@ -281,7 +288,12 @@ export default function HomeView({
               {budgetData.map((b, i) => (
                 <div key={i} className="flex flex-col space-y-1">
                   <div className="flex justify-between items-end">
-                    <span className="text-xs font-medium">{b.categoryName}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium">{b.categoryName}</span>
+                      <button onClick={() => onEditBudget?.(b)} className="text-muted-foreground hover:text-primary transition-colors">
+                        <Pencil size={12} />
+                      </button>
+                    </div>
                     <span className="text-xs font-mono text-muted-foreground">
                       {formatRupiah(b.spent)} / {formatRupiah(b.limit)}
                     </span>
@@ -294,7 +306,7 @@ export default function HomeView({
             </div>
           ) : (
             <div className="h-48 flex flex-col items-center justify-center text-xs text-muted-foreground text-center">
-              No budgets set. <br /> Use the backend API to define limits for categories.
+              No budgets set. <br />
             </div>
           )}
         </div>
