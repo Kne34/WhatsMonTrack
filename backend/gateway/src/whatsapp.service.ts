@@ -4,11 +4,13 @@ import * as qrcode from 'qrcode-terminal';
 import { AppService } from './app.service';
 import { Boom } from '@hapi/boom';
 import * as path from 'path';
+import * as fs from 'fs';
 
 @Injectable()
 export class WhatsAppService implements OnModuleInit {
   private readonly logger = new Logger(WhatsAppService.name);
   private sock: any;
+  private connectionStatus = { connected: false, qr: '' };
 
   constructor(private readonly appService: AppService) {}
 
@@ -34,11 +36,13 @@ export class WhatsAppService implements OnModuleInit {
       const { connection, lastDisconnect, qr } = update;
       
       if (qr) {
+        this.connectionStatus.qr = qr;
         this.logger.log('Scan this QR code with your WhatsApp app:');
         qrcode.generate(qr, { small: true });
       }
 
       if (connection === 'close') {
+        this.connectionStatus.connected = false;
         const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
         this.logger.error('WhatsApp connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect);
         // reconnect if not logged out
@@ -46,6 +50,8 @@ export class WhatsAppService implements OnModuleInit {
           this.connectToWhatsApp();
         }
       } else if (connection === 'open') {
+        this.connectionStatus.connected = true;
+        this.connectionStatus.qr = '';
         this.logger.log('WhatsApp connection opened successfully!');
       }
     });
@@ -142,5 +148,40 @@ export class WhatsAppService implements OnModuleInit {
         await this.sock.sendMessage(senderJid, { text: 'Maaf, sistem sedang mengalami gangguan.' });
       }
     });
+  }
+
+  public getConnectionStatus() {
+    return this.connectionStatus;
+  }
+
+  public async resetSession() {
+    this.logger.warn('Resetting WhatsApp session...');
+    this.connectionStatus = { connected: false, qr: '' };
+    
+    if (this.sock) {
+      this.sock.ev.removeAllListeners();
+      try {
+        await this.sock.logout();
+      } catch (err) {
+        this.logger.error('Error during logout:', err);
+      }
+    }
+    
+    const authPath = path.join(process.cwd(), 'auth_info_baileys');
+    if (fs.existsSync(authPath)) {
+      try {
+        fs.rmSync(authPath, { recursive: true, force: true });
+        this.logger.log('Deleted auth_info_baileys folder.');
+      } catch (err) {
+        this.logger.error('Failed to delete auth_info_baileys:', err);
+      }
+    }
+
+    // Delay briefly to ensure files are released
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    
+    // Restart connection
+    await this.connectToWhatsApp();
+    return { success: true, message: 'Session reset initiated.' };
   }
 }

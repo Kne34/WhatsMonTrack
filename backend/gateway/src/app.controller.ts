@@ -1,9 +1,13 @@
 import { Controller, Post, Body, Get, Put, Query, Param, Delete } from '@nestjs/common';
 import { AppService } from './app.service';
+import { WhatsAppService } from './whatsapp.service';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) { }
+  constructor(
+    private readonly appService: AppService,
+    private readonly whatsappService: WhatsAppService
+  ) {}
 
   // Keep this endpoint for manual testing via Postman/cURL
   @Post('parse')
@@ -14,6 +18,16 @@ export class AppController {
   }
 
   // REST APIs for Frontend Dashboard
+
+  @Get('api/whatsapp/status')
+  getWhatsAppStatus() {
+    return this.whatsappService.getConnectionStatus();
+  }
+
+  @Post('api/whatsapp/reset')
+  resetWhatsAppSession() {
+    return this.whatsappService.resetSession();
+  }
 
   @Get('api/accounts')
   async getAccounts(@Query('phoneNumber') phoneNumber: string) {
