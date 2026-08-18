@@ -138,7 +138,7 @@ export default function HomeView({
 
       {/* 1. Header & Net Worth */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="flex flex-col justify-end">
+        <div className="flex flex-col justify-center">
           <span className="text-sm font-medium text-muted-foreground uppercase tracking-widest mb-1">Total Net Worth</span>
           <span className="text-5xl font-heading font-bold tabular-nums tracking-tighter text-foreground">
             {formatRupiah(totalBalance)}

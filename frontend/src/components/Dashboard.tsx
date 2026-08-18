@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { fetchTransactions, fetchAccounts, confirmTransaction, createAccount, updateTransaction, fetchBudgets, setBudget, createTransaction, deleteTransaction, updateAccount, deleteAccount, deleteBudget } from "@/lib/api";
+import { fetchTransactions, fetchAccounts, confirmTransaction, createAccount, updateTransaction, fetchBudgets, setBudget, createTransaction, deleteTransaction, updateAccount, deleteAccount, deleteBudget, fetchWhatsAppStatus } from "@/lib/api";
 
 import DashboardHeader from "./dashboard/shared/DashboardHeader";
 import BottomNav from "./dashboard/shared/BottomNav";
@@ -16,6 +16,7 @@ import SetBudgetModal from "./dashboard/modals/SetBudgetModal";
 import AddTransactionModal from "./dashboard/modals/AddTransactionModal";
 import ConfirmModal from "./dashboard/modals/ConfirmModal";
 import AlertModal from "./dashboard/modals/AlertModal";
+import WhatsAppStatusModal from "./dashboard/modals/WhatsAppStatusModal";
 import FloatingActionMenu from "./dashboard/shared/FloatingActionMenu";
 
 export default function Dashboard() {
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const [tableTxs, setTableTxs] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [budgets, setBudgets] = useState<any[]>([]);
+  const [waStatus, setWaStatus] = useState<{ connected: boolean; qr: string } | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Filters and Pagination
@@ -64,19 +66,24 @@ export default function Dashboard() {
   const [confirmState, setConfirmState] = useState<{isOpen: boolean, txId: string}>({isOpen: false, txId: ''});
   const [alertState, setAlertState] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
 
+  // WA Status Modal
+  const [isWaModalOpen, setIsWaModalOpen] = useState(false);
+
   const loadData = async () => {
     try {
-      const [monthlyData, tableData, accs, budgs] = await Promise.all([
+      const [monthlyData, tableData, accs, budgs, wa] = await Promise.all([
         fetchTransactions(undefined, { month: selectedMonth, year: selectedYear, page: 1, limit: 1000 }),
         fetchTransactions(undefined, { month: selectedMonth, year: selectedYear, day: selectedDay || undefined, page, limit }),
         fetchAccounts(),
-        fetchBudgets()
+        fetchBudgets(),
+        fetchWhatsAppStatus().catch(() => null)
       ]);
       setMonthlyTxs(monthlyData.data || monthlyData);
       setTableTxs(tableData.data || tableData);
       setTotalPages(tableData.totalPages || 1);
       setAccounts(accs);
       setBudgets(budgs);
+      if (wa) setWaStatus(wa);
     } catch (e) {
       console.error(e);
     } finally {
@@ -257,6 +264,8 @@ export default function Dashboard() {
         selectedYear={selectedYear}
         setSelectedMonth={setSelectedMonth}
         setSelectedYear={setSelectedYear}
+        waStatus={waStatus}
+        onWaStatusClick={() => setIsWaModalOpen(true)}
       />
 
       <main className="flex-1 overflow-y-auto px-6 pb-28">
@@ -355,7 +364,11 @@ export default function Dashboard() {
       <ConfirmModal
         isOpen={confirmState.isOpen}
         onClose={() => setConfirmState({ isOpen: false, txId: '' })}
-        onConfirm={confirmDeleteTransaction}
+        onConfirm={async () => {
+          await deleteTransaction(confirmState.txId);
+          setConfirmState({isOpen: false, txId: ''});
+          loadData();
+        }}
         title="Delete Transaction"
         description="Are you sure you want to delete this transaction? This will reverse its balance impact."
         confirmText="Delete"
@@ -366,6 +379,16 @@ export default function Dashboard() {
         onClose={() => setAlertState({ isOpen: false, message: '' })}
         title="Action Failed"
         description={alertState.message}
+      />
+
+      <WhatsAppStatusModal
+        isOpen={isWaModalOpen}
+        onClose={() => setIsWaModalOpen(false)}
+        status={waStatus}
+        onResetComplete={() => {
+          // It will poll automatically, but we can fast-track a reload
+          loadData();
+        }}
       />
     </div>
   );

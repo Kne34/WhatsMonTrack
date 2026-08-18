@@ -81,6 +81,17 @@ export const deleteTransaction = async (id: string) => {
   return data;
 };
 
+// --- WhatsApp Setup ---
+export const fetchWhatsAppStatus = async () => {
+  const { data } = await api.get('/whatsapp/status');
+  return data;
+};
+
+export const resetWhatsAppSession = async () => {
+  const { data } = await api.post('/whatsapp/reset');
+  return data;
+};
+
 // Helper to create a transaction manually
 export const createTransaction = async (txData: any, phoneNumber: string = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER || '') => {
   const { data } = await api.post('/transactions/manual', { phoneNumber, data: txData });

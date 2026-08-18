@@ -9,16 +9,32 @@ interface DashboardHeaderProps {
   selectedYear: number;
   setSelectedMonth: React.Dispatch<React.SetStateAction<number>>;
   setSelectedYear: React.Dispatch<React.SetStateAction<number>>;
+  waStatus?: { connected: boolean; qr: string } | null;
+  onWaStatusClick?: () => void;
 }
 
-export default function DashboardHeader({ selectedMonth, selectedYear, setSelectedMonth, setSelectedYear }: DashboardHeaderProps) {
+export default function DashboardHeader({ selectedMonth, selectedYear, setSelectedMonth, setSelectedYear, waStatus, onWaStatusClick }: DashboardHeaderProps) {
   return (
     <header className="p-6 pb-4 flex justify-between items-center">
       <div>
         <h1 className="text-2xl font-heading font-semibold tracking-tight">WhatsMonTrack</h1>
-        <p className="text-muted-foreground font-mono text-xs mt-1 opacity-70">
-          {process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER}
-        </p>
+        <div className="flex items-center gap-2 mt-1">
+          <p className="text-muted-foreground font-mono text-xs opacity-70">
+            {process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER}
+          </p>
+          {waStatus && (
+            <button 
+              onClick={onWaStatusClick}
+              className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
+                waStatus.connected 
+                  ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400" 
+                  : "bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400"
+              }`}
+            >
+              {waStatus.connected ? "Connected" : "Disconnected (Click to Link)"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Global Filter */}
