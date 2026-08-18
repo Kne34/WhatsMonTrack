@@ -103,6 +103,57 @@ docker compose exec -e DATABASE_URL="postgresql://postgres:mysecretpassword@post
 
 ---
 
+## Getting Started: End-User Guide (How to Use)
+
+If you are a user looking to use the app to track your finances to the fullest, follow this flow:
+
+### 1. Environment Setup
+Make sure you have created `.env` files based on the `.env.example` files provided in the root, `backend/gateway`, `backend/transaction-service`, and `frontend`. 
+Crucially, ensure you have set your `DEFAULT_PHONE_NUMBER` (your WhatsApp number in international format, e.g., `62812...`) and your `GEMINI_API_KEY`.
+
+### 2. Start the App & Link WhatsApp
+To avoid startup race conditions, we have provided automated startup scripts.
+- **Windows (cmd):** Double-click or run `start_app.bat`
+- **PowerShell:** Run `./start_app.ps1`
+- **Manual/Linux:** You can run `docker compose up -d` but ensure databases are initialized first.
+
+The script will automatically fetch the Gateway logs at the end. Look for the WhatsApp Web QR Code in the terminal and scan it with your WhatsApp app (Linked Devices) to authorize the bot.
+
+### 3. Initialize Dashboard (Accounts & Budgets)
+Open your browser and navigate to `http://localhost`.
+Before chatting, set up your baseline data:
+- Click the **+** button (Floating Action Menu) on the bottom right.
+- **Add Accounts**: Create the accounts you frequently use (e.g., BCA, OVO, Cash) and their current balances.
+- **Set Budgets**: Define monthly limits for your categories (e.g., `FOOD`, `TRANSPORT`, `SHOPPING`).
+
+### 4. Log Expenses via WhatsApp
+Open WhatsApp and send a message to the bot (or use the "Message Yourself" feature). Just type naturally:
+- *"50k makan siang bca"*
+- *"bayar gojek 20k pake ovo"*
+- *"gajian 5jt masuk ke bca"*
+
+The AI (Gemini) will instantly parse your slang, deduct the balance from the correct account, and record the transaction!
+
+### 5. Monitor and Review
+Open the `http://localhost` dashboard to see your financial health update in real-time. 
+- **Analytics**: Watch your daily cash flow, cumulative net flow, and budget progress bars.
+- **Inbox**: If you type something ambiguous and the AI isn't confident, the transaction will be routed to the **Inbox** tab as `NEEDS_REVIEW`. You can manually correct and confirm it there!
+
+### 6. Troubleshooting: Re-linking WhatsApp
+If you accidentally log out (unlink) the bot from your phone's **Linked Devices** menu, the Baileys session will become invalid, causing the Gateway to throw 401 Unauthorized errors. To fix this and link again, use the automated reset utility:
+- **Windows (cmd):** Double-click or run `reset_whatsapp.bat`
+- **PowerShell:** Run `./reset_whatsapp.ps1`
+
+Alternatively, if you want to do it manually:
+1. Stop the gateway container.
+2. Delete the stale auth folder:
+   - **Mac/Linux/Git Bash:** `rm -rf backend/gateway/auth_info_baileys`
+   - **Windows (cmd):** `rmdir /s /q backend\gateway\auth_info_baileys`
+3. Restart the container: `docker compose restart gateway`
+4. Re-scan the new QR Code in the logs: `docker logs whatsmon-gateway -f`
+
+---
+
 ## Phase 2: Category Intelligence (Completed)
 - Configured NestJS `ClientsModule` for fast TCP communication between the Gateway and Parser Service.
 - Implemented a Regex "Fast-Path" for strict standard templates (e.g. `50k makan siang bca`).
