@@ -139,18 +139,17 @@ Open the `http://localhost` dashboard to see your financial health update in rea
 - **Analytics**: Watch your daily cash flow, cumulative net flow, and budget progress bars.
 - **Inbox**: If you type something ambiguous and the AI isn't confident, the transaction will be routed to the **Inbox** tab as `NEEDS_REVIEW`. You can manually correct and confirm it there!
 
-### 6. Troubleshooting: Re-linking WhatsApp
-If you accidentally log out (unlink) the bot from your phone's **Linked Devices** menu, the Baileys session will become invalid, causing the Gateway to throw 401 Unauthorized errors. To fix this and link again, use the automated reset utility:
+### 6. Linking and Troubleshooting WhatsApp
+The easiest way to link WhatsApp or fix connection issues is directly through the Web Dashboard!
+
+1. Open the dashboard (`http://localhost`).
+2. Click the WhatsApp connection badge in the top-left corner (under the app title).
+3. If it says **Disconnected**, a QR Code will appear. Scan it using the **Linked Devices** feature in your WhatsApp app.
+4. **Stuck or Invalid Session?** If you accidentally log out from your phone or the bot gets stuck, open the same modal and click the red **"Force Disconnect & Reset"** button. This will wipe the backend authentication state automatically and generate a fresh QR Code.
+
+*(Fallback for Terminal users)*: You can also use the automated reset utility if the frontend is completely inaccessible:
 - **Windows (cmd):** Double-click or run `reset_whatsapp.bat`
 - **PowerShell:** Run `./reset_whatsapp.ps1`
-
-Alternatively, if you want to do it manually:
-1. Stop the gateway container.
-2. Delete the stale auth folder:
-   - **Mac/Linux/Git Bash:** `rm -rf backend/gateway/auth_info_baileys`
-   - **Windows (cmd):** `rmdir /s /q backend\gateway\auth_info_baileys`
-3. Restart the container: `docker compose restart gateway`
-4. Re-scan the new QR Code in the logs: `docker logs whatsmon-gateway -f`
 
 ---
 

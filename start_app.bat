@@ -22,4 +22,3 @@ docker compose up -d nginx
 echo.
 echo Application started!
 echo - Dashboard: http://localhost
-echo - To view Gateway Logs (and QR Code): docker logs whatsmon-gateway -f
