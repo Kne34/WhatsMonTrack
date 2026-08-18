@@ -8,10 +8,11 @@ interface InboxViewProps {
   handleConfirm: (id: string) => void;
   handleEditClick: (tx: any) => void;
   handleDeleteClick: (id: string) => void;
+  handleDeleteAllClick: () => void;
   formatRupiah: (val: number) => string;
 }
 
-export default function InboxView({ needsReviewTxs, handleConfirm, handleEditClick, handleDeleteClick, formatRupiah }: InboxViewProps) {
+export default function InboxView({ needsReviewTxs, handleConfirm, handleEditClick, handleDeleteClick, handleDeleteAllClick, formatRupiah }: InboxViewProps) {
   
   // Helper for Segmented Bar
   const renderConfidenceBar = (score: number) => {
@@ -34,9 +35,19 @@ export default function InboxView({ needsReviewTxs, handleConfirm, handleEditCli
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-heading font-bold">Needs Review</h2>
         {needsReviewTxs.length > 0 && (
-          <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 font-mono">
-            {needsReviewTxs.length} items
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20 font-mono">
+              {needsReviewTxs.length} items
+            </Badge>
+            <Button 
+              variant="destructive" 
+              size="sm" 
+              onClick={handleDeleteAllClick}
+              className="h-6 text-xs px-2 rounded-md"
+            >
+              Delete All
+            </Button>
+          </div>
         )}
       </div>
 

@@ -95,6 +95,7 @@ services:
       - ./backend/gateway:/app
       - /app/node_modules
     environment:
+      - DEFAULT_PHONE_NUMBER=${DEFAULT_PHONE_NUMBER}
       - NODE_OPTIONS=--dns-result-order=ipv4first
       - CHOKIDAR_USEPOLLING=true
       - TSC_WATCHFILE=UsePolling

@@ -63,7 +63,7 @@ export default function Dashboard() {
   const [isAddTxOpen, setIsAddTxOpen] = useState(false);
 
   // Global Confirm/Alert State
-  const [confirmState, setConfirmState] = useState<{isOpen: boolean, txId: string}>({isOpen: false, txId: ''});
+  const [confirmState, setConfirmState] = useState<{isOpen: boolean, txId: string, type?: 'single' | 'inbox'}>({isOpen: false, txId: '', type: 'single'});
   const [alertState, setAlertState] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
 
   // WA Status Modal
@@ -224,12 +224,25 @@ export default function Dashboard() {
   };
 
   const handleDeleteClick = (id: string) => {
-    setConfirmState({ isOpen: true, txId: id });
+    setConfirmState({ isOpen: true, txId: id, type: 'single' });
+  };
+
+  const handleDeleteAllInboxClick = () => {
+    setConfirmState({ isOpen: true, txId: 'ALL_INBOX', type: 'inbox' });
   };
 
   const confirmDeleteTransaction = async () => {
     try {
-      await deleteTransaction(confirmState.txId);
+      if (confirmState.type === 'inbox') {
+        const needsReviewIds = needsReviewTxs.map(t => t.id);
+        // Delete sequentially to avoid overwhelming the database/Prisma
+        for (const id of needsReviewIds) {
+          await deleteTransaction(id);
+        }
+      } else {
+        await deleteTransaction(confirmState.txId);
+      }
+      setConfirmState({isOpen: false, txId: '', type: 'single'});
       loadData();
     } catch (e) {
       console.error(e);
@@ -289,6 +302,7 @@ export default function Dashboard() {
             handleConfirm={handleConfirm}
             handleEditClick={handleEditClick}
             handleDeleteClick={handleDeleteClick}
+            handleDeleteAllClick={handleDeleteAllInboxClick}
             formatRupiah={formatRupiah}
           />
         )}
@@ -365,14 +379,10 @@ export default function Dashboard() {
 
       <ConfirmModal
         isOpen={confirmState.isOpen}
-        onClose={() => setConfirmState({ isOpen: false, txId: '' })}
-        onConfirm={async () => {
-          await deleteTransaction(confirmState.txId);
-          setConfirmState({isOpen: false, txId: ''});
-          loadData();
-        }}
-        title="Delete Transaction"
-        description="Are you sure you want to delete this transaction? This will reverse its balance impact."
+        onClose={() => setConfirmState({ isOpen: false, txId: '', type: 'single' })}
+        onConfirm={confirmDeleteTransaction}
+        title={confirmState.type === 'inbox' ? "Delete All Inbox Items" : "Delete Transaction"}
+        description={confirmState.type === 'inbox' ? "Are you sure you want to delete all items in the inbox? This action cannot be undone." : "Are you sure you want to delete this transaction? This will reverse its balance impact."}
         confirmText="Delete"
       />
 

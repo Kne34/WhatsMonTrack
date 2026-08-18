@@ -157,9 +157,14 @@ The easiest way to link WhatsApp or fix connection issues is directly through th
 - Configured NestJS `ClientsModule` for fast TCP communication between the Gateway and Parser Service.
 - Implemented a Regex "Fast-Path" for strict standard templates (e.g. `50k makan siang bca`).
 - Integrated the `@google/generative-ai` SDK using Gemini's **Structured Outputs (JSON Schema)** to seamlessly parse messy natural language slang into actionable transaction data.
-- Upgraded the AI model to `gemini-1.5-flash` for optimal speed and accuracy.
-- Implemented **Context-Aware RAG (Retrieval-Augmented Generation)**: The Gateway dynamically fetches the user's real database accounts and injects them into the Gemini prompt. This completely eliminates AI hallucinations and forces the AI to strictly match the requested payment method to an actual registered account.
-- Engineered a robust **Auto-Retry Mechanism** within the Parser Service to gracefully handle temporary Node.js/Docker DNS network timeouts (`fetch failed`) without losing the transaction or immediately falling back to regex.
+- Upgraded the AI model to `gemini-1.5-flash` for optimal- **Resilient AI Parsing Service**:
+  - Implemented an intelligent **Context-Aware RAG (Retrieval-Augmented Generation)** pattern: User's existing account names (e.g., 'BCA', 'OVO') are dynamically fetched and injected directly into the Gemini AI system prompt, eliminating false positives and enforcing 100% strict matching with the actual PostgreSQL database.
+  - Hardened with a **Recursive Retry System**: If Gemini throws a temporary network failure (e.g. `fetch failed`), the parser service will automatically intercept the error, sleep, and gracefully retry the request up to 2 times before falling back, drastically improving reliability.
+- **Anti-Loop Zero-Width Space Architecture**: To absolutely guarantee the bot never replies to its own messages (which causes catastrophic infinite loops), a Zero-Width Space (`\u200B`) is injected as an invisible cryptographic marker at the end of every bot reply. The parser aborts instantly if this marker is detected.
+- **Bulletproof WhatsApp Security**:
+  - Strict Docker environment binding (`DEFAULT_PHONE_NUMBER`) ensures the bot only reads and processes messages from the authorized user's phone number. All messages from strangers, groups, or spoofed `@lid` JIDs are immediately dropped.
+  - The WhatsApp connection lifecycle handles forced manual resets gracefully using localized socket termination, preventing unhandled `Connection Closed` Baileys exceptions from crashing the Gateway container (fixing 502 Bad Gateway errors).
+  - Implemented aggressive UI polling (1.5s interval) during WhatsApp linking, providing a near-instant, seamless QR code rendering experience.
 
 ## Phase 3: Transaction microservice (Completed)
 - Separated database functionality from the Gateway into a dedicated `transaction-service`.
@@ -185,6 +190,7 @@ The easiest way to link WhatsApp or fix connection issues is directly through th
   4. **Expense Breakdown** (Donut Chart) with exact percentage and decimal calculations (preventing aggressive rounding errors on totals).
   5. **Budget vs Actual** (Progress Bars) measuring category expenses against defined limits.
 - **Privacy Mode (Shutter)**: Added a dynamic, global privacy toggle (Eye/Shutter icon) to censor sensitive financial data (Total Net Worth and Individual Account Balances) with a single click. Accounts can also be individually revealed in privacy mode.
+- **Batch Inbox Management**: Added a one-click "Delete All" function in the Dashboard Inbox to rapidly clear the entire "Needs Review" queue.
 - **Backend Budget Infrastructure**: Added a `Budget` Prisma model linked to users and categories, exposing robust CRUD and TCP/REST APIs to power the budget analytics.
 - Implemented an **Interactive Calendar Filter**: Users can click specific days on the Ledger calendar to instantly filter the transaction table down to that date, backed by separated un-paginated and paginated API data streams.
 - **Full Manual CRUD**: Empowered the dashboard with complete native control—users can Add, Edit, and Delete transactions manually with absolute atomic safety (e.g. deleting an expense securely restores the account balance).

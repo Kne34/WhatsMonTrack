@@ -72,8 +72,8 @@ export class WhatsAppService implements OnModuleInit {
       const myLidRaw = this.sock.user?.lid;
       const myLid = myLidRaw ? myLidRaw.split(':')[0] + '@lid' : '';
 
-      // WhatsApp now uses @lid for "Message Yourself" chats
-      const isNoteToSelf = senderJid === myJid || senderJid === myLid || senderJid?.endsWith('@lid');
+      // WhatsApp now uses @lid for "Message Yourself" chats, but we strictly match our own ID
+      const isNoteToSelf = senderJid === myJid || senderJid === myLid;
 
       this.logger.log(`[DEBUG] myJid: ${myJid}, myLid: ${myLid}, isNoteToSelf: ${isNoteToSelf}`);
 
@@ -119,7 +119,8 @@ export class WhatsAppService implements OnModuleInit {
 
       // IMPORTANT: Prevent infinite loop when using "Note to Self"
       // because our own replies are sent as fromMe=true
-      if (text.startsWith('Berhasil!') || text.startsWith('Gagal:') || text.startsWith('Maaf,')) {
+      const ignoredPrefixes = ['Berhasil!', 'Gagal:', 'Maaf,', 'Tercatat', 'Tolong'];
+      if (ignoredPrefixes.some(prefix => text.startsWith(prefix)) || text.includes('\u200B')) {
         this.logger.log(`[DEBUG] Ignored own bot reply to prevent loop.`);
         return;
       }
@@ -140,8 +141,9 @@ export class WhatsAppService implements OnModuleInit {
            replyText = response.message;
         }
 
-        // Send reply back to user
-        await this.sock.sendMessage(senderJid, { text: replyText });
+        // Add a Zero-Width Space (ZWS) at the end to uniquely identify our own replies
+        const finalReply = replyText + '\u200B';
+        await this.sock.sendMessage(senderJid, { text: finalReply });
         this.logger.log(`Replied to ${phoneNumber}`);
       } catch (err) {
         this.logger.error('Error processing message:', err);
@@ -161,9 +163,9 @@ export class WhatsAppService implements OnModuleInit {
     if (this.sock) {
       this.sock.ev.removeAllListeners();
       try {
-        await this.sock.logout();
+        this.sock.end(undefined);
       } catch (err) {
-        this.logger.error('Error during logout:', err);
+        this.logger.error('Error ending socket:', err);
       }
     }
     

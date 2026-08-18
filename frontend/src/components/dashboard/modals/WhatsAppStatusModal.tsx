@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { resetWhatsAppSession } from "@/lib/api";
+import { resetWhatsAppSession, fetchWhatsAppStatus } from "@/lib/api";
 
 interface WhatsAppStatusModalProps {
   isOpen: boolean;
@@ -11,6 +11,28 @@ interface WhatsAppStatusModalProps {
 
 export default function WhatsAppStatusModal({ isOpen, onClose, status, onResetComplete }: WhatsAppStatusModalProps) {
   const [resetting, setResetting] = useState(false);
+  const [localStatus, setLocalStatus] = useState(status);
+
+  // Sync with parent prop
+  useEffect(() => {
+    setLocalStatus(status);
+  }, [status]);
+
+  // Aggressive polling when modal is open and not connected
+  useEffect(() => {
+    let interval: any;
+    if (isOpen && !localStatus?.connected) {
+      interval = setInterval(async () => {
+        try {
+          const res = await fetchWhatsAppStatus();
+          setLocalStatus(res);
+        } catch (err) {
+          // Ignore errors during aggressive polling
+        }
+      }, 1500); // 1.5 seconds instead of 5 seconds
+    }
+    return () => clearInterval(interval);
+  }, [isOpen, localStatus?.connected]);
 
   if (!isOpen) return null;
 
@@ -29,7 +51,7 @@ export default function WhatsAppStatusModal({ isOpen, onClose, status, onResetCo
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl p-6 sm:p-8 transform transition-all scale-100 flex flex-col items-center relative">
-        <button 
+        <button
           onClick={onClose}
           className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
         >
@@ -39,8 +61,8 @@ export default function WhatsAppStatusModal({ isOpen, onClose, status, onResetCo
         </button>
 
         <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">WhatsApp Connection</h3>
-        
-        {status?.connected ? (
+
+        {localStatus?.connected ? (
           <div className="flex flex-col items-center justify-center my-8 w-full">
             <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-500 rounded-full flex items-center justify-center mb-4">
               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -85,10 +107,10 @@ export default function WhatsAppStatusModal({ isOpen, onClose, status, onResetCo
             <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-6">
               Scan this QR code with your WhatsApp "Linked Devices" feature.
             </p>
-            
+
             <div className="bg-white p-4 rounded-xl shadow-inner border border-slate-100 mb-6 flex items-center justify-center w-64 h-64">
-              {status?.qr ? (
-                <QRCodeSVG value={status.qr} size={224} />
+              {localStatus?.qr ? (
+                <QRCodeSVG value={localStatus.qr} size={224} />
               ) : (
                 <div className="flex flex-col items-center text-slate-400 animate-pulse">
                   <svg className="w-10 h-10 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,7 +120,7 @@ export default function WhatsAppStatusModal({ isOpen, onClose, status, onResetCo
                 </div>
               )}
             </div>
-            
+
             <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-6">
               <p className="text-xs text-center text-slate-500 dark:text-slate-400 mb-3">
                 Stuck loading or invalid session?
