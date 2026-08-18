@@ -1,15 +1,17 @@
 import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Pencil, Trash2 } from "lucide-react";
 
 interface InboxViewProps {
   needsReviewTxs: any[];
   handleConfirm: (id: string) => void;
+  handleEditClick: (tx: any) => void;
+  handleDeleteClick: (id: string) => void;
   formatRupiah: (val: number) => string;
 }
 
-export default function InboxView({ needsReviewTxs, handleConfirm, formatRupiah }: InboxViewProps) {
+export default function InboxView({ needsReviewTxs, handleConfirm, handleEditClick, handleDeleteClick, formatRupiah }: InboxViewProps) {
   
   // Helper for Segmented Bar
   const renderConfidenceBar = (score: number) => {
@@ -61,8 +63,17 @@ export default function InboxView({ needsReviewTxs, handleConfirm, formatRupiah 
                 </div>
 
                 {/* Parsed Data Card */}
-                <div className="bg-card border border-border rounded-2xl p-4 shadow-sm relative ml-4">
-                  <div className="flex justify-between items-start mb-4">
+                <div className="bg-card border border-border rounded-2xl p-4 shadow-sm relative ml-4 group">
+                  <div className="absolute top-4 right-4 flex gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => handleEditClick(tx)} className="text-muted-foreground hover:text-primary transition-colors">
+                      <Pencil size={16} />
+                    </button>
+                    <button onClick={() => handleDeleteClick(tx.id)} className="text-muted-foreground hover:text-red-500 transition-colors">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+
+                  <div className="flex justify-between items-start mb-4 pr-16">
                     <div>
                       <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-1">Parsed Output</p>
                       <h3 className="font-bold text-lg font-heading">{tx.subcategory || tx.category}</h3>

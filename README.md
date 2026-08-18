@@ -157,6 +157,9 @@ The easiest way to link WhatsApp or fix connection issues is directly through th
 - Configured NestJS `ClientsModule` for fast TCP communication between the Gateway and Parser Service.
 - Implemented a Regex "Fast-Path" for strict standard templates (e.g. `50k makan siang bca`).
 - Integrated the `@google/generative-ai` SDK using Gemini's **Structured Outputs (JSON Schema)** to seamlessly parse messy natural language slang into actionable transaction data.
+- Upgraded the AI model to `gemini-1.5-flash` for optimal speed and accuracy.
+- Implemented **Context-Aware RAG (Retrieval-Augmented Generation)**: The Gateway dynamically fetches the user's real database accounts and injects them into the Gemini prompt. This completely eliminates AI hallucinations and forces the AI to strictly match the requested payment method to an actual registered account.
+- Engineered a robust **Auto-Retry Mechanism** within the Parser Service to gracefully handle temporary Node.js/Docker DNS network timeouts (`fetch failed`) without losing the transaction or immediately falling back to regex.
 
 ## Phase 3: Transaction microservice (Completed)
 - Separated database functionality from the Gateway into a dedicated `transaction-service`.
@@ -174,12 +177,14 @@ The easiest way to link WhatsApp or fix connection issues is directly through th
 - Designed a mobile-first UI using Next.js App Router, Tailwind CSS, Shadcn UI, and Recharts.
 - Expanded the Prisma schema with `confidenceScore` and `TransactionStatus`. Ambiguous AI parsing (confidence < 0.85) defaults to `NEEDS_REVIEW`.
 - Implemented an interactive **Inbox** where users can manually confirm transactions with a single click, triggering atomic balance updates.
+- **Advanced Inbox Management**: The Inbox now includes inline Edit and Delete controls, allowing users to rapidly correct or dismiss inaccurate AI parsings before they hit the general ledger.
 - **Advanced Dashboard Analytics**: Upgraded the dashboard with 5 professional Recharts visualizations: 
   1. **Cumulative Net Flow** (Area Chart) showing intra-month balance growth.
   2. **Daily Cash Flow** (Grouped Bar Chart) comparing Income vs Expense per day.
   3. **Spending Velocity** (Bar Chart) with an automatic Daily Average Budget threshold line.
-  4. **Expense Breakdown** (Donut Chart) with percentage calculations.
+  4. **Expense Breakdown** (Donut Chart) with exact percentage and decimal calculations (preventing aggressive rounding errors on totals).
   5. **Budget vs Actual** (Progress Bars) measuring category expenses against defined limits.
+- **Privacy Mode (Shutter)**: Added a dynamic, global privacy toggle (Eye/Shutter icon) to censor sensitive financial data (Total Net Worth and Individual Account Balances) with a single click. Accounts can also be individually revealed in privacy mode.
 - **Backend Budget Infrastructure**: Added a `Budget` Prisma model linked to users and categories, exposing robust CRUD and TCP/REST APIs to power the budget analytics.
 - Implemented an **Interactive Calendar Filter**: Users can click specific days on the Ledger calendar to instantly filter the transaction table down to that date, backed by separated un-paginated and paginated API data streams.
 - **Full Manual CRUD**: Empowered the dashboard with complete native control—users can Add, Edit, and Delete transactions manually with absolute atomic safety (e.g. deleting an expense securely restores the account balance).

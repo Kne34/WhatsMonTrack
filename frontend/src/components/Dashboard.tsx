@@ -287,6 +287,8 @@ export default function Dashboard() {
           <InboxView
             needsReviewTxs={needsReviewTxs}
             handleConfirm={handleConfirm}
+            handleEditClick={handleEditClick}
+            handleDeleteClick={handleDeleteClick}
             formatRupiah={formatRupiah}
           />
         )}

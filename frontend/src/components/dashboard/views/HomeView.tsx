@@ -116,6 +116,14 @@ export default function HomeView({
   const totalBudget = budgets.reduce((sum, b) => sum + b.limit, 0);
   const dailyAverageThreshold = totalBudget > 0 ? totalBudget / daysInMonth : 0;
 
+  const [isPrivacyMode, setIsPrivacyMode] = useState(true);
+  const [revealedAccounts, setRevealedAccounts] = useState<Record<string, boolean>>({});
+
+  const toggleAccountVisibility = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setRevealedAccounts(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
   // Custom Tooltip components to keep JSX clean
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -138,24 +146,56 @@ export default function HomeView({
 
       {/* 1. Header & Net Worth */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="flex flex-col justify-center">
-          <span className="text-sm font-medium text-muted-foreground uppercase tracking-widest mb-1">Total Net Worth</span>
+        <div className="flex flex-col justify-center relative group">
+          <div className="flex items-center gap-3 mb-1">
+            <span className="text-sm font-medium text-muted-foreground uppercase tracking-widest">Total Net Worth</span>
+            <button 
+              onClick={() => {
+                setIsPrivacyMode(!isPrivacyMode);
+                setRevealedAccounts({}); // Reset individual states when global toggles
+              }}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {isPrivacyMode ? (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              )}
+            </button>
+          </div>
           <span className="text-5xl font-heading font-bold tabular-nums tracking-tighter text-foreground">
-            {formatRupiah(totalBalance)}
+            {isPrivacyMode ? 'Rp *******' : formatRupiah(totalBalance)}
           </span>
         </div>
 
         {/* Accounts Summary */}
         <div className="grid grid-cols-2 gap-3">
-          {accounts.map(acc => (
-            <div key={acc.id} className="bg-card border border-border/50 rounded-2xl p-4 flex flex-col justify-between h-24 shadow-sm relative group cursor-pointer hover:border-primary/50 transition-colors" onClick={() => onEditAccount?.(acc)}>
-              <div className="absolute top-3 right-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                <Pencil size={14} />
+          {accounts.map(acc => {
+            const isHidden = isPrivacyMode && !revealedAccounts[acc.id];
+            return (
+              <div key={acc.id} className="bg-card border border-border/50 rounded-2xl p-4 flex flex-col justify-between h-24 shadow-sm relative group cursor-pointer hover:border-primary/50 transition-colors" onClick={() => onEditAccount?.(acc)}>
+                <div className="absolute top-3 right-3 flex gap-2">
+                  <button 
+                    onClick={(e) => toggleAccountVisibility(e, acc.id)}
+                    className="text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    {isHidden ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    )}
+                  </button>
+                  <div className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Pencil size={14} />
+                  </div>
+                </div>
+                <span className="text-xs text-muted-foreground font-medium">{acc.name}</span>
+                <span className="text-lg font-heading font-semibold tabular-nums">
+                  {isHidden ? '***' : formatRupiah(acc.balance)}
+                </span>
               </div>
-              <span className="text-xs text-muted-foreground font-medium">{acc.name}</span>
-              <span className="text-lg font-heading font-semibold tabular-nums">{formatRupiah(acc.balance)}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -260,7 +300,9 @@ export default function HomeView({
                 {/* Center Label */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                   <span className="text-[10px] text-muted-foreground font-mono">TOTAL</span>
-                  <span className="text-sm font-bold">{formatRupiah((breakdownType === 'EXPENSE' ? expenseData : incomeData).reduce((a: any, b: any) => a + b.value, 0) / 1000)}k</span>
+                  <span className="text-sm font-bold">
+                    Rp {((breakdownType === 'EXPENSE' ? expenseData : incomeData).reduce((a: any, b: any) => a + b.value, 0) / 1000).toLocaleString('id-ID', { maximumFractionDigits: 1 })}k
+                  </span>
                 </div>
               </div>
               <div className="w-1/2 flex flex-col pl-4 space-y-2 overflow-y-auto max-h-full">
