@@ -40,12 +40,24 @@ export class AppService {
     return lastValueFrom(this.transactionClient.send({ cmd: 'create_account' }, { phoneNumber, name, type, initialBalance }));
   }
 
+  async updateAccount(id: string, data: any) {
+    return lastValueFrom(this.transactionClient.send({ cmd: 'update_account' }, { id, data }));
+  }
+
+  async deleteAccount(id: string) {
+    return lastValueFrom(this.transactionClient.send({ cmd: 'delete_account' }, { id }));
+  }
+
   async getBudgets(phoneNumber: string) {
     return lastValueFrom(this.transactionClient.send({ cmd: 'get_budgets' }, { phoneNumber }));
   }
 
   async upsertBudget(phoneNumber: string, categoryName: string, limit: number) {
     return lastValueFrom(this.transactionClient.send({ cmd: 'upsert_budget' }, { phoneNumber, categoryName, limit }));
+  }
+
+  async deleteBudget(id: string) {
+    return lastValueFrom(this.transactionClient.send({ cmd: 'delete_budget' }, { id }));
   }
 
   async getTransactions(phoneNumber: string, query?: any) {

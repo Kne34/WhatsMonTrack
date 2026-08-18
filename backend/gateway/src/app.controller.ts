@@ -39,6 +39,21 @@ export class AppController {
     return this.appService.upsertBudget(phone, body.categoryName, body.limit);
   }
 
+  @Delete('api/budgets/:id')
+  async deleteBudget(@Param('id') id: string) {
+    return this.appService.deleteBudget(id);
+  }
+
+  @Put('api/accounts/:id')
+  async updateAccount(@Param('id') id: string, @Body() data: any) {
+    return this.appService.updateAccount(id, data);
+  }
+
+  @Delete('api/accounts/:id')
+  async deleteAccount(@Param('id') id: string) {
+    return this.appService.deleteAccount(id);
+  }
+
   @Get('api/transactions')
   async getTransactions(
     @Query('phoneNumber') phoneNumber: string,

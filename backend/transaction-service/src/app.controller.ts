@@ -41,6 +41,21 @@ export class AppController {
     return this.appService.upsertBudget(data.phoneNumber, data.categoryName, data.limit);
   }
 
+  @MessagePattern({ cmd: 'delete_budget' })
+  deleteBudget(data: { id: string }) {
+    return this.appService.deleteBudget(data.id);
+  }
+
+  @MessagePattern({ cmd: 'update_account' })
+  updateAccount(data: { id: string; data: any }) {
+    return this.appService.updateAccount(data.id, data.data);
+  }
+
+  @MessagePattern({ cmd: 'delete_account' })
+  deleteAccount(data: { id: string }) {
+    return this.appService.deleteAccount(data.id);
+  }
+
   @MessagePattern({ cmd: 'update_transaction' })
   updateTransaction(data: { id: string; data: any }) {
     return this.appService.updateTransaction(data.id, data.data);

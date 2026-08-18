@@ -144,6 +144,36 @@ export class AppService {
     });
   }
 
+  async updateAccount(id: string, data: { name?: string; balance?: number }) {
+    if (data.name) {
+      data.name = data.name.toUpperCase();
+    }
+    return this.prisma.account.update({
+      where: { id },
+      data
+    });
+  }
+
+  async deleteAccount(id: string) {
+    const account = await this.prisma.account.findUnique({
+      where: { id },
+      include: {
+        transactionsFrom: { select: { id: true }, take: 1 },
+        transactionsTo: { select: { id: true }, take: 1 }
+      }
+    });
+
+    if (!account) {
+      throw new Error(`Account not found`);
+    }
+
+    if (account.transactionsFrom.length > 0 || account.transactionsTo.length > 0) {
+      throw new Error(`Cannot delete account "${account.name}" because it has existing transactions. Please delete the transactions first.`);
+    }
+
+    return this.prisma.account.delete({ where: { id } });
+  }
+
   async getBudgets(phoneNumber: string) {
     const user = await this.prisma.user.findUnique({ where: { phoneNumber } });
     if (!user) return [];
@@ -170,6 +200,10 @@ export class AppService {
         limit
       }
     });
+  }
+
+  async deleteBudget(id: string) {
+    return this.prisma.budget.delete({ where: { id } });
   }
 
   async getTransactions(phoneNumber: string, query?: { month?: number, year?: number, day?: number, page?: number, limit?: number }) {

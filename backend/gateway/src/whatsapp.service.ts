@@ -84,6 +84,20 @@ export class WhatsAppService implements OnModuleInit {
         phoneNumber = '0' + phoneNumber.substring(2);
       }
 
+      // STRICT SECURITY CHECK: Only allow messages from the configured default phone number!
+      const authorizedNumberRaw = process.env.DEFAULT_PHONE_NUMBER || '';
+      let authorizedNumber = authorizedNumberRaw;
+      if (authorizedNumber.startsWith('62')) {
+         authorizedNumber = '0' + authorizedNumber.substring(2);
+      }
+      
+      // If the sender is not the authorized number, AND it's not a Note-to-Self, ignore it!
+      // This prevents the bot from replying to random people (like Mami Oppo).
+      if (phoneNumber !== authorizedNumber && !isNoteToSelf) {
+        this.logger.log(`[DEBUG] Ignored message from unauthorized number: ${phoneNumber}`);
+        return;
+      }
+
       const messageType = Object.keys(msg.message)[0];
       let text = '';
 
