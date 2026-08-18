@@ -14,18 +14,18 @@ export class AppService {
     this.genAI = new GoogleGenerativeAI(apiKey);
   }
 
-  async parseMessage(text: string) {
+  async parseMessage(text: string, context?: any) {
     this.logger.log(`[Parser] Received text: ${text}`);
 
     // Call Gemini LLM Parser as the primary parser
     try {
-      return await this.callGemini(text);
+      return await this.callGemini(text, context);
     } catch (e) {
       this.logger.warn('[Parser] Gemini failed, falling back to Regex...', e);
       // Fallback (Regex Parser)
       const amountMatch = text.match(/(\d+)(k|rb|jt)?/i);
       const accountMatch = text.match(/\b(bca|gopay|ovo|dana|cash)\b/i);
-      
+
       if (amountMatch) {
         let amount = parseInt(amountMatch[1]);
         const multiplier = amountMatch[2]?.toLowerCase();
@@ -36,7 +36,7 @@ export class AppService {
           .replace(amountMatch[0], '')
           .replace(accountMatch?.[0] || '', '')
           .trim();
-          
+
         if (!subcategory) subcategory = 'Lainnya';
 
         let type = 'EXPENSE';
@@ -59,60 +59,68 @@ export class AppService {
           }
         };
       }
-      
+
       return { source: 'regex_fallback', status: 'error', message: 'Could not parse message' };
     }
   }
 
-  private async callGemini(text: string) {
-    try {
-      const model = this.genAI.getGenerativeModel({
-        model: 'gemini-flash-latest',
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: SchemaType.OBJECT,
-            properties: {
-              amount: { type: SchemaType.NUMBER, description: "Exact transaction amount (e.g., 50000 for 50k, 10000 for ceban)" },
-              type: { type: SchemaType.STRING, format: "enum", enum: ["EXPENSE", "INCOME", "TRANSFER"], description: "Type of transaction" },
-              category: { type: SchemaType.STRING, format: "enum", enum: ["FOOD", "TRANSPORT", "SHOPPING", "BILLS", "HEALTH", "ENTERTAINMENT", "INCOME", "OTHER"], description: "Top level category (uppercase)" },
-              subcategory: { type: SchemaType.STRING, description: "Specific subcategory, item name, or merchant" },
-              account: { type: SchemaType.STRING, description: "Payment method/bank (e.g., BCA, GoPay, Cash)" },
-              confidence: { type: SchemaType.NUMBER, description: "Confidence score (0.0 to 1.0)" }
-            },
-            required: ["amount", "type", "category", "confidence"],
+  private async callGemini(text: string, context?: any, retries = 2) {
+    const model = this.genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: SchemaType.OBJECT,
+          properties: {
+            amount: { type: SchemaType.NUMBER, description: "Exact transaction amount (e.g., 50000 for 50k, 10000 for ceban)" },
+            type: { type: SchemaType.STRING, format: "enum", enum: ["EXPENSE", "INCOME", "TRANSFER"], description: "Type of transaction" },
+            category: { type: SchemaType.STRING, format: "enum", enum: ["FOOD", "TRANSPORT", "SHOPPING", "BILLS", "HEALTH", "ENTERTAINMENT", "INCOME", "OTHER"], description: "Top level category (uppercase)" },
+            subcategory: { type: SchemaType.STRING, description: "Specific subcategory, item name, or merchant" },
+            account: { type: SchemaType.STRING, description: "Payment method/bank (e.g., BCA, GoPay, Cash)" },
+            confidence: { type: SchemaType.NUMBER, description: "Confidence score (0.0 to 1.0)" }
           },
+          required: ["amount", "type", "category", "confidence"],
         },
-      });
+      },
+    });
 
-      const prompt = `
-      You are an Indonesian expense tracker assistant.
-      Extract transaction details from the following raw text message.
-      Account for Indonesian slang (k = ribu, jt = juta, ceban = 10k, goceng = 5k, etc).
-      If the account is not mentioned, guess it or leave it empty.
-      
-      Raw Message: "${text}"
-      `;
+    const accountsStr = context?.accounts ? `\n    Available User Accounts: ${context.accounts}` : '';
 
-      const result = await model.generateContent(prompt);
-      const jsonText = result.response.text();
-      const parsedData = JSON.parse(jsonText);
-      if (parsedData.category) {
-        parsedData.category = parsedData.category.toUpperCase();
+    const prompt = `
+    You are an Indonesian expense tracker assistant.
+    Extract transaction details from the following raw text message.
+    Account for Indonesian slang (k = ribu, jt = juta, ceban = 10k, goceng = 5k, etc).${accountsStr}
+    If the user mentions an account/payment method, accurately match it to one of the Available User Accounts.
+    If the account is not mentioned, guess it based on context or leave it empty.
+    
+    Raw Message: "${text}"
+    Make no mistakes.
+    `;
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const result = await model.generateContent(prompt);
+        const jsonText = result.response.text();
+        const parsedData = JSON.parse(jsonText);
+
+        if (parsedData.category) {
+          parsedData.category = parsedData.category.toUpperCase();
+        }
+
+        return {
+          source: 'gemini',
+          status: 'success',
+          data: parsedData
+        };
+      } catch (error) {
+        this.logger.warn(`[Parser] Gemini attempt ${attempt} failed: ${error.message}`);
+        if (attempt === retries) {
+          this.logger.error('[Parser] All Gemini retries failed.');
+          throw error; // Throw so the caller (parseMessage) can catch it and fallback to Regex
+        }
+        // Wait 1 second before retrying
+        await new Promise(res => setTimeout(res, 1000));
       }
-
-      return {
-        source: 'gemini',
-        status: 'success',
-        data: parsedData
-      };
-    } catch (error) {
-      this.logger.error('[Parser] Gemini failed', error);
-      return {
-        source: 'gemini',
-        status: 'error',
-        message: error.message
-      };
     }
   }
 }

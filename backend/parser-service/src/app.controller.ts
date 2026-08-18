@@ -7,7 +7,9 @@ export class AppController {
   constructor(private readonly appService: AppService) {}
 
   @MessagePattern({ cmd: 'parse_transaction' })
-  async parseTransaction(text: string) {
-    return this.appService.parseMessage(text);
+  async parseTransaction(payload: { text: string; context?: any } | string) {
+    const text = typeof payload === 'string' ? payload : payload.text;
+    const context = typeof payload === 'string' ? {} : payload.context;
+    return this.appService.parseMessage(text, context);
   }
 }

@@ -12,9 +12,23 @@ export class AppService {
   ) { }
 
   async processMessage(text: string, phoneNumber: string) {
-    // 1. Parse text using Parser Service
+    // 1. Fetch user context (accounts) for better AI parsing
+    let accountsContext = '';
+    try {
+      const accounts = await lastValueFrom(this.transactionClient.send({ cmd: 'get_accounts' }, { phoneNumber }));
+      if (accounts && Array.isArray(accounts) && accounts.length > 0) {
+        accountsContext = accounts.map(a => a.name).join(', ');
+      }
+    } catch(e) {
+      this.logger.warn('Failed to fetch accounts context', e);
+    }
+
+    // 2. Parse text using Parser Service
     this.logger.log(`Parsing message from ${phoneNumber}: ${text}`);
-    const parseResult = await lastValueFrom(this.parserClient.send({ cmd: 'parse_transaction' }, text));
+    const parseResult = await lastValueFrom(this.parserClient.send(
+      { cmd: 'parse_transaction' }, 
+      { text, context: { accounts: accountsContext } }
+    ));
 
     if (parseResult.status === 'error') {
       return parseResult; // return the error object
