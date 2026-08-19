@@ -54,7 +54,8 @@ export class AppService {
             type: type,
             category: 'UNCATEGORIZED',
             subcategory,
-            account: (accountMatch?.[1] || 'CASH').toUpperCase(),
+            fromAccount: type !== 'INCOME' ? (accountMatch?.[1] || 'CASH').toUpperCase() : undefined,
+            toAccount: type !== 'EXPENSE' ? (accountMatch?.[1] || 'CASH').toUpperCase() : undefined,
             confidence: 0.5
           }
         };
@@ -76,7 +77,8 @@ export class AppService {
             type: { type: SchemaType.STRING, format: "enum", enum: ["EXPENSE", "INCOME", "TRANSFER"], description: "Type of transaction" },
             category: { type: SchemaType.STRING, format: "enum", enum: ["FOOD", "TRANSPORT", "SHOPPING", "BILLS", "HEALTH", "ENTERTAINMENT", "INCOME", "OTHER"], description: "Top level category (uppercase)" },
             subcategory: { type: SchemaType.STRING, description: "Specific subcategory, item name, or merchant" },
-            account: { type: SchemaType.STRING, description: "Payment method/bank (e.g., BCA, GoPay, Cash)" },
+            fromAccount: { type: SchemaType.STRING, description: "Source payment method/bank (e.g., BCA, GoPay, Cash) for EXPENSE or TRANSFER" },
+            toAccount: { type: SchemaType.STRING, description: "Destination payment method/bank for INCOME or TRANSFER" },
             confidence: { type: SchemaType.NUMBER, description: "Confidence score (0.0 to 1.0)" }
           },
           required: ["amount", "type", "category", "confidence"],
@@ -91,7 +93,9 @@ export class AppService {
     Extract transaction details from the following raw text message.
     Account for Indonesian slang (k = ribu, jt = juta, ceban = 10k, goceng = 5k, etc).${accountsStr}
     If the user mentions an account/payment method, accurately match it to one of the Available User Accounts.
-    If the account is not mentioned, guess it based on context or leave it empty.
+    For EXPENSE, populate 'fromAccount'. For INCOME, populate 'toAccount'.
+    For TRANSFER, populate BOTH 'fromAccount' (source) and 'toAccount' (destination).
+    If an account is not mentioned, guess it based on context or leave it empty.
     
     Raw Message: "${text}"
     Make no mistakes.
