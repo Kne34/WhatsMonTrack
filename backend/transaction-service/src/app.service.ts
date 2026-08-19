@@ -23,32 +23,54 @@ export class AppService {
     }
 
     // 1. Missing Account Check
-    if (!parsedData.account) {
-      return `Tolong sebutkan sumber dana untuk pengeluaran ini (contoh: BCA, OVO, Cash, dll).`;
+    const type = parsedData.type || 'EXPENSE';
+
+    if (type === 'TRANSFER') {
+      if (!parsedData.fromAccount || !parsedData.toAccount) {
+        return `Tolong sebutkan rekening sumber dan tujuan untuk transfer ini (contoh: Transfer 50k dari BCA ke OVO).`;
+      }
+    } else if (type === 'INCOME') {
+      if (!parsedData.toAccount && !parsedData.account) {
+        return `Tolong sebutkan rekening tujuan untuk pemasukan ini (contoh: BCA, OVO, Cash, dll).`;
+      }
+    } else {
+      // EXPENSE or uncategorized
+      if (!parsedData.fromAccount && !parsedData.account) {
+        return `Tolong sebutkan sumber dana untuk pengeluaran ini (contoh: BCA, OVO, Cash, dll).`;
+      }
     }
 
     // 2. Format currency and account
     const amount = parsedData.amount;
-    const accountName = parsedData.account.toUpperCase();
-    const type = parsedData.type || 'EXPENSE';
+    const fromAccountName = (parsedData.fromAccount || (type !== 'INCOME' ? parsedData.account : undefined))?.toUpperCase();
+    const toAccountName = (parsedData.toAccount || (type === 'INCOME' ? parsedData.account : undefined))?.toUpperCase();
 
-    // Find or create the account
-    let account = await this.prisma.account.findFirst({
-      where: {
-        userId: user.id,
-        name: { equals: accountName, mode: 'insensitive' }
-      }
-    });
+    // Find or create the accounts
+    let fromAccount: any = null;
+    let toAccount: any = null;
 
-    if (!account) {
-      account = await this.prisma.account.create({
-        data: {
-          userId: user.id,
-          name: accountName,
-          balance: 0 // Default starting balance until adjusted via frontend
-        }
+    if (fromAccountName) {
+      fromAccount = await this.prisma.account.findFirst({
+        where: { userId: user.id, name: { equals: fromAccountName, mode: 'insensitive' } }
       });
-      this.logger.log(`Created new account ${accountName} for user ${user.id}`);
+      if (!fromAccount) {
+        fromAccount = await this.prisma.account.create({
+          data: { userId: user.id, name: fromAccountName, balance: 0 }
+        });
+        this.logger.log(`Created new account ${fromAccountName} for user ${user.id}`);
+      }
+    }
+
+    if (toAccountName) {
+      toAccount = await this.prisma.account.findFirst({
+        where: { userId: user.id, name: { equals: toAccountName, mode: 'insensitive' } }
+      });
+      if (!toAccount) {
+        toAccount = await this.prisma.account.create({
+          data: { userId: user.id, name: toAccountName, balance: 0 }
+        });
+        this.logger.log(`Created new account ${toAccountName} for user ${user.id}`);
+      }
     }
 
     // Determine status based on confidence
@@ -57,18 +79,6 @@ export class AppService {
 
     // 3. Create Transaction and Update Balance Atomically
     const transactionResult = await this.prisma.$transaction(async (tx) => {
-      // Determine account bindings
-      let fromAccountId: string | null = null;
-      let toAccountId: string | null = null;
-
-      if (type === 'EXPENSE' || type === 'DEBT_OUT' || type === 'TRANSFER') {
-        fromAccountId = account.id;
-      }
-      if (type === 'INCOME' || type === 'DEBT_IN' || type === 'TRANSFER') {
-        toAccountId = account.id; // For transfers, ideally we need two accounts. For MVP, we map one to `toAccount` or `fromAccount`. Wait, if it's transfer, we'll just set fromAccountId for now if destination is unknown.
-        // Let's improve transfer later.
-      }
-
       // Create Transaction
       const transaction = await tx.transaction.create({
         data: {
@@ -77,44 +87,56 @@ export class AppService {
           amount: amount,
           category: parsedData.category || 'UNCATEGORIZED',
           subcategory: parsedData.subcategory,
-          fromAccountId: fromAccountId,
-          toAccountId: toAccountId,
+          fromAccountId: fromAccount?.id || null,
+          toAccountId: toAccount?.id || null,
           rawText: rawText,
           confidenceScore: confidence,
           status: status,
         },
       });
 
-      let updatedAccount = account;
-
       // Update Account Balance ONLY IF CONFIRMED
       if (status === 'CONFIRMED') {
-        let newBalance = account.balance;
-        if (type === 'EXPENSE') {
-          newBalance -= amount;
-        } else if (type === 'INCOME') {
-          newBalance += amount;
+        if (type === 'EXPENSE' && fromAccount) {
+          await tx.account.update({ where: { id: fromAccount.id }, data: { balance: { decrement: amount } } });
+        } else if (type === 'INCOME' && toAccount) {
+          await tx.account.update({ where: { id: toAccount.id }, data: { balance: { increment: amount } } });
+        } else if (type === 'TRANSFER') {
+          if (fromAccount) await tx.account.update({ where: { id: fromAccount.id }, data: { balance: { decrement: amount } } });
+          if (toAccount) await tx.account.update({ where: { id: toAccount.id }, data: { balance: { increment: amount } } });
         }
-
-        updatedAccount = await tx.account.update({
-          where: { id: account.id },
-          data: { balance: newBalance }
-        });
       }
 
-      return { transaction, updatedAccount };
+      // Fetch updated accounts
+      const updatedFromAccount = fromAccount ? await tx.account.findUnique({ where: { id: fromAccount.id } }) : null;
+      const updatedToAccount = toAccount ? await tx.account.findUnique({ where: { id: toAccount.id } }) : null;
+
+      return { transaction, updatedFromAccount, updatedToAccount };
     });
 
     // 4. Format Response String
     const formattedAmount = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
-    const formattedBalance = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(transactionResult.updatedAccount.balance);
     const itemName = parsedData.subcategory || parsedData.category;
 
     if (status === 'NEEDS_REVIEW') {
-      return `Tercatat sebagai DRAFT: ${formattedAmount} untuk ${itemName} via ${accountName} ⚠️\nSilakan konfirmasi di Web Dashboard untuk memastikan tidak ada kesalahan.`;
+      let accountInfo = fromAccountName;
+      if (type === 'TRANSFER') accountInfo = `${fromAccountName} -> ${toAccountName}`;
+      else if (type === 'INCOME') accountInfo = toAccountName;
+
+      return `Tercatat sebagai DRAFT: ${formattedAmount} untuk ${itemName} via ${accountInfo} ⚠️\nSilakan konfirmasi di Web Dashboard untuk memastikan tidak ada kesalahan.`;
     }
 
-    return `Berhasil! ${formattedAmount} untuk ${itemName} telah dicatat dari rekening ${accountName}.\nSisa saldo ${accountName}: ${formattedBalance}.`;
+    if (type === 'TRANSFER') {
+      const fromBal = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(transactionResult.updatedFromAccount?.balance || 0);
+      const toBal = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(transactionResult.updatedToAccount?.balance || 0);
+      return `Berhasil! Transfer ${formattedAmount} dari ${fromAccountName} ke ${toAccountName} telah dicatat.\nSisa saldo ${fromAccountName}: ${fromBal}\nSisa saldo ${toAccountName}: ${toBal}.`;
+    } else if (type === 'INCOME') {
+      const toBal = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(transactionResult.updatedToAccount?.balance || 0);
+      return `Berhasil! Pemasukan ${formattedAmount} untuk ${itemName} telah ditambahkan ke ${toAccountName}.\nSisa saldo ${toAccountName}: ${toBal}.`;
+    } else {
+      const fromBal = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(transactionResult.updatedFromAccount?.balance || 0);
+      return `Berhasil! ${formattedAmount} untuk ${itemName} telah dicatat dari rekening ${fromAccountName}.\nSisa saldo ${fromAccountName}: ${fromBal}.`;
+    }
   }
 
   // REST API Logic
