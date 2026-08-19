@@ -96,6 +96,19 @@ export default function InboxView({ needsReviewTxs, handleConfirm, handleEditCli
                     {formatRupiah(tx.amount)}
                   </div>
 
+                  {/* Account Mapping */}
+                  <div className="mb-4 flex items-center">
+                    {tx.type === 'TRANSFER' ? (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-mono text-xs bg-secondary/30">{tx.fromAccount?.name || '?'}</Badge>
+                        <span className="text-muted-foreground text-sm">→</span>
+                        <Badge variant="outline" className="font-mono text-xs bg-secondary/30">{tx.toAccount?.name || '?'}</Badge>
+                      </div>
+                    ) : (
+                      <Badge variant="outline" className="font-mono text-xs bg-secondary/30">{tx.fromAccount?.name || tx.toAccount?.name || '?'}</Badge>
+                    )}
+                  </div>
+
                   <div className="flex items-center justify-between border-t border-border pt-4 mt-2">
                     <div className="flex flex-col gap-1.5">
                       <span className="text-[10px] font-mono text-muted-foreground">CONFIDENCE</span>
