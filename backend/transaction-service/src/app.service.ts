@@ -118,24 +118,30 @@ export class AppService {
     const formattedAmount = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
     const itemName = parsedData.subcategory || parsedData.category;
 
+    // Format timestamp
+    const txDate = transactionResult.transaction.createdAt;
+    const dateStr = txDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timeStr = txDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const timestampMsg = `\n*(Tercatat pada: ${dateStr}, ${timeStr})*`;
+
     if (status === 'NEEDS_REVIEW') {
       let accountInfo = fromAccountName;
       if (type === 'TRANSFER') accountInfo = `${fromAccountName} -> ${toAccountName}`;
       else if (type === 'INCOME') accountInfo = toAccountName;
 
-      return `Tercatat sebagai DRAFT: ${formattedAmount} untuk ${itemName} via ${accountInfo} ⚠️\nSilakan konfirmasi di Web Dashboard untuk memastikan tidak ada kesalahan.`;
+      return `Tercatat sebagai DRAFT: ${formattedAmount} untuk ${itemName} via ${accountInfo} ⚠️\nSilakan konfirmasi di Web Dashboard untuk memastikan tidak ada kesalahan.${timestampMsg}`;
     }
 
     if (type === 'TRANSFER') {
       const fromBal = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(transactionResult.updatedFromAccount?.balance || 0);
       const toBal = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(transactionResult.updatedToAccount?.balance || 0);
-      return `Berhasil! Transfer ${formattedAmount} dari ${fromAccountName} ke ${toAccountName} telah dicatat.\nSisa saldo ${fromAccountName}: ${fromBal}\nSisa saldo ${toAccountName}: ${toBal}.`;
+      return `Berhasil! Transfer ${formattedAmount} dari ${fromAccountName} ke ${toAccountName} telah dicatat.\nSisa saldo ${fromAccountName}: ${fromBal}\nSisa saldo ${toAccountName}: ${toBal}${timestampMsg}`;
     } else if (type === 'INCOME') {
       const toBal = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(transactionResult.updatedToAccount?.balance || 0);
-      return `Berhasil! Pemasukan ${formattedAmount} untuk ${itemName} telah ditambahkan ke ${toAccountName}.\nSisa saldo ${toAccountName}: ${toBal}.`;
+      return `Berhasil! Pemasukan ${formattedAmount} untuk ${itemName} telah ditambahkan ke ${toAccountName}.\nSisa saldo ${toAccountName}: ${toBal}${timestampMsg}`;
     } else {
       const fromBal = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(transactionResult.updatedFromAccount?.balance || 0);
-      return `Berhasil! ${formattedAmount} untuk ${itemName} telah dicatat dari rekening ${fromAccountName}.\nSisa saldo ${fromAccountName}: ${fromBal}.`;
+      return `Berhasil! ${formattedAmount} untuk ${itemName} telah dicatat dari rekening ${fromAccountName}.\nSisa saldo ${fromAccountName}: ${fromBal}${timestampMsg}`;
     }
   }
 
@@ -364,6 +370,7 @@ export class AppService {
           subcategory: data.subcategory !== undefined ? data.subcategory : transaction.subcategory,
           fromAccountId: data.fromAccountId !== undefined ? data.fromAccountId : transaction.fromAccountId,
           toAccountId: data.toAccountId !== undefined ? data.toAccountId : transaction.toAccountId,
+          createdAt: data.createdAt ? new Date(data.createdAt) : transaction.createdAt,
         }
       });
 

@@ -7,6 +7,7 @@ export default function AddTransactionModal({ isOpen, onClose, onSave, accounts 
   const [category, setCategory] = useState('');
   const [fromAccountId, setFromAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
+  const [createdAt, setCreatedAt] = useState('');
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -19,7 +20,8 @@ export default function AddTransactionModal({ isOpen, onClose, onSave, accounts 
       amount: parseInt(amount),
       category: category.toUpperCase(),
       fromAccountId: fromAccountId || null,
-      toAccountId: toAccountId || null
+      toAccountId: toAccountId || null,
+      createdAt: createdAt ? new Date(createdAt).toISOString() : undefined
     });
     setLoading(false);
     onClose();
@@ -69,6 +71,11 @@ export default function AddTransactionModal({ isOpen, onClose, onSave, accounts 
               </select>
             </div>
           )}
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">Date & Time (Optional)</label>
+            <input type="datetime-local" value={createdAt} onChange={e => setCreatedAt(e.target.value)} className="w-full bg-background border border-input rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" />
+          </div>
 
           <div className="pt-4 flex gap-3">
             <button type="button" onClick={onClose} className="flex-1 py-3 px-4 rounded-xl font-medium text-sm border border-input bg-background hover:bg-secondary transition-colors">Cancel</button>

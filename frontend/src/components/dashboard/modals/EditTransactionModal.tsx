@@ -20,6 +20,14 @@ export default function EditTransactionModal({
   accounts,
   handleSaveEdit
 }: EditTransactionModalProps) {
+  const formatDateForInput = (dateString: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="bg-card border-border sm:max-w-[425px] rounded-3xl">
@@ -90,6 +98,16 @@ export default function EditTransactionModal({
               </select>
             </div>
           )}
+
+          <div className="space-y-1">
+            <label className="text-xs font-mono text-muted-foreground uppercase">Date & Time</label>
+            <Input 
+              type="datetime-local" 
+              className="bg-background rounded-xl" 
+              value={formatDateForInput(editTxData.createdAt)} 
+              onChange={e => setEditTxData({ ...editTxData, createdAt: new Date(e.target.value).toISOString() })} 
+            />
+          </div>
 
           <Button onClick={handleSaveEdit} className="w-full font-heading bg-emerald-500 text-[#0B101E] hover:bg-emerald-400 rounded-xl py-6 mt-4 text-md font-bold">Save Changes</Button>
         </div>
