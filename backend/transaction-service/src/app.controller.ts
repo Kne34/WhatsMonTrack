@@ -11,6 +11,11 @@ export class AppController {
     return this.appService.handleParsedMessage(data.phoneNumber, data.rawText, data.parsedData);
   }
 
+  @MessagePattern({ cmd: 'generate_recap' })
+  generateRecap(data: { phoneNumber: string }) {
+    return this.appService.generateRecap(data.phoneNumber);
+  }
+
   @MessagePattern({ cmd: 'get_accounts' })
   getAccounts(data: { phoneNumber: string }) {
     return this.appService.getAccounts(data.phoneNumber);

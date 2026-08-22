@@ -128,7 +128,15 @@ export class WhatsAppService implements OnModuleInit {
       this.logger.log(`Processing message from ${phoneNumber}: ${text}`);
 
       try {
-        const response = await this.appService.processMessage(text, phoneNumber);
+        let response: any;
+        const lowerText = text.toLowerCase().trim();
+
+        if (lowerText === '/rekap' || lowerText === '/recap') {
+          this.logger.log(`[DEBUG] Intercepted REKAP command`);
+          response = await this.appService.generateRecap(phoneNumber);
+        } else {
+          response = await this.appService.processMessage(text, phoneNumber);
+        }
         
         let replyText = 'Maaf, terjadi kesalahan saat memproses data.';
         if (typeof response === 'string') {

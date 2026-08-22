@@ -464,4 +464,79 @@ export class AppService {
 
     return { success: true, transaction };
   }
+
+  async generateRecap(phoneNumber: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { phoneNumber },
+      include: { accounts: true, budgets: true }
+    });
+
+    if (!user) {
+      return "Pengguna tidak ditemukan. Ketik sesuatu untuk memulai.";
+    }
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const monthName = now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+
+    const transactions = await this.prisma.transaction.findMany({
+      where: {
+        userId: user.id,
+        status: 'CONFIRMED',
+        createdAt: {
+          gte: startOfMonth,
+          lte: endOfMonth
+        }
+      }
+    });
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+    const categorySpending: Record<string, number> = {};
+
+    for (const tx of transactions) {
+      if (tx.type === 'INCOME') {
+        totalIncome += tx.amount;
+      } else if (tx.type === 'EXPENSE') {
+        totalExpense += tx.amount;
+        if (!categorySpending[tx.category]) {
+          categorySpending[tx.category] = 0;
+        }
+        categorySpending[tx.category] += tx.amount;
+      }
+    }
+
+    const netFlow = totalIncome - totalExpense;
+    const formatCurrency = (val: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(val);
+
+    let recap = `📊 *Rekap Bulan Ini (${monthName})*\n\n`;
+    recap += `💰 *Total Pemasukan*: ${formatCurrency(totalIncome)}\n`;
+    recap += `💸 *Total Pengeluaran*: ${formatCurrency(totalExpense)}\n`;
+    recap += `📉 *Sisa Uang (Arus Kas)*: ${formatCurrency(netFlow)}\n\n`;
+
+    recap += `🏦 *Saldo Rekening Saat Ini*:\n`;
+    if (user.accounts.length === 0) {
+      recap += `- Belum ada rekening tercatat.\n`;
+    } else {
+      for (const acc of user.accounts) {
+        recap += `- ${acc.name}: ${formatCurrency(acc.balance)}\n`;
+      }
+    }
+    recap += `\n`;
+
+    recap += `🎯 *Status Anggaran (Budget)*:\n`;
+    if (user.budgets.length === 0) {
+      recap += `- Belum ada anggaran yang diatur.\n`;
+    } else {
+      for (const budget of user.budgets) {
+        const spent = categorySpending[budget.categoryName] || 0;
+        const status = spent > budget.limit ? 'Over ⚠️' : 'Aman ✅';
+        recap += `- ${budget.categoryName}: ${formatCurrency(spent)} / ${formatCurrency(budget.limit)} (${status})\n`;
+      }
+    }
+
+    return recap;
+  }
 }

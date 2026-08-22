@@ -46,6 +46,10 @@ export class AppService {
 
   // REST API Forwarding to Transaction Servic
 
+  async generateRecap(phoneNumber: string) {
+    return lastValueFrom(this.transactionClient.send({ cmd: 'generate_recap' }, { phoneNumber }));
+  }
+
   async getAccounts(phoneNumber: string) {
     return lastValueFrom(this.transactionClient.send({ cmd: 'get_accounts' }, { phoneNumber }));
   }
