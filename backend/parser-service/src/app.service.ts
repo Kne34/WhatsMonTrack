@@ -67,7 +67,7 @@ export class AppService {
 
   private async callGemini(text: string, context?: any, retries = 2) {
     const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.6-flash',
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {

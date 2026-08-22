@@ -139,7 +139,15 @@ Open the `http://localhost` dashboard to see your financial health update in rea
 - **Analytics**: Watch your daily cash flow, cumulative net flow, and budget progress bars.
 - **Inbox**: If you type something ambiguous and the AI isn't confident, the transaction will be routed to the **Inbox** tab as `NEEDS_REVIEW`. You can manually correct and confirm it there!
 
-### 6. Linking and Troubleshooting WhatsApp
+### 6. WhatsApp Recap Feature
+You don't need to open the web dashboard to check your budget! Just send `/recap` or `/rekap` to the bot on WhatsApp. 
+The gateway will intercept this command instantly (without using LLM credits) and reply with a complete summary of your month:
+- Total Income and Expenses
+- Net Cash Flow
+- Current Balances for all accounts
+- Status of all Budgets (Safe/Over)
+
+### 7. Linking and Troubleshooting WhatsApp
 The easiest way to link WhatsApp or fix connection issues is directly through the Web Dashboard!
 
 1. Open the dashboard (`http://localhost`).
@@ -157,7 +165,7 @@ The easiest way to link WhatsApp or fix connection issues is directly through th
 - Configured NestJS `ClientsModule` for fast TCP communication between the Gateway and Parser Service.
 - Implemented a Regex "Fast-Path" for strict standard templates (e.g. `50k makan siang bca`).
 - Integrated the `@google/generative-ai` SDK using Gemini's **Structured Outputs (JSON Schema)** to seamlessly parse messy natural language slang into actionable transaction data.
-- Upgraded the AI model to `gemini-2.5-flash` for optimal parsing speed and instruction following.
+- Upgraded the AI model to `gemini-3.6-flash` for optimal parsing speed and instruction following.
 - **Resilient AI Parsing Service**:
   - Implemented an intelligent **Context-Aware RAG (Retrieval-Augmented Generation)** pattern: User's existing account names (e.g., 'BCA', 'OVO') are dynamically fetched and injected directly into the Gemini AI system prompt, eliminating false positives and enforcing 100% strict matching with the actual PostgreSQL database.
   - Hardened with a **Recursive Retry System**: If Gemini throws a temporary network failure (e.g. `fetch failed`), the parser service will automatically intercept the error, sleep, and gracefully retry the request up to 2 times before falling back, drastically improving reliability.
