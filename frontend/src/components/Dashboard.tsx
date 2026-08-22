@@ -174,7 +174,8 @@ export default function Dashboard() {
       subcategory: tx.subcategory || '',
       amount: tx.amount,
       fromAccountId: tx.fromAccountId || '',
-      toAccountId: tx.toAccountId || ''
+      toAccountId: tx.toAccountId || '',
+      createdAt: tx.createdAt || ''
     });
     setIsEditTxOpen(true);
   };

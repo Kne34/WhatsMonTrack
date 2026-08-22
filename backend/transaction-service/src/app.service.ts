@@ -22,7 +22,12 @@ export class AppService {
       this.logger.log(`Created new user with phone: ${phoneNumber}`);
     }
 
-    // 1. Missing Account Check
+    // 1. Check for AI conversational chat
+    if (parsedData.isTransaction === false) {
+      return parsedData.chatReply || "Maaf, saya tidak mengerti maksudmu.";
+    }
+
+    // 2. Missing Account Check
     const type = parsedData.type || 'EXPENSE';
 
     if (type === 'TRANSFER') {

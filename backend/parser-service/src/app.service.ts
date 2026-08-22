@@ -67,12 +67,14 @@ export class AppService {
 
   private async callGemini(text: string, context?: any, retries = 2) {
     const model = this.genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
           type: SchemaType.OBJECT,
           properties: {
+            isTransaction: { type: SchemaType.BOOLEAN, description: "True if the user is trying to log or record a financial transaction. False if it's just a normal conversation or question." },
+            chatReply: { type: SchemaType.STRING, description: "If isTransaction is false, provide a friendly conversational AI reply in Indonesian." },
             amount: { type: SchemaType.NUMBER, description: "Exact transaction amount (e.g., 50000 for 50k, 10000 for ceban)" },
             type: { type: SchemaType.STRING, format: "enum", enum: ["EXPENSE", "INCOME", "TRANSFER"], description: "Type of transaction" },
             category: { type: SchemaType.STRING, format: "enum", enum: ["FOOD", "TRANSPORT", "SHOPPING", "BILLS", "HEALTH", "ENTERTAINMENT", "INCOME", "OTHER"], description: "Top level category (uppercase)" },
@@ -81,7 +83,7 @@ export class AppService {
             toAccount: { type: SchemaType.STRING, description: "Destination payment method/bank for INCOME or TRANSFER" },
             confidence: { type: SchemaType.NUMBER, description: "Confidence score (0.0 to 1.0)" }
           },
-          required: ["amount", "type", "category", "confidence"],
+          required: ["isTransaction"],
         },
       },
     });
@@ -90,12 +92,13 @@ export class AppService {
 
     const prompt = `
     You are an Indonesian expense tracker assistant.
-    Extract transaction details from the following raw text message.
-    Account for Indonesian slang (k = ribu, jt = juta, ceban = 10k, goceng = 5k, etc).${accountsStr}
+    If the user is sending a normal message or greeting (e.g. "halo", "hai", "apa kabar"), set 'isTransaction' to false and provide a friendly conversational 'chatReply'.
+    If the user asks for their dashboard link or how to use the bot, set 'isTransaction' to false and answer it in 'chatReply'.
+    If the user is trying to log a transaction, set 'isTransaction' to true, and you MUST populate 'amount', 'type', 'category', and 'confidence'.
+    Account for Indonesian slang (k = ribu, jt = juta, ceban = 10k, goceng = 5k, dll).${accountsStr}
     If the user mentions an account/payment method, accurately match it to one of the Available User Accounts.
     For EXPENSE, populate 'fromAccount'. For INCOME, populate 'toAccount'.
     For TRANSFER, populate BOTH 'fromAccount' (source) and 'toAccount' (destination).
-    If an account is not mentioned, guess it based on context or leave it empty.
     
     Raw Message: "${text}"
     Make no mistakes.

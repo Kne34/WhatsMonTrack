@@ -157,9 +157,11 @@ The easiest way to link WhatsApp or fix connection issues is directly through th
 - Configured NestJS `ClientsModule` for fast TCP communication between the Gateway and Parser Service.
 - Implemented a Regex "Fast-Path" for strict standard templates (e.g. `50k makan siang bca`).
 - Integrated the `@google/generative-ai` SDK using Gemini's **Structured Outputs (JSON Schema)** to seamlessly parse messy natural language slang into actionable transaction data.
-- Upgraded the AI model to `gemini-1.5-flash` for optimal- **Resilient AI Parsing Service**:
+- Upgraded the AI model to `gemini-2.5-flash` for optimal parsing speed and instruction following.
+- **Resilient AI Parsing Service**:
   - Implemented an intelligent **Context-Aware RAG (Retrieval-Augmented Generation)** pattern: User's existing account names (e.g., 'BCA', 'OVO') are dynamically fetched and injected directly into the Gemini AI system prompt, eliminating false positives and enforcing 100% strict matching with the actual PostgreSQL database.
   - Hardened with a **Recursive Retry System**: If Gemini throws a temporary network failure (e.g. `fetch failed`), the parser service will automatically intercept the error, sleep, and gracefully retry the request up to 2 times before falling back, drastically improving reliability.
+- **Conversational AI Fallback**: Upgraded the Gemini schema to natively detect casual chat or help requests (e.g., "Halo", "/rekap"), falling back to a friendly conversational assistant instead of throwing a parsing error.
 - **Anti-Loop Zero-Width Space Architecture**: To absolutely guarantee the bot never replies to its own messages (which causes catastrophic infinite loops), a Zero-Width Space (`\u200B`) is injected as an invisible cryptographic marker at the end of every bot reply. The parser aborts instantly if this marker is detected.
 - **Bulletproof WhatsApp Security**:
   - Strict Docker environment binding (`DEFAULT_PHONE_NUMBER`) ensures the bot only reads and processes messages from the authorized user's phone number. All messages from strangers, groups, or spoofed `@lid` JIDs are immediately dropped.
@@ -194,6 +196,7 @@ The easiest way to link WhatsApp or fix connection issues is directly through th
 - **Backend Budget Infrastructure**: Added a `Budget` Prisma model linked to users and categories, exposing robust CRUD and TCP/REST APIs to power the budget analytics.
 - Implemented an **Interactive Calendar Filter**: Users can click specific days on the Ledger calendar to instantly filter the transaction table down to that date, backed by separated un-paginated and paginated API data streams.
 - **Full Manual CRUD**: Empowered the dashboard with complete native control—users can Add, Edit, and Delete transactions manually with absolute atomic safety (e.g. deleting an expense securely restores the account balance).
+- **Precision Date/Time Controls**: Users can now precisely backdate or schedule transactions by manually specifying Date & Time in the Add and Edit Transaction Modals.
 - **Floating Action Menu (FAB)**: Centralized "Add" operations (Transactions, Accounts, Budgets) into a single sleek, animated pop-up menu for a cleaner UI.
 - **Strict Data Consistency**: Fortified the Gemini LLM schema and frontend forms to strictly enforce `UPPERCASE` category parsing, ensuring flawless data alignment between AI-predicted categories and manual budgets.
 - **Frontend Architecture Refactoring**: Splitted the monolithic `Dashboard.tsx` into modular components (`HomeView`, `LedgerView`, `InboxView`, `DashboardHeader`, `BottomNav`, Modals) for extreme maintainability.
