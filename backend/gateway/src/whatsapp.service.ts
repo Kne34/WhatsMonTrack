@@ -90,18 +90,19 @@ export class WhatsAppService implements OnModuleInit {
         phoneNumber = '0' + phoneNumber.substring(2);
       }
 
-      // STRICT SECURITY CHECK: Only allow messages from the configured default phone number!
-      const authorizedNumberRaw = process.env.DEFAULT_PHONE_NUMBER || '';
-      let authorizedNumber = authorizedNumberRaw;
-      if (authorizedNumber.startsWith('62')) {
-         authorizedNumber = '0' + authorizedNumber.substring(2);
-      }
-      
-      // If the sender is not the authorized number, AND it's not a Note-to-Self, ignore it!
-      // This prevents the bot from replying to random people (like Mami Oppo).
-      if (phoneNumber !== authorizedNumber && !isNoteToSelf) {
-        this.logger.log(`[DEBUG] Ignored message from unauthorized number: ${phoneNumber}`);
-        return;
+      // SaaS SECURITY CHECK: Only allow messages from registered users
+      if (!isNoteToSelf) {
+        try {
+          const userCheck = await this.appService.checkUser(phoneNumber);
+          if (!userCheck.exists || !userCheck.isVerified) {
+            this.logger.log(`[DEBUG] Ignored message from unregistered or unverified number: ${phoneNumber}`);
+            await this.sock.sendMessage(senderJid, { text: 'Halo! Nomor Anda belum terdaftar atau belum diverifikasi di WhatsMonTrack. Silakan daftar dan verifikasi email Anda di Web Dasbor terlebih dahulu.' });
+            return;
+          }
+        } catch (err) {
+          this.logger.error('Error checking user:', err);
+          return;
+        }
       }
 
       const messageType = Object.keys(msg.message)[0];
