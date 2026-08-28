@@ -16,6 +16,26 @@ export class AppController {
     return this.appService.generateRecap(data.phoneNumber);
   }
 
+  @MessagePattern({ cmd: 'auth_register' })
+  authRegister(data: any) {
+    return this.appService.authRegister(data);
+  }
+
+  @MessagePattern({ cmd: 'auth_verify_otp' })
+  authVerifyOtp(data: any) {
+    return this.appService.authVerifyOtp(data);
+  }
+
+  @MessagePattern({ cmd: 'auth_login' })
+  authLogin(data: any) {
+    return this.appService.authLogin(data);
+  }
+
+  @MessagePattern({ cmd: 'check_user' })
+  checkUser(data: { phoneNumber: string }) {
+    return this.appService.checkUser(data.phoneNumber);
+  }
+
   @MessagePattern({ cmd: 'get_accounts' })
   getAccounts(data: { phoneNumber: string }) {
     return this.appService.getAccounts(data.phoneNumber);

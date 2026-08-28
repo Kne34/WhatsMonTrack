@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import * as bcrypt from 'bcryptjs';
 
 @Injectable()
 export class AppService {
@@ -538,5 +539,68 @@ export class AppService {
     }
 
     return recap;
+  }
+
+  async authRegister(data: any) {
+    const { email, password, phoneNumber } = data;
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        OR: [{ email }, { phoneNumber }]
+      }
+    });
+
+    if (existing) {
+      return { success: false, message: 'Email or phone number already registered' };
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+
+    await this.prisma.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        phoneNumber,
+        otpCode,
+        otpExpiresAt
+      }
+    });
+
+    return { success: true, otpCode }; // We return otpCode so gateway can email it
+  }
+
+  async authVerifyOtp(data: any) {
+    const { email, otpCode } = data;
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    
+    if (!user) return { success: false, message: 'User not found' };
+    if (user.otpCode !== otpCode) return { success: false, message: 'Invalid OTP' };
+    if (user.otpExpiresAt < new Date()) return { success: false, message: 'OTP expired' };
+
+    await this.prisma.user.update({
+      where: { email },
+      data: { isVerified: true, otpCode: null, otpExpiresAt: null }
+    });
+
+    return { success: true, user: { id: user.id, email: user.email, phoneNumber: user.phoneNumber } };
+  }
+
+  async authLogin(data: any) {
+    const { email, password } = data;
+    const user = await this.prisma.user.findUnique({ where: { email } });
+
+    if (!user) return { success: false, message: 'Invalid credentials' };
+    if (!user.isVerified) return { success: false, message: 'Email not verified' };
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return { success: false, message: 'Invalid credentials' };
+
+    return { success: true, user: { id: user.id, email: user.email, phoneNumber: user.phoneNumber } };
+  }
+
+  async checkUser(phoneNumber: string) {
+    const user = await this.prisma.user.findUnique({ where: { phoneNumber } });
+    return { exists: !!user, isVerified: user?.isVerified || false };
   }
 }
