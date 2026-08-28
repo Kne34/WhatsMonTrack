@@ -5,18 +5,50 @@ const api = axios.create({
   baseURL: '/api',
 });
 
-// Helper to fetch transactions for a given phone number, with optional pagination and filters
+// Add a request interceptor to attach JWT token
+api.interceptors.request.use((config) => {
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
+});
+
+// --- Auth Endpoints ---
+
+export const register = async (data: any) => {
+  const res = await api.post('/auth/register', data);
+  return res.data;
+};
+
+export const verifyOtp = async (data: any) => {
+  const res = await api.post('/auth/verify-otp', data);
+  return res.data;
+};
+
+export const login = async (data: any) => {
+  const res = await api.post('/auth/login', data);
+  return res.data;
+};
+
+export const getProfile = async () => {
+  const res = await api.get('/auth/me');
+  return res.data;
+};
+
+// Helper to fetch transactions, with optional pagination and filters
 export const fetchTransactions = async (
-  phoneNumber: string = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER || '',
   params?: { page?: number; limit?: number; month?: number; year?: number; day?: number }
 ) => {
-  const { data } = await api.get('/transactions', { params: { phoneNumber, ...params } });
+  const { data } = await api.get('/transactions', { params });
   return data;
 };
 
 // Helper to fetch accounts
-export const fetchAccounts = async (phoneNumber: string = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER || '') => {
-  const { data } = await api.get('/accounts', { params: { phoneNumber } });
+export const fetchAccounts = async () => {
+  const { data } = await api.get('/accounts');
   return data;
 };
 
@@ -24,10 +56,9 @@ export const fetchAccounts = async (phoneNumber: string = process.env.NEXT_PUBLI
 export const createAccount = async (
   name: string,
   type: string,
-  initialBalance: number,
-  phoneNumber: string = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER || ''
+  initialBalance: number
 ) => {
-  const { data } = await api.post('/accounts', { phoneNumber, name, type, initialBalance });
+  const { data } = await api.post('/accounts', { name, type, initialBalance });
   return data;
 };
 
@@ -44,18 +75,17 @@ export const deleteAccount = async (id: string) => {
 };
 
 // Helper to fetch budgets
-export const fetchBudgets = async (phoneNumber: string = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER || '') => {
-  const { data } = await api.get('/budgets', { params: { phoneNumber } });
+export const fetchBudgets = async () => {
+  const { data } = await api.get('/budgets');
   return data;
 };
 
 // Helper to upsert a budget
 export const setBudget = async (
   categoryName: string,
-  limit: number,
-  phoneNumber: string = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER || ''
+  limit: number
 ) => {
-  const { data } = await api.post('/budgets', { phoneNumber, categoryName, limit });
+  const { data } = await api.post('/budgets', { categoryName, limit });
   return data;
 };
 
@@ -93,8 +123,8 @@ export const resetWhatsAppSession = async () => {
 };
 
 // Helper to create a transaction manually
-export const createTransaction = async (txData: any, phoneNumber: string = process.env.NEXT_PUBLIC_DEFAULT_PHONE_NUMBER || '') => {
-  const { data } = await api.post('/transactions/manual', { phoneNumber, data: txData });
+export const createTransaction = async (txData: any) => {
+  const { data } = await api.post('/transactions/manual', { data: txData });
   return data;
 };
 
