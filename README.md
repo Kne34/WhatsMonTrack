@@ -1,6 +1,6 @@
 # WhatsMonTrack - WhatsApp Expense Tracker Bot
 
-An LLM-powered WhatsApp bot that allows users to log expenses in natural Indonesian chat shorthand (e.g., *"50k makan siang bca"*) and receive structured tracking, corrections, and monthly summaries.
+An LLM-powered WhatsApp bot and Multi-Tenant SaaS platform that allows multiple users to log expenses in natural Indonesian chat shorthand (e.g., *"50k makan siang bca"*) and receive structured tracking, corrections, and monthly summaries from their private dashboards.
 
 ## Architecture
 
@@ -8,7 +8,7 @@ The project is fully dockerized and uses a robust **Microservices Architecture**
 - **Gateway Service (`/backend/gateway`)**: Serves a dual purpose. First, it connects directly to WhatsApp servers via WebSockets using `@whiskeysockets/baileys`. Second, it exposes REST APIs for the Frontend Dashboard. It routes business logic to internal microservices via TCP.
 - **Parser Service (`/backend/parser-service`)**: A NestJS TCP microservice dedicated to category intelligence. It runs a fast-path Regex pipeline and falls back to a Gemini 1.5/2.5 LLM for parsing natural language expenses.
 - **Transaction Service (`/backend/transaction-service`)**: A NestJS TCP microservice handling all database business logic (users, accounts, and transactions).
-- **Frontend Dashboard (`/frontend`)**: A Next.js (App Router) web application for monitoring and confirming transactions (WIP).
+- **Frontend Dashboard (`/frontend`)**: A Next.js (App Router) Single Page Web App (SPA) equipped with full Multi-Tenant JWT Authentication (Login/Register/OTP), enabling multiple users to manage their own budgets safely.
 - **Database**: PostgreSQL (Master/Slave Replication) managed via Docker Compose
 - **Connection Pooling**: [Pgpool-II](https://www.pgpool.net/)
 - **Reverse Proxy**: NGINX (Routing HTTP traffic to the backend gateway)
@@ -109,7 +109,7 @@ If you are a user looking to use the app to track your finances to the fullest, 
 
 ### 1. Environment Setup
 Make sure you have created `.env` files based on the `.env.example` files provided in the root, `backend/gateway`, `backend/transaction-service`, and `frontend`. 
-Crucially, ensure you have set your `DEFAULT_PHONE_NUMBER` (your WhatsApp number in international format, e.g., `62812...`) and your `GEMINI_API_KEY`.
+Crucially, ensure you have set your `GEMINI_API_KEY`, `JWT_SECRET`, and `SMTP` variables (Ethereal email configuration for sending OTPs).
 
 ### 2. Start the App & Link WhatsApp
 To avoid startup race conditions, we have provided automated startup scripts.
@@ -119,9 +119,12 @@ To avoid startup race conditions, we have provided automated startup scripts.
 
 The script will automatically fetch the Gateway logs at the end. Look for the WhatsApp Web QR Code in the terminal and scan it with your WhatsApp app (Linked Devices) to authorize the bot.
 
-### 3. Initialize Dashboard (Accounts & Budgets)
+### 3. Register and Initialize Dashboard (Accounts & Budgets)
 Open your browser and navigate to `http://localhost`.
-Before chatting, set up your baseline data:
+Since this is a multi-tenant platform, you must first register your account using your email and WhatsApp number. 
+An OTP will be sent to your email (check your Ethereal Mail console or configured SMTP service).
+
+After verifying and logging in, set up your baseline data:
 - Click the **+** button (Floating Action Menu) on the bottom right.
 - **Add Accounts**: Create the accounts you frequently use (e.g., BCA, OVO, Cash) and their current balances.
 - **Set Budgets**: Define monthly limits for your categories (e.g., `FOOD`, `TRANSPORT`, `SHOPPING`).
@@ -171,8 +174,8 @@ The easiest way to link WhatsApp or fix connection issues is directly through th
   - Hardened with a **Recursive Retry System**: If Gemini throws a temporary network failure (e.g. `fetch failed`), the parser service will automatically intercept the error, sleep, and gracefully retry the request up to 2 times before falling back, drastically improving reliability.
 - **Conversational AI Fallback**: Upgraded the Gemini schema to natively detect casual chat or help requests (e.g., "Halo", "/rekap"), falling back to a friendly conversational assistant instead of throwing a parsing error.
 - **Anti-Loop Zero-Width Space Architecture**: To absolutely guarantee the bot never replies to its own messages (which causes catastrophic infinite loops), a Zero-Width Space (`\u200B`) is injected as an invisible cryptographic marker at the end of every bot reply. The parser aborts instantly if this marker is detected.
-- **Bulletproof WhatsApp Security**:
-  - Strict Docker environment binding (`DEFAULT_PHONE_NUMBER`) ensures the bot only reads and processes messages from the authorized user's phone number. All messages from strangers, groups, or spoofed `@lid` JIDs are immediately dropped.
+- **Bulletproof WhatsApp SaaS Security**:
+  - The Gateway performs a real-time `checkUser` via the Transaction Service before processing any message. It strictly ignores strangers and enforces that users must first register and verify their emails on the Web Dashboard before the bot will serve them. All messages from unregistered numbers, groups, or spoofed `@lid` JIDs are immediately dropped with an elegant rejection message.
   - The WhatsApp connection lifecycle handles forced manual resets gracefully using localized socket termination, preventing unhandled `Connection Closed` Baileys exceptions from crashing the Gateway container (fixing 502 Bad Gateway errors).
   - Implemented aggressive UI polling (1.5s interval) during WhatsApp linking, providing a near-instant, seamless QR code rendering experience.
 
