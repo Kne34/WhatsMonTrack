@@ -28,25 +28,19 @@ const { BotService } = require('../dist/whatsapp/bot.service');
 const { PrismaService } = require('../dist/database/prisma.service');
 
 // ---- fakes ----
-const waOutbox = [];
+const BOT_PHONE = '6280000000000';
 const fakeWhatsApp = {
   connected: true,
-  notOnWhatsApp: new Set(),
   resets: 0,
   onModuleInit: async () => {},
   isConnected() { return this.connected; },
-  async sendToPhone(phone, text) {
-    if (this.notOnWhatsApp.has(phone)) return false;
-    waOutbox.push({ phone, text });
-    return true;
-  },
+  botPhoneNumber() { return this.connected ? BOT_PHONE : null; },
   getConnectionStatus: () => ({ connected: true, qr: 'SECRET-QR' }),
   async resetSession() { this.resets++; return { success: true }; },
 };
 const mailOutbox = [];
 const fakeMail = { async sendOtp(to, code) { mailOutbox.push({ to, code }); } };
 
-const lastWaCode = (phone) => /\*(\d{6})\*/.exec(waOutbox.filter((m) => m.phone === phone).at(-1).text)[1];
 const lastMailCode = (to) => mailOutbox.filter((m) => m.to === to).at(-1).code;
 
 let app, http, prisma;
@@ -67,64 +61,101 @@ after(async () => {
   await app?.close();
 });
 
-/** Registers + verifies a user through the public API and returns its bearer token. */
-async function signUp(email, phoneNumber, password = 'password123') {
-  const reg = await http().post('/api/auth/register').send({ email, password, phoneNumber });
+/** Registers + verifies a user (email only) through the public API and returns its bearer token. */
+async function signUp(email, password = 'password123') {
+  const reg = await http().post('/api/auth/register').send({ email, password });
   assert.equal(reg.body.success, true, JSON.stringify(reg.body));
-  const canonical = '62' + phoneNumber.replace(/\D/g, '').replace(/^0|^62/, '');
-  const res = await http().post('/api/auth/verify-otp')
-    .send({ email, otpCode: lastMailCode(email), phoneCode: lastWaCode(canonical) });
+  const res = await http().post('/api/auth/verify-otp').send({ email, otpCode: lastMailCode(email) });
   assert.equal(res.body.success, true, JSON.stringify(res.body));
   return res.body.token;
 }
+
+/** Simulates an incoming WhatsApp text from `phone` through the real bot routing. */
+const incomingWhatsApp = (phone, text) => app.get(BotService).reply(phone, text);
+
+/** Requests a link code on the web, then "sends" it to the bot from `phone`. Returns the bot reply. */
+async function linkPhone(token, phone, enteredPhone) {
+  const res = await http().post('/api/phone/link').set(auth(token))
+    .send(enteredPhone ? { phoneNumber: enteredPhone } : {}).expect(201);
+  return incomingWhatsApp(phone, res.body.message);
+}
 const auth = (token) => ({ Authorization: `Bearer ${token}` });
 
-describe('phone number format', () => {
-  test('0812… from the web is stored as 62812… and the bot finds the same user', async () => {
-    const token = await signUp('alice@test.com', '0811-1111-1111');
-    const me = await http().get('/api/auth/me').set(auth(token)).expect(200);
-    assert.equal(me.body.phoneNumber, '6281111111111');
+describe('registration (email only)', () => {
+  test('works while the WhatsApp bot is offline', async () => {
+    fakeWhatsApp.connected = false;
+    try {
+      const token = await signUp('alice@test.com');
+      const me = await http().get('/api/auth/me').set(auth(token)).expect(200);
+      assert.equal(me.body.email, 'alice@test.com');
+      assert.equal(me.body.phoneNumber, null);
+    } finally {
+      fakeWhatsApp.connected = true;
+    }
+  });
 
-    // The bot resolves senders from JIDs (62…) and must hit the same row — the old bug used 0…
-    const bot = app.get(BotService);
-    const viaBot = await bot.findUserByPhone('6281111111111');
-    const viaLegacy = await bot.findUserByPhone('081111111111');
-    assert.equal(viaBot.id, me.body.id);
-    assert.equal(viaLegacy.id, me.body.id);
-    assert.equal(viaBot.isVerified, true);
+  test('phoneNumber is no longer accepted at registration', async () => {
+    await http().post('/api/auth/register')
+      .send({ email: 'x@test.com', password: 'password123', phoneNumber: '081111111111' }).expect(400);
   });
 });
 
-describe('phone ownership verification', () => {
-  test('the WhatsApp code is sent to the registered number', async () => {
-    assert.ok(waOutbox.some((m) => m.phone === '6281111111111'));
+describe('linking a WhatsApp number after login', () => {
+  let alice, carol;
+  before(async () => {
+    alice = (await http().post('/api/auth/login').send({ email: 'alice@test.com', password: 'password123' })).body.token;
+    carol = await signUp('carol@test.com');
   });
 
-  test('cannot register a number that is already owned by a verified user', async () => {
-    const before = waOutbox.length;
-    const res = await http().post('/api/auth/register')
-      .send({ email: 'mallory@test.com', password: 'password123', phoneNumber: '081111111111' });
-    assert.equal(res.body.success, false);
-    assert.equal(waOutbox.length, before, 'no code must be sent to the victim');
+  test('cannot create a link code while the bot is offline', async () => {
+    fakeWhatsApp.connected = false;
+    try {
+      await http().post('/api/phone/link').set(auth(alice)).send({}).expect(503);
+    } finally {
+      fakeWhatsApp.connected = true;
+    }
   });
 
-  test('the email code alone does not activate the account', async () => {
-    await http().post('/api/auth/register')
-      .send({ email: 'eve@test.com', password: 'password123', phoneNumber: '082222222222' })
-      .expect(201);
-    const res = await http().post('/api/auth/verify-otp')
-      .send({ email: 'eve@test.com', otpCode: lastMailCode('eve@test.com'), phoneCode: '000000' === lastWaCode('6282222222222') ? '111111' : '000000' });
-    assert.equal(res.body.success, false);
-    const login = await http().post('/api/auth/login').send({ email: 'eve@test.com', password: 'password123' });
-    assert.equal(login.body.success, false);
+  test('the link code comes with a wa.me link to the bot', async () => {
+    const res = await http().post('/api/phone/link').set(auth(alice)).send({}).expect(201);
+    assert.match(res.body.code, /^[A-Z2-9]{6}$/);
+    assert.equal(res.body.waLink, `https://wa.me/${BOT_PHONE}?text=VERIFIKASI%20${res.body.code}`);
+    const status = await http().get('/api/phone').set(auth(alice)).expect(200);
+    assert.equal(status.body.pending.code, res.body.code);
   });
 
-  test('numbers that are not on WhatsApp are rejected', async () => {
-    fakeWhatsApp.notOnWhatsApp.add('6289999999999');
-    const res = await http().post('/api/auth/register')
-      .send({ email: 'ghost@test.com', password: 'password123', phoneNumber: '089999999999' });
-    assert.equal(res.body.success, false);
-    assert.equal(await prisma.user.findUnique({ where: { email: 'ghost@test.com' } }), null);
+  test('unlinked numbers get instructions once, then silence', async () => {
+    assert.match(await incomingWhatsApp('6281111111111', 'makan 10k'), /belum terhubung/);
+    assert.equal(await incomingWhatsApp('6281111111111', 'makan 10k'), null);
+  });
+
+  test('sending the code from WhatsApp links that number (0812… is normalised)', async () => {
+    const reply = await linkPhone(alice, '6281111111111', '0811-1111-1111');
+    assert.match(reply, /^Berhasil!/);
+    const me = await http().get('/api/auth/me').set(auth(alice)).expect(200);
+    assert.equal(me.body.phoneNumber, '6281111111111');
+    assert.equal((await http().get('/api/phone').set(auth(alice))).body.pending, null);
+  });
+
+  test('a code made for one number cannot be used from another', async () => {
+    const reply = await linkPhone(carol, '6289999999999', '082222222222');
+    assert.match(reply, /nomor lain/);
+    assert.equal((await http().get('/api/auth/me').set(auth(carol))).body.phoneNumber, null);
+  });
+
+  test('cannot take over a number linked to another account', async () => {
+    await http().post('/api/phone/link').set(auth(carol)).send({ phoneNumber: '081111111111' }).expect(409);
+    const reply = await linkPhone(carol, '6281111111111');
+    assert.match(reply, /akun lain/);
+    assert.equal((await http().get('/api/auth/me').set(auth(alice))).body.phoneNumber, '6281111111111');
+  });
+
+  test('the number can be switched and unlinked', async () => {
+    assert.match(await linkPhone(carol, '6282222222222'), /^Berhasil!/);
+    assert.match(await linkPhone(carol, '6283333333333'), /^Berhasil!/);
+    assert.equal((await http().get('/api/auth/me').set(auth(carol))).body.phoneNumber, '6283333333333');
+    await http().delete('/api/phone').set(auth(carol)).expect(200);
+    assert.equal((await http().get('/api/auth/me').set(auth(carol))).body.phoneNumber, null);
   });
 });
 
@@ -133,7 +164,7 @@ describe('ownership & validation', () => {
 
   before(async () => {
     alice = (await http().post('/api/auth/login').send({ email: 'alice@test.com', password: 'password123' })).body.token;
-    bob = await signUp('admin@test.com', '083333333333'); // also the admin (ADMIN_EMAILS)
+    bob = await signUp('admin@test.com'); // also the admin (ADMIN_EMAILS)
     aliceAccount = (await http().post('/api/accounts').set(auth(alice))
       .send({ name: 'bca', initialBalance: 100000 }).expect(201)).body;
   });
@@ -180,6 +211,7 @@ describe('ownership & validation', () => {
     await http().get('/api/accounts').expect(401);
     await http().get('/api/whatsapp/status').expect(401);
     await http().post('/parse').send({ text: 'makan 10k' }).expect(401);
+    await http().post('/api/phone/link').send({}).expect(401);
   });
 
   test('only admins see the QR code and can reset the bot', async () => {

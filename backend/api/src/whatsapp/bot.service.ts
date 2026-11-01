@@ -7,6 +7,9 @@ import { TX_TYPES, TxType } from '../transactions/transactions.dto';
 import { ParserService } from '../parser/parser.service';
 import { formatIDR } from '../common/format';
 import { normalizePhone } from '../common/phone';
+import { LINK_MESSAGE_REGEX, PhoneLinkService } from './phone-link.service';
+
+const NOT_LINKED_REPLY_INTERVAL_MS = 10 * 60 * 1000;
 
 /** Conversation logic of the WhatsApp bot: text in, reply text out. Transport-agnostic. */
 @Injectable()
@@ -19,19 +22,39 @@ export class BotService {
     private readonly budgets: BudgetsService,
     private readonly transactions: TransactionsService,
     private readonly parser: ParserService,
+    private readonly phoneLink: PhoneLinkService,
   ) {}
+
+  /** Avoids spamming unknown numbers (and the WhatsApp ban risk that comes with it). */
+  private readonly notLinkedRepliedAt = new Map<string, number>();
 
   findUserByPhone(phoneNumber: string) {
     return this.prisma.user.findUnique({ where: { phoneNumber: normalizePhone(phoneNumber) } });
   }
 
-  /** Finds the user for a WhatsApp number; creates a bare user (used for the bot owner's "Note to Self"). */
-  async userForPhone(rawPhone: string) {
-    const phoneNumber = normalizePhone(rawPhone);
-    const existing = await this.findUserByPhone(phoneNumber);
-    if (existing) return existing;
-    this.logger.log(`Created new user with phone: ${phoneNumber}`);
-    return this.prisma.user.create({ data: { phoneNumber } });
+  /**
+   * Decides how to answer an incoming WhatsApp text. Returns the reply, or null to stay silent.
+   * - "VERIFIKASI <code>" links the sender's number to the account that requested the code.
+   * - Messages from a linked number (with a verified email) are processed as transactions/commands.
+   * - Anyone else gets linking instructions, at most once per NOT_LINKED_REPLY_INTERVAL_MS.
+   */
+  async reply(senderPhone: string, text: string): Promise<string | null> {
+    const phone = normalizePhone(senderPhone);
+
+    const link = LINK_MESSAGE_REGEX.exec(text);
+    if (link) {
+      return this.phoneLink.confirm(link[1], phone);
+    }
+
+    const user = await this.findUserByPhone(phone);
+    if (!user?.isVerified) {
+      const last = this.notLinkedRepliedAt.get(phone) ?? 0;
+      if (Date.now() - last < NOT_LINKED_REPLY_INTERVAL_MS) return null;
+      this.notLinkedRepliedAt.set(phone, Date.now());
+      return 'Halo! Nomor ini belum terhubung ke akun WhatsMonTrack. Daftar atau masuk di web, lalu buka menu "Hubungkan WhatsApp".';
+    }
+
+    return this.handleMessage(user.id, text);
   }
 
   async handleMessage(userId: string, text: string): Promise<string> {

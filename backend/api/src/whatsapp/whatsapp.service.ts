@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } from '@whiskeysockets/baileys';
 import * as qrcode from 'qrcode-terminal';
 import { BotService } from './bot.service';
-import { jidFromPhone, phoneFromJid } from '../common/phone';
+import { phoneFromJid } from '../common/phone';
 import { Boom } from '@hapi/boom';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -49,9 +49,13 @@ export class WhatsAppService implements OnModuleInit {
         this.connectionStatus.connected = false;
         const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
         this.logger.error('WhatsApp connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect);
-        // reconnect if not logged out
         if (shouldReconnect) {
           this.connectToWhatsApp();
+        } else {
+          // The linked device was removed (or expired after inactivity). The stored credentials are
+          // useless now, so wipe them and start a fresh session, which prints a new QR code to scan.
+          this.logger.warn('WhatsApp session was logged out; clearing credentials and generating a new QR code.');
+          this.resetSession().catch((err) => this.logger.error('Failed to restart WhatsApp session', err));
         }
       } else if (connection === 'open') {
         this.connectionStatus.connected = true;
@@ -95,21 +99,6 @@ export class WhatsAppService implements OnModuleInit {
         return;
       }
 
-      // SaaS SECURITY CHECK: Only allow messages from registered users
-      if (!isNoteToSelf) {
-        try {
-          const user = await this.bot.findUserByPhone(phoneNumber);
-          if (!user?.isVerified) {
-            this.logger.log(`[DEBUG] Ignored message from unregistered or unverified number: ${phoneNumber}`);
-            await this.sock.sendMessage(senderJid, { text: 'Halo! Nomor Anda belum terdaftar atau belum diverifikasi di WhatsMonTrack. Silakan daftar dan verifikasi email Anda di Web Dasbor terlebih dahulu.' });
-            return;
-          }
-        } catch (err) {
-          this.logger.error('Error checking user:', err);
-          return;
-        }
-      }
-
       const messageType = Object.keys(msg.message)[0];
       let text = '';
 
@@ -134,16 +123,15 @@ export class WhatsAppService implements OnModuleInit {
       this.logger.log(`Processing message from ${phoneNumber}: ${text}`);
 
       try {
-        const user = await this.bot.userForPhone(phoneNumber);
-        const replyText = await this.bot.handleMessage(user.id, text);
+        const replyText = await this.bot.reply(phoneNumber, text);
+        if (!replyText) return;
 
         // Add a Zero-Width Space (ZWS) at the end to uniquely identify our own replies
-        const finalReply = replyText + WhatsAppService.BOT_MARKER;
-        await this.sock.sendMessage(senderJid, { text: finalReply });
+        await this.sock.sendMessage(senderJid, { text: replyText + WhatsAppService.BOT_MARKER });
         this.logger.log(`Replied to ${phoneNumber}`);
       } catch (err) {
         this.logger.error('Error processing message:', err);
-        await this.sock.sendMessage(senderJid, { text: 'Maaf, sistem sedang mengalami gangguan.' });
+        await this.sock.sendMessage(senderJid, { text: 'Maaf, sistem sedang mengalami gangguan.' + WhatsAppService.BOT_MARKER });
       }
     });
   }
@@ -152,18 +140,10 @@ export class WhatsAppService implements OnModuleInit {
     return this.connectionStatus.connected;
   }
 
-  /**
-   * Sends a bot message to a phone number. Returns false if the number is not on WhatsApp.
-   * Throws if the bot is not connected.
-   */
-  public async sendToPhone(phoneNumber: string, text: string): Promise<boolean> {
-    if (!this.connectionStatus.connected || !this.sock) {
-      throw new Error('WhatsApp bot is not connected');
-    }
-    const [result] = (await this.sock.onWhatsApp(jidFromPhone(phoneNumber))) ?? [];
-    if (!result?.exists) return false;
-    await this.sock.sendMessage(result.jid, { text: text + WhatsAppService.BOT_MARKER });
-    return true;
+  /** The bot's own number (62xxxx) while connected, used to build wa.me links. */
+  public botPhoneNumber(): string | null {
+    if (!this.connectionStatus.connected) return null;
+    return phoneFromJid(this.sock?.user?.id);
   }
 
   public getConnectionStatus() {
