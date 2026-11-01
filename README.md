@@ -4,102 +4,74 @@ An LLM-powered WhatsApp bot and Multi-Tenant SaaS platform that allows multiple 
 
 ## Architecture
 
-The project is fully dockerized and uses a robust **Microservices Architecture**:
-- **Gateway Service (`/backend/gateway`)**: Serves a dual purpose. First, it connects directly to WhatsApp servers via WebSockets using `@whiskeysockets/baileys`. Second, it exposes REST APIs for the Frontend Dashboard. It routes business logic to internal microservices via TCP.
-- **Parser Service (`/backend/parser-service`)**: A NestJS TCP microservice dedicated to category intelligence. It runs a fast-path Regex pipeline and falls back to a Gemini 1.5/2.5 LLM for parsing natural language expenses.
-- **Transaction Service (`/backend/transaction-service`)**: A NestJS TCP microservice handling all database business logic (users, accounts, and transactions).
-- **Frontend Dashboard (`/frontend`)**: A Next.js (App Router) Single Page Web App (SPA) equipped with full Multi-Tenant JWT Authentication (Login/Register/OTP), enabling multiple users to manage their own budgets safely.
-- **Database**: PostgreSQL (Master/Slave Replication) managed via Docker Compose
-- **Connection Pooling**: [Pgpool-II](https://www.pgpool.net/)
-- **Reverse Proxy**: NGINX (Routing HTTP traffic to the backend gateway)
-- **ORM**: [Prisma](https://www.prisma.io/)
+The project is fully dockerized and uses a **modular monolith**: one NestJS app split into feature modules.
+
+- **API (`/backend/api`)**: a single NestJS application that
+  - connects to WhatsApp via WebSockets (`@whiskeysockets/baileys`),
+  - parses natural-language messages with Gemini (regex fallback),
+  - exposes the REST API used by the web dashboard (and later the mobile app).
+- **Frontend Dashboard (`/frontend`)**: Next.js (App Router) SPA with JWT auth (Login/Register/OTP).
+- **Database**: PostgreSQL (Master/Slave replication) behind Pgpool-II, accessed via Prisma.
+- **Reverse Proxy**: NGINX (`/` → frontend, `/api` → API).
+
+### Backend modules (`backend/api/src`)
+
+| Module | Responsibility |
+|---|---|
+| `auth/` | Register, email OTP, login, JWT |
+| `accounts/` | Bank/e-wallet accounts (CRUD, ownership checks) |
+| `budgets/` | Monthly budget per category |
+| `transactions/` | Transactions + `ledger.ts` (the only place that changes balances) |
+| `parser/` | Gemini parsing with regex fallback |
+| `whatsapp/` | `WhatsAppService` (Baileys socket) + `BotService` (conversation logic, `/rekap`) |
+| `common/` | Auth/admin guards, `@CurrentUser()`, config |
+| `database/` | `PrismaService` |
+
+Every user-scoped query filters by the `userId` from the JWT, so users can never read or modify each other's data.
 
 ## Tech Stack
-**Frontend:**
-- **Framework:** Next.js 15 (App Router, Client Components)
-- **Styling:** Tailwind CSS, Shadcn UI, Lucide Icons
-- **Data Visualization:** Recharts
-- **State Management:** React Hooks (`useState`, `useEffect`) and URL Query Parameters
+**Frontend:** Next.js 15, Tailwind CSS, Shadcn UI, Recharts
 
-**Backend:**
-- **Framework:** NestJS (Node.js)
-- **Microservices:** TCP Transport
-- **WhatsApp Integration:** `@whiskeysockets/baileys`
-- **AI/LLM:** Google Gemini 1.5/2.5 via `@google/generative-ai`
+**Backend:** NestJS, Prisma (`@prisma/adapter-pg`), `@whiskeysockets/baileys`, Google Gemini (`@google/generative-ai`), class-validator, `@nestjs/throttler`
 
-**Infrastructure:**
-- **Database:** PostgreSQL (with Master-Slave Replication)
-- **ORM:** Prisma (with `@prisma/adapter-pg`)
-- **Containerization:** Docker & Docker Compose
-- **Proxy:** Nginx
-- **Connection Pooler:** Pgpool-II
+**Infrastructure:** PostgreSQL (master/slave), Pgpool-II, Docker Compose, Nginx
 
 ```mermaid
 graph TD
-    WA[WhatsApp Servers] <-->|WebSockets| Gateway(Gateway Service)
+    WA[WhatsApp Servers] <-->|WebSockets| API(NestJS API - modular monolith)
     Frontend[Next.js UI] -->|HTTP REST| Nginx(Reverse Proxy)
-    Nginx -->|HTTP 3000| Gateway
-    
-    Gateway <-->|TCP 3001| Parser(Parser Service)
-    Gateway <-->|TCP 3002| Transaction(Transaction Service)
-    
-    Parser -.->|HTTP| Gemini(Google Gemini API)
-    
-    Transaction -->|Prisma adapter-pg| PgPool(PgPool Load Balancer)
+    Nginx -->|HTTP 3000| API
+    API -.->|HTTP| Gemini(Google Gemini API)
+    API -->|Prisma adapter-pg| PgPool(PgPool)
     PgPool -->|Write| Master(PostgreSQL Master)
     PgPool -->|Read| Slave(PostgreSQL Slave)
 ```
 
 ---
 
-## Getting Started: Initialization Flow
+## Development
 
-Here is the step-by-step flow and the commands used to initialize this project architecture.
-
-### 1. Database & Docker Architecture Setup
-We created a `docker-compose.yml` that defines the following services:
-- `postgres-master` & `postgres-slave`: Primary/Replica database nodes.
-- `pgpool`: A connection pooler that routes read/write queries.
-- `nginx`: A reverse proxy routing port 80 to the Gateway's port 3000.
-- `gateway`: The entry-point API container.
-- `parser-service`: The internal intelligence microservice container.
-
-A `.env` file must be created in the root directory with the database credentials and `GEMINI_API_KEY`.
-
-### 2. NestJS Microservices Initialization
-We scaffolded two separate NestJS applications inside a centralized `backend/` folder:
 ```bash
-# Initialize Gateway
-npx -y @nestjs/cli new gateway --package-manager npm --skip-git
-# Initialize Parser Service
-npx -y @nestjs/cli new parser-service --package-manager npm --skip-git
+docker compose up --build -d          # start everything
+docker logs whatsmon-api -f           # API logs + WhatsApp QR code
+cd backend/api && npm test            # unit tests
+
+# end-to-end tests (real HTTP + PostgreSQL; WhatsApp & email are faked).
+# Uses a SEPARATE database — all tables are wiped. Example with a throwaway container:
+docker run -d --name whatsmon-testdb -e POSTGRES_PASSWORD=test -p 54329:5432 postgres:17
+DATABASE_URL=postgresql://postgres:test@localhost:54329/postgres npx prisma migrate deploy
+TEST_DATABASE_URL=postgresql://postgres:test@localhost:54329/postgres npm run test:e2e
 ```
 
-### 3. Prisma ORM Installation
-Inside the `backend/gateway` folder, we installed Prisma and defined our schema in `prisma/schema.prisma`:
+Registration sends **two** codes — one by email and one by the WhatsApp bot to the given number — and the account is only activated when both are entered. This proves the user owns the phone number the bot will serve. Phone numbers are stored everywhere in canonical `62xxxxxxxxxx` form (`src/common/phone.ts`).
+
+Database migrations live in `backend/api/prisma/migrations` and are applied automatically (`prisma migrate deploy`) when the API container starts. To create a new migration after editing `schema.prisma`:
+
 ```bash
-cd backend/gateway
-npm install prisma --save-dev
-npm install @prisma/client
-npx prisma init
+docker compose exec api npx prisma migrate dev --name <name>
 ```
 
-### 4. Dockerizing the Services
-We created `Dockerfile`s using `node:20-alpine` in both the `gateway` and `parser-service` folders. 
-*Note: We apply `NODE_OPTIONS=--dns-result-order=ipv4first` in Docker Compose to ensure Node's `fetch` API correctly resolves Google APIs without IPv6 network hanging.*
-
-### 5. Starting the Stack
-With everything configured, build and start the entire architecture:
-```bash
-docker compose up --build -d
-```
-*Note: You must have Docker Desktop running.*
-
-### 6. Running Database Migrations
-To push the Prisma schema to the database, we bypassed Pgpool and connected directly to the `postgres-master` node just for the migration:
-```bash
-docker compose exec -e DATABASE_URL="postgresql://postgres:mysecretpassword@postgres-master:5432/postgres?schema=public" gateway npx prisma migrate dev --name init
-```
+*Note: `NODE_OPTIONS=--dns-result-order=ipv4first` is set in Docker Compose so Node's `fetch` resolves Google APIs without IPv6 hangs.*
 
 ---
 
@@ -108,8 +80,8 @@ docker compose exec -e DATABASE_URL="postgresql://postgres:mysecretpassword@post
 If you are a user looking to use the app to track your finances to the fullest, follow this flow:
 
 ### 1. Environment Setup
-Make sure you have created `.env` files based on the `.env.example` files provided in the root, `backend/gateway`, `backend/transaction-service`, and `frontend`. 
-Crucially, ensure you have set your `GEMINI_API_KEY`, `JWT_SECRET`, and `SMTP` variables (Ethereal email configuration for sending OTPs).
+Create a `.env` in the project root based on `.env.example` (and `frontend/.env.example` if present).
+Crucially, set `GEMINI_API_KEY`, a long random `JWT_SECRET` (the API refuses to start without it), `ADMIN_EMAILS` (who may see the WhatsApp QR / reset the bot), and the `SMTP` variables (Ethereal email for sending OTPs).
 
 ### 2. Start the App & Link WhatsApp
 To avoid startup race conditions, we have provided automated startup scripts.
@@ -117,7 +89,7 @@ To avoid startup race conditions, we have provided automated startup scripts.
 - **PowerShell:** Run `./start_app.ps1`
 - **Manual/Linux:** You can run `docker compose up -d` but ensure databases are initialized first.
 
-The script will automatically fetch the Gateway logs at the end. Look for the WhatsApp Web QR Code in the terminal and scan it with your WhatsApp app (Linked Devices) to authorize the bot.
+The script will automatically fetch the API logs at the end. Look for the WhatsApp Web QR Code in the terminal and scan it with your WhatsApp app (Linked Devices) to authorize the bot.
 
 ### 3. Register and Initialize Dashboard (Accounts & Budgets)
 Open your browser and navigate to `http://localhost`.
@@ -217,3 +189,10 @@ The easiest way to link WhatsApp or fix connection issues is directly through th
 ## Phase 6: Frontend Dockerization & Reverse Proxy (Completed)
 - Built a multi-stage `Dockerfile` leveraging Next.js `standalone` output for minimal image size.
 - Configured Nginx as the primary Reverse Proxy on Port 80, intelligently routing `/api/` traffic to the Gateway and `/` traffic to the Frontend container.
+
+## Phase 7: Modular Monolith & Security Hardening (Completed)
+- Merged `gateway`, `parser-service` and `transaction-service` into a single NestJS app (`backend/api`) organised by feature modules; removed the internal TCP transport.
+- Ownership checks on every account/budget/transaction mutation (fixes cross-user access by ID).
+- `/api/whatsapp/status` requires login (QR only for admins), `/api/whatsapp/reset` and `/parse` require auth.
+- Request validation via DTOs (`class-validator`), rate limiting on auth endpoints, CSPRNG OTP with a 5-attempt limit, no hardcoded JWT secret fallback.
+- Balance logic consolidated into `transactions/ledger.ts` with unit tests; migrations run automatically on API startup.

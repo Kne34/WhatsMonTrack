@@ -9,7 +9,7 @@ Write-Host "Waiting 5 seconds for databases to initialize..." -ForegroundColor D
 Start-Sleep -Seconds 5
 
 Write-Host "`n[2/3] Starting core backend and frontend services..." -ForegroundColor Yellow
-docker compose up -d transaction-service parser-service gateway frontend
+docker compose up -d api frontend
 Write-Host "Waiting 10 seconds for services to start..." -ForegroundColor DarkGray
 Start-Sleep -Seconds 10
 
@@ -18,4 +18,4 @@ docker compose up -d nginx
 
 Write-Host "`nApplication started!" -ForegroundColor Green
 Write-Host "- Dashboard: http://localhost" -ForegroundColor White
-Write-Host "- To view Gateway Logs (and QR Code): docker logs whatsmon-gateway -f" -ForegroundColor White
+Write-Host "- To view API Logs (and QR Code): docker logs whatsmon-api -f" -ForegroundColor White

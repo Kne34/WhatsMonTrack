@@ -11,7 +11,7 @@ timeout /t 5 /nobreak >nul
 
 echo.
 echo [2/3] Starting core backend and frontend services...
-docker compose up -d transaction-service parser-service gateway frontend
+docker compose up -d api frontend
 echo Waiting 10 seconds for services to start...
 timeout /t 10 /nobreak >nul
 
