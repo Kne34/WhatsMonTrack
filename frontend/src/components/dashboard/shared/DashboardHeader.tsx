@@ -9,7 +9,7 @@ interface DashboardHeaderProps {
   selectedYear: number;
   setSelectedMonth: React.Dispatch<React.SetStateAction<number>>;
   setSelectedYear: React.Dispatch<React.SetStateAction<number>>;
-  waStatus?: { connected: boolean; qr: string } | null;
+  waStatus?: { connected: boolean; qr: string; canManage?: boolean } | null;
   onWaStatusClick?: () => void;
 }
 

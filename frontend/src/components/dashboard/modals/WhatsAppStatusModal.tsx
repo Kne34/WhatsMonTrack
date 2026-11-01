@@ -5,7 +5,7 @@ import { resetWhatsAppSession, fetchWhatsAppStatus } from "@/lib/api";
 interface WhatsAppStatusModalProps {
   isOpen: boolean;
   onClose: () => void;
-  status: { connected: boolean; qr: string } | null;
+  status: { connected: boolean; qr: string; canManage?: boolean } | null;
   onResetComplete: () => void;
 }
 
@@ -74,6 +74,7 @@ export default function WhatsAppStatusModal({ isOpen, onClose, status, onResetCo
               Your bot is ready to receive expense logs.
             </p>
 
+            {localStatus?.canManage && (
             <div className="w-full border-t border-slate-100 dark:border-slate-800 pt-6 mt-4">
               <p className="text-xs text-center text-slate-500 dark:text-slate-400 mb-3">
                 Need to switch accounts or force disconnect?
@@ -101,6 +102,14 @@ export default function WhatsAppStatusModal({ isOpen, onClose, status, onResetCo
                 )}
               </button>
             </div>
+            )}
+          </div>
+        ) : !localStatus?.canManage ? (
+          <div className="flex flex-col items-center justify-center my-8 w-full">
+            <p className="text-amber-600 dark:text-amber-400 font-medium text-lg">Bot sedang offline</p>
+            <p className="text-slate-500 dark:text-slate-400 text-sm text-center mt-2">
+              Bot WhatsApp sedang tidak terhubung. Silakan hubungi admin.
+            </p>
           </div>
         ) : (
           <div className="flex flex-col items-center w-full">
