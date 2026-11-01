@@ -7,6 +7,7 @@ import { TX_TYPES, TxType } from '../transactions/transactions.dto';
 import { ParserService } from '../parser/parser.service';
 import { formatIDR } from '../common/format';
 import { normalizePhone } from '../common/phone';
+import { DEFAULT_TIMEZONE } from '../common/time';
 import { LINK_MESSAGE_REGEX, PhoneLinkService } from './phone-link.service';
 
 const NOT_LINKED_REPLY_INTERVAL_MS = 10 * 60 * 1000;
@@ -37,8 +38,9 @@ export class BotService {
    * - "VERIFIKASI <code>" links the sender's number to the account that requested the code.
    * - Messages from a linked number (with a verified email) are processed as transactions/commands.
    * - Anyone else gets linking instructions, at most once per NOT_LINKED_REPLY_INTERVAL_MS.
+   * `messageId` (the WhatsApp message id) makes recording idempotent across re-deliveries.
    */
-  async reply(senderPhone: string, text: string): Promise<string | null> {
+  async reply(senderPhone: string, text: string, messageId?: string): Promise<string | null> {
     const phone = normalizePhone(senderPhone);
 
     const link = LINK_MESSAGE_REGEX.exec(text);
@@ -54,28 +56,31 @@ export class BotService {
       return 'Halo! Nomor ini belum terhubung ke akun WhatsMonTrack. Daftar atau masuk di web, lalu buka menu "Hubungkan WhatsApp".';
     }
 
-    return this.handleMessage(user.id, text);
+    return this.handleMessage(user.id, text, messageId);
   }
 
-  async handleMessage(userId: string, text: string): Promise<string> {
+  async handleMessage(userId: string, text: string, messageId?: string): Promise<string | null> {
     const command = text.toLowerCase().trim();
     if (command === '/rekap' || command === '/recap') {
       return this.recap(userId);
     }
-    return this.recordFromText(userId, text);
+    return this.recordFromText(userId, text, messageId);
   }
 
-  private async recordFromText(userId: string, text: string): Promise<string> {
-    // 1. Give the AI the user's account names so it can match them
-    let accountsContext = '';
-    try {
-      accountsContext = (await this.accounts.list(userId)).map((a) => a.name).join(', ');
-    } catch (e) {
-      this.logger.warn('Failed to fetch accounts context', e);
+  private async recordFromText(userId: string, text: string, messageId?: string): Promise<string | null> {
+    // Already recorded from this exact WhatsApp message (re-delivery after a reconnect): stay silent,
+    // and don't spend an AI call on it. The unique constraint below is the race-proof backstop.
+    if (messageId && (await this.transactions.existsForMessage(messageId))) {
+      this.logger.log(`Skipping already-recorded message ${messageId}`);
+      return null;
     }
 
+    // 1. Give the AI the user's account names so it can match them
+    const accounts = await this.accounts.list(userId);
+    const accountNames = accounts.map((a) => a.name).join(', ');
+
     // 2. Parse
-    const result = await this.parser.parse(text, { accounts: accountsContext });
+    const result = await this.parser.parse(text, { accounts: accountNames });
     if (result.status === 'error') {
       return `Gagal: ${result.message}`;
     }
@@ -87,6 +92,7 @@ export class BotService {
 
     // 3. Validate what the AI extracted
     const type: TxType = TX_TYPES.includes(parsed.type as TxType) ? (parsed.type as TxType) : 'EXPENSE';
+    const amount = typeof parsed.amount === 'number' ? Math.round(parsed.amount) : NaN; // whole rupiah
 
     if (type === 'TRANSFER' && (!parsed.fromAccount || !parsed.toAccount)) {
       return 'Tolong sebutkan rekening sumber dan tujuan untuk transfer ini (contoh: Transfer 50k dari BCA ke OVO).';
@@ -97,59 +103,85 @@ export class BotService {
     if (type === 'EXPENSE' && !parsed.fromAccount && !parsed.account) {
       return 'Tolong sebutkan sumber dana untuk pengeluaran ini (contoh: BCA, OVO, Cash, dll).';
     }
-    if (typeof parsed.amount !== 'number' || !(parsed.amount > 0)) {
+    if (!(amount > 0)) {
       return 'Tolong sebutkan nominal transaksinya (contoh: Makan siang 25k pakai BCA).';
     }
 
+    // 4. Resolve accounts. Unknown names are reported back, never created from a guess.
+    if (accounts.length === 0) {
+      return 'Anda belum punya rekening. Tambahkan rekening (misalnya BCA atau Tunai) di web, lalu kirim ulang pesan ini.';
+    }
     const fromName = parsed.fromAccount || (type !== 'INCOME' ? parsed.account : undefined);
     const toName = parsed.toAccount || (type === 'INCOME' ? parsed.account : undefined);
-    const from = fromName ? await this.accounts.findOrCreateByName(userId, fromName) : null;
-    const to = toName ? await this.accounts.findOrCreateByName(userId, toName) : null;
+    const from = fromName ? await this.accounts.findByName(userId, fromName) : null;
+    const to = toName ? await this.accounts.findByName(userId, toName) : null;
+    const missing = [fromName && !from ? fromName : null, toName && !to ? toName : null].filter(Boolean);
+    if (missing.length > 0) {
+      return `Rekening ${missing.map((m) => `"${m}"`).join(' dan ')} tidak ditemukan.\nRekening Anda: ${accountNames}.\nKirim ulang dengan nama rekening yang benar, atau tambahkan rekening baru di web.`;
+    }
 
-    // 4. Save (low confidence => draft that must be confirmed on the dashboard)
-    const { transaction, fromAccount, toAccount } = await this.transactions.create(userId, {
-      type,
-      amount: parsed.amount,
-      category: parsed.category,
-      subcategory: parsed.subcategory,
-      fromAccountId: from?.id,
-      toAccountId: to?.id,
-      rawText: text,
-      confidence: parsed.confidence,
-    });
+    // 5. Save (low confidence => draft that must be confirmed on the dashboard)
+    let created: Awaited<ReturnType<TransactionsService['create']>>;
+    try {
+      created = await this.transactions.create(userId, {
+        type,
+        amount,
+        category: parsed.category,
+        subcategory: parsed.subcategory,
+        fromAccountId: from?.id,
+        toAccountId: to?.id,
+        rawText: text,
+        confidence: parsed.confidence,
+        sourceMessageId: messageId ?? null,
+      });
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        this.logger.log(`Message ${messageId} was recorded concurrently; skipping duplicate`);
+        return null;
+      }
+      throw err;
+    }
+    const { transaction, fromAccount, toAccount } = created;
 
-    // 5. Reply
-    const amount = formatIDR(parsed.amount);
+    // 6. Reply, with the time in the user's own zone
+    const tz = await this.timezoneOf(userId);
+    const amountText = formatIDR(amount);
     const item = parsed.subcategory || parsed.category;
     const fromLabel = from?.name;
     const toLabel = to?.name;
     const at = transaction.createdAt;
-    const timestamp = `\n*(Tercatat pada: ${at.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}, ${at.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })})*`;
+    const date = at.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', timeZone: tz });
+    const time = at.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+    const timestamp = `\n*(Tercatat pada: ${date}, ${time})*`;
 
     if (transaction.status === 'NEEDS_REVIEW') {
       const via = type === 'TRANSFER' ? `${fromLabel} -> ${toLabel}` : type === 'INCOME' ? toLabel : fromLabel;
-      return `Tercatat sebagai DRAFT: ${amount} untuk ${item} via ${via} ⚠️\nSilakan konfirmasi di Web Dashboard untuk memastikan tidak ada kesalahan.${timestamp}`;
+      return `Tercatat sebagai DRAFT: ${amountText} untuk ${item} via ${via} ⚠️\nSilakan konfirmasi di Web Dashboard untuk memastikan tidak ada kesalahan.${timestamp}`;
     }
 
-    const fromBal = formatIDR(fromAccount?.balance || 0);
-    const toBal = formatIDR(toAccount?.balance || 0);
+    const fromBal = formatIDR(fromAccount?.balance ?? 0);
+    const toBal = formatIDR(toAccount?.balance ?? 0);
     if (type === 'TRANSFER') {
-      return `Berhasil! Transfer ${amount} dari ${fromLabel} ke ${toLabel} telah dicatat.\nSisa saldo ${fromLabel}: ${fromBal}\nSisa saldo ${toLabel}: ${toBal}${timestamp}`;
+      return `Berhasil! Transfer ${amountText} dari ${fromLabel} ke ${toLabel} telah dicatat.\nSisa saldo ${fromLabel}: ${fromBal}\nSisa saldo ${toLabel}: ${toBal}${timestamp}`;
     }
     if (type === 'INCOME') {
-      return `Berhasil! Pemasukan ${amount} untuk ${item} telah ditambahkan ke ${toLabel}.\nSisa saldo ${toLabel}: ${toBal}${timestamp}`;
+      return `Berhasil! Pemasukan ${amountText} untuk ${item} telah ditambahkan ke ${toLabel}.\nSisa saldo ${toLabel}: ${toBal}${timestamp}`;
     }
-    return `Berhasil! ${amount} untuk ${item} telah dicatat dari rekening ${fromLabel}.\nSisa saldo ${fromLabel}: ${fromBal}${timestamp}`;
+    return `Berhasil! ${amountText} untuk ${item} telah dicatat dari rekening ${fromLabel}.\nSisa saldo ${fromLabel}: ${fromBal}${timestamp}`;
   }
 
   private async recap(userId: string): Promise<string> {
-    const now = new Date();
     const [summary, accounts, budgets] = await Promise.all([
-      this.transactions.monthlySummary(userId, now),
+      this.transactions.monthlySummary(userId, new Date()),
       this.accounts.list(userId),
       this.budgets.list(userId),
     ]);
-    const monthName = now.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+    // Month in the user's zone (the summary already used it for the boundaries)
+    const monthName = new Date(Date.UTC(summary.year, summary.month - 1, 15)).toLocaleDateString('id-ID', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    });
 
     let recap = `📊 *Rekap Bulan Ini (${monthName})*\n\n`;
     recap += `💰 *Total Pemasukan*: ${formatIDR(summary.totalIncome)}\n`;
@@ -168,11 +200,22 @@ export class BotService {
       : budgets
           .map((b) => {
             const spent = summary.expenseByCategory[b.categoryName] || 0;
-            const status = spent > b.limit ? 'Over ⚠️' : 'Aman ✅';
-            return `- ${b.categoryName}: ${formatIDR(spent)} / ${formatIDR(b.limit)} (${status})\n`;
+            const limit = Number(b.limit);
+            const status = spent > limit ? 'Over ⚠️' : 'Aman ✅';
+            return `- ${b.categoryName}: ${formatIDR(spent)} / ${formatIDR(limit)} (${status})\n`;
           })
           .join('');
 
     return recap;
   }
+
+  private async timezoneOf(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+    return user?.timezone || DEFAULT_TIMEZONE;
+  }
+}
+
+/** Prisma "unique constraint failed" (here: the transaction's sourceMessageId). */
+function isUniqueViolation(err: unknown) {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002';
 }

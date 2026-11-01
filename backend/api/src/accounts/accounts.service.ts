@@ -1,11 +1,19 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { CreateAccountDto, UpdateAccountDto } from './accounts.dto';
 
+/** "Go-Pay " -> "GOPAY": comparison key that ignores case, spaces and punctuation. */
+export const normalizeAccountName = (name: string) => name.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+/** Common synonyms people use for the same account. */
+const ACCOUNT_ALIASES: Record<string, string[]> = {
+  CASH: ['TUNAI', 'UANGTUNAI'],
+  TUNAI: ['CASH', 'UANGTUNAI'],
+  UANGTUNAI: ['CASH', 'TUNAI'],
+};
+
 @Injectable()
 export class AccountsService {
-  private readonly logger = new Logger(AccountsService.name);
-
   constructor(private readonly prisma: PrismaService) {}
 
   list(userId: string) {
@@ -47,16 +55,17 @@ export class AccountsService {
     return this.prisma.account.delete({ where: { id } });
   }
 
-  /** Used by the WhatsApp bot: case-insensitive lookup, created on first mention. */
-  async findOrCreateByName(userId: string, rawName: string) {
-    const name = rawName.trim().toUpperCase();
-    const existing = await this.prisma.account.findFirst({
-      where: { userId, name: { equals: name, mode: 'insensitive' } },
-    });
-    if (existing) return existing;
-
-    this.logger.log(`Created new account ${name} for user ${userId}`);
-    return this.prisma.account.create({ data: { userId, name, balance: 0 } });
+  /**
+   * Used by the WhatsApp bot to match an account name guessed by the AI ("Go Pay", "cash")
+   * against the user's existing accounts. Never creates one: an account made from a guess
+   * would silently start tracking a balance the user doesn't have.
+   */
+  async findByName(userId: string, rawName: string) {
+    const wanted = normalizeAccountName(rawName);
+    if (!wanted) return null;
+    const candidates = new Set([wanted, ...(ACCOUNT_ALIASES[wanted] ?? [])]);
+    const accounts = await this.list(userId);
+    return accounts.find((a) => candidates.has(normalizeAccountName(a.name))) ?? null;
   }
 
   /** Throws 404 unless every given (non-empty) account id belongs to the user. */

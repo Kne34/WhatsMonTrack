@@ -7,14 +7,34 @@ import { Boom } from '@hapi/boom';
 import * as path from 'path';
 import * as fs from 'fs';
 
+/** Messages delivered as 'append' (offline queue / history) older than this are not processed. */
+const APPEND_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+const MAX_REMEMBERED_IDS = 2000;
+
+function remember(set: Set<string>, id: string) {
+  set.add(id);
+  if (set.size > MAX_REMEMBERED_IDS) set.delete(set.values().next().value as string);
+}
+
+/** messageTimestamp is seconds, as a number or a protobuf Long. */
+function toMillis(ts: unknown): number {
+  if (ts == null) return 0;
+  const seconds = typeof ts === 'object' && 'toNumber' in (ts as object) ? (ts as { toNumber(): number }).toNumber() : Number(ts);
+  return Number.isFinite(seconds) ? seconds * 1000 : 0;
+}
+
 @Injectable()
 export class WhatsAppService implements OnModuleInit {
   private readonly logger = new Logger(WhatsAppService.name);
   private sock: any;
   private connectionStatus = { connected: false, qr: '' };
 
-  /** Appended to every bot message so the "Note to Self" handler never processes its own replies. */
+  /** Appended to every bot message: fallback to recognise our own replies (e.g. after a restart). */
   static readonly BOT_MARKER = '\u200B';
+
+  /** Ids of messages the bot sent, and of messages already handled (bounded, most recent kept). */
+  private readonly sentIds = new Set<string>();
+  private readonly seenIds = new Set<string>();
 
   constructor(private readonly bot: BotService) {}
 
@@ -64,76 +84,74 @@ export class WhatsAppService implements OnModuleInit {
       }
     });
 
-    this.sock.ev.on('messages.upsert', async (m) => {
-      const msg = m.messages[0];
-      if (!msg.message) return; // Ignore empty messages
-
-      const senderJid = msg.key.remoteJid;
-      
-      // DEBUG LOG
-      this.logger.log(`[DEBUG] Received upsert. remoteJid: ${senderJid}, fromMe: ${msg.key.fromMe}`);
-
-      if (senderJid?.endsWith('@g.us')) return; // Ignore group chats!
-
-      const myJidRaw = this.sock.user?.id;
-      const myJid = myJidRaw ? myJidRaw.split(':')[0] + '@s.whatsapp.net' : '';
-      const myLidRaw = this.sock.user?.lid;
-      const myLid = myLidRaw ? myLidRaw.split(':')[0] + '@lid' : '';
-
-      // WhatsApp now uses @lid for "Message Yourself" chats, but we strictly match our own ID
-      const isNoteToSelf = senderJid === myJid || senderJid === myLid;
-
-      this.logger.log(`[DEBUG] myJid: ${myJid}, myLid: ${myLid}, isNoteToSelf: ${isNoteToSelf}`);
-
-      if (msg.key.fromMe && !isNoteToSelf) {
-        this.logger.log(`[DEBUG] Ignored because fromMe is true and isNoteToSelf is false.`);
-        return;
-      }
-
-      // Sender phone in canonical 62xxxx form. Chats addressed by LID carry the phone JID in remoteJidAlt.
-      const phoneNumber = msg.key.fromMe
-        ? phoneFromJid(myJid)
-        : (phoneFromJid(senderJid) ?? phoneFromJid(msg.key.remoteJidAlt));
-      if (!phoneNumber) {
-        this.logger.warn(`[DEBUG] Could not resolve a phone number for ${senderJid}; ignoring.`);
-        return;
-      }
-
-      const messageType = Object.keys(msg.message)[0];
-      let text = '';
-
-      if (messageType === 'conversation') {
-        text = msg.message.conversation;
-      } else if (messageType === 'extendedTextMessage') {
-        text = msg.message.extendedTextMessage?.text;
-      }
-
-      this.logger.log(`[DEBUG] messageType: ${messageType}, text: ${text}`);
-
-      if (!text) return; // We only process text
-
-      // IMPORTANT: Prevent infinite loop when using "Note to Self"
-      // because our own replies are sent as fromMe=true
-      const ignoredPrefixes = ['Berhasil!', 'Gagal:', 'Maaf,', 'Tercatat', 'Tolong'];
-      if (ignoredPrefixes.some(prefix => text.startsWith(prefix)) || text.includes(WhatsAppService.BOT_MARKER)) {
-        this.logger.log(`[DEBUG] Ignored own bot reply to prevent loop.`);
-        return;
-      }
-
-      this.logger.log(`Processing message from ${phoneNumber}: ${text}`);
-
-      try {
-        const replyText = await this.bot.reply(phoneNumber, text);
-        if (!replyText) return;
-
-        // Add a Zero-Width Space (ZWS) at the end to uniquely identify our own replies
-        await this.sock.sendMessage(senderJid, { text: replyText + WhatsAppService.BOT_MARKER });
-        this.logger.log(`Replied to ${phoneNumber}`);
-      } catch (err) {
-        this.logger.error('Error processing message:', err);
-        await this.sock.sendMessage(senderJid, { text: 'Maaf, sistem sedang mengalami gangguan.' + WhatsAppService.BOT_MARKER });
+    // A batch can hold several messages: handle every one, not just the first.
+    this.sock.ev.on('messages.upsert', async ({ messages, type }: { messages: any[]; type: 'notify' | 'append' }) => {
+      for (const msg of messages) {
+        try {
+          await this.handleIncoming(msg, type);
+        } catch (err) {
+          this.logger.error('Error handling incoming message', err);
+        }
       }
     });
+  }
+
+  /**
+   * - 'notify' = live messages. 'append' = history sync or messages queued while the bot was
+   *   offline: those are only handled if recent, so a reconnect doesn't replay old chats.
+   * - Each message id is handled once (in-memory), and transactions are unique per message id
+   *   in the database, so a re-delivered message can never be recorded twice.
+   * - The bot's own replies are recognised by the ids returned when sending them, with the
+   *   zero-width marker as a fallback (e.g. after a restart). User text is never filtered by content.
+   */
+  private async handleIncoming(msg: any, type: 'notify' | 'append') {
+    const messageId: string | undefined = msg?.key?.id;
+    if (!msg?.message || !messageId) return;
+
+    if (type !== 'notify') {
+      const sentAt = toMillis(msg.messageTimestamp);
+      if (!sentAt || Date.now() - sentAt > APPEND_MAX_AGE_MS) return;
+    }
+    if (this.sentIds.has(messageId) || this.seenIds.has(messageId)) return;
+    remember(this.seenIds, messageId);
+
+    const senderJid: string | undefined = msg.key.remoteJid;
+    if (!senderJid || senderJid.endsWith('@g.us') || senderJid === 'status@broadcast') return; // groups, statuses
+
+    const myJidRaw = this.sock.user?.id;
+    const myJid = myJidRaw ? myJidRaw.split(':')[0] + '@s.whatsapp.net' : '';
+    const myLidRaw = this.sock.user?.lid;
+    const myLid = myLidRaw ? myLidRaw.split(':')[0] + '@lid' : '';
+    // "Message yourself" chat (addressed by phone JID or, in newer WhatsApp, by LID)
+    const isNoteToSelf = senderJid === myJid || senderJid === myLid;
+    if (msg.key.fromMe && !isNoteToSelf) return; // the bot's own messages in other chats
+
+    // Sender phone in canonical 62xxxx form. Chats addressed by LID carry the phone JID in remoteJidAlt.
+    const phoneNumber = msg.key.fromMe
+      ? phoneFromJid(myJid)
+      : (phoneFromJid(senderJid) ?? phoneFromJid(msg.key.remoteJidAlt));
+    if (!phoneNumber) {
+      this.logger.warn(`Could not resolve a phone number for ${senderJid}; ignoring.`);
+      return;
+    }
+
+    const text: string | undefined = msg.message.conversation ?? msg.message.extendedTextMessage?.text;
+    if (!text || text.includes(WhatsAppService.BOT_MARKER)) return; // only text; never our own replies
+
+    this.logger.log(`Processing message ${messageId} from ${phoneNumber}`);
+    try {
+      const replyText = await this.bot.reply(phoneNumber, text, messageId);
+      if (replyText) await this.send(senderJid, replyText);
+    } catch (err) {
+      this.logger.error('Error processing message:', err);
+      await this.send(senderJid, 'Maaf, sistem sedang mengalami gangguan.');
+    }
+  }
+
+  /** Sends a bot reply and remembers its id so the echo in "Message yourself" is ignored. */
+  private async send(jid: string, text: string) {
+    const sent = await this.sock.sendMessage(jid, { text: text + WhatsAppService.BOT_MARKER });
+    if (sent?.key?.id) remember(this.sentIds, sent.key.id);
   }
 
   public isConnected() {

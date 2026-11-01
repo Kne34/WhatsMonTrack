@@ -25,6 +25,7 @@ const { configureApp } = require('../dist/app.setup');
 const { WhatsAppService } = require('../dist/whatsapp/whatsapp.service');
 const { MailService } = require('../dist/auth/mail.service');
 const { BotService } = require('../dist/whatsapp/bot.service');
+const { ParserService } = require('../dist/parser/parser.service');
 const { PrismaService } = require('../dist/database/prisma.service');
 
 // ---- fakes ----
@@ -41,6 +42,18 @@ const fakeWhatsApp = {
 const mailOutbox = [];
 const fakeMail = { async sendOtp(to, code) { mailOutbox.push({ to, code }); } };
 
+/** Deterministic stand-in for Gemini: "<item> <amount> <account>", e.g. "kopi 25000 bca". */
+const fakeParser = {
+  parseCalls: 0,
+  async parse(text) {
+    this.parseCalls++;
+    const [subcategory, amount, account] = text.split(' ');
+    return { source: 'fake', status: 'success', data: {
+      isTransaction: true, type: 'EXPENSE', amount: Number(amount), category: 'FOOD', subcategory, fromAccount: account, confidence: 0.95,
+    } };
+  },
+};
+
 const lastMailCode = (to) => mailOutbox.filter((m) => m.to === to).at(-1).code;
 
 let app, http, prisma;
@@ -49,12 +62,13 @@ before(async () => {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(WhatsAppService).useValue(fakeWhatsApp)
     .overrideProvider(MailService).useValue(fakeMail)
+    .overrideProvider(ParserService).useValue(fakeParser)
     .compile();
   app = configureApp(moduleRef.createNestApplication());
   await app.init();
   http = () => request(app.getHttpServer());
   prisma = app.get(PrismaService);
-  await prisma.$executeRawUnsafe('TRUNCATE "Transaction", "Account", "Budget", "Session", "User" CASCADE');
+  await prisma.$executeRawUnsafe('TRUNCATE "Transaction", "Account", "Budget", "User" CASCADE');
 });
 
 after(async () => {
@@ -181,7 +195,7 @@ describe('ownership & validation', () => {
       .send({ data: { type: 'EXPENSE', amount: 1000, fromAccountId: aliceAccount.id } })
       .expect(404);
     const acc = await prisma.account.findUnique({ where: { id: aliceAccount.id } });
-    assert.equal(acc.balance, 100000);
+    assert.equal(Number(acc.balance), 100000);
   });
 
   test('unknown fields such as userId are rejected', async () => {
@@ -190,7 +204,7 @@ describe('ownership & validation', () => {
   });
 
   test('balances follow create → edit → delete of a transaction', async () => {
-    const balance = async () => (await prisma.account.findUnique({ where: { id: aliceAccount.id } })).balance;
+    const balance = async () => Number((await prisma.account.findUnique({ where: { id: aliceAccount.id } })).balance);
 
     const created = await http().post('/api/transactions/manual').set(auth(alice))
       .send({ data: { type: 'EXPENSE', amount: 50000, category: 'FOOD', fromAccountId: aliceAccount.id } })
@@ -224,5 +238,79 @@ describe('ownership & validation', () => {
     assert.equal(asAdmin.body.qr, 'SECRET-QR');
     await http().post('/api/whatsapp/reset').set(auth(bob)).expect(201);
     assert.equal(fakeWhatsApp.resets, 1);
+  });
+});
+
+describe('money, time zones and the WhatsApp bot (real database)', () => {
+  let token, user, account;
+
+  before(async () => {
+    const reg = await http().post('/api/auth/register')
+      .send({ email: 'dina@test.com', password: 'password123', timeZone: 'Asia/Jakarta' });
+    assert.equal(reg.body.success, true, JSON.stringify(reg.body));
+    token = (await http().post('/api/auth/verify-otp').send({ email: 'dina@test.com', otpCode: lastMailCode('dina@test.com') })).body.token;
+    user = await prisma.user.findUnique({ where: { email: 'dina@test.com' } });
+    account = (await http().post('/api/accounts').set(auth(token)).send({ name: 'BCA', initialBalance: 1000000 }).expect(201)).body;
+    await prisma.user.update({ where: { id: user.id }, data: { phoneNumber: '6285555555555' } });
+  });
+
+  test('the browser time zone is stored at registration', () => {
+    assert.equal(user.timezone, 'Asia/Jakarta');
+  });
+
+  test('money is stored as BIGINT and returned as plain JSON numbers', async () => {
+    assert.equal(typeof account.balance, 'number');
+    assert.equal(account.balance, 1000000);
+    const row = await prisma.account.findUnique({ where: { id: account.id } });
+    assert.equal(typeof row.balance, 'bigint');
+    const list = await http().get('/api/accounts').set(auth(token)).expect(200);
+    assert.equal(list.body[0].balance, 1000000);
+  });
+
+  test('fractional rupiah amounts are rejected', async () => {
+    await http().post('/api/transactions/manual').set(auth(token))
+      .send({ data: { type: 'EXPENSE', amount: 12.5, fromAccountId: account.id } }).expect(400);
+  });
+
+  test('month and day filters follow the user zone (06:30 WIB on Nov 1 is November, not October)', async () => {
+    await http().post('/api/transactions/manual').set(auth(token))
+      .send({ data: { type: 'EXPENSE', amount: 30000, category: 'FOOD', fromAccountId: account.id, createdAt: '2026-10-31T23:30:00.000Z' } })
+      .expect(201);
+    const nov = await http().get('/api/transactions?month=11&year=2026').set(auth(token)).expect(200);
+    const oct = await http().get('/api/transactions?month=10&year=2026').set(auth(token)).expect(200);
+    const nov1 = await http().get('/api/transactions?month=11&year=2026&day=1').set(auth(token)).expect(200);
+    assert.equal(nov.body.total, 1);
+    assert.equal(oct.body.total, 0);
+    assert.equal(nov1.body.total, 1);
+    assert.equal(typeof nov.body.data[0].amount, 'number');
+  });
+
+  test('the same WhatsApp message is recorded only once, even if delivered again', async () => {
+    const bot = app.get(BotService);
+    const callsBefore = fakeParser.parseCalls;
+    const first = await bot.reply('6285555555555', 'kopi 25000 bca', 'WAMSG-1');
+    const again = await bot.reply('6285555555555', 'kopi 25000 bca', 'WAMSG-1');
+
+    assert.match(first, /^Berhasil!/);
+    assert.equal(again, null);
+    assert.equal(fakeParser.parseCalls, callsBefore + 1, 'the AI is not called for the duplicate');
+    assert.equal(await prisma.transaction.count({ where: { sourceMessageId: 'WAMSG-1' } }), 1);
+    const bal = await prisma.account.findUnique({ where: { id: account.id } });
+    assert.equal(Number(bal.balance), 1000000 - 30000 - 25000);
+  });
+
+  test('the database rejects a second transaction for the same message id', async () => {
+    await assert.rejects(
+      prisma.transaction.create({ data: { userId: user.id, type: 'EXPENSE', amount: 1, category: 'X', sourceMessageId: 'WAMSG-1' } }),
+      (err) => err.code === 'P2002',
+    );
+  });
+
+  test('an unknown account name is reported back, not created', async () => {
+    const before = await prisma.account.count({ where: { userId: user.id } });
+    const reply = await app.get(BotService).reply('6285555555555', 'bensin 50000 mandiri', 'WAMSG-2');
+    assert.match(reply, /Rekening "mandiri" tidak ditemukan/);
+    assert.equal(await prisma.account.count({ where: { userId: user.id } }), before);
+    assert.equal(await prisma.transaction.count({ where: { sourceMessageId: 'WAMSG-2' } }), 0);
   });
 });
