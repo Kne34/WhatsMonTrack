@@ -3,7 +3,6 @@ import {
   IsDateString,
   IsIn,
   IsInt,
-  IsNumber,
   IsOptional,
   IsPositive,
   IsString,
@@ -41,7 +40,7 @@ export class CreateTransactionDataDto {
   @IsIn(TX_TYPES)
   type: TxType;
 
-  @IsNumber()
+  @IsInt({ message: "$property must be a whole number of rupiah" })
   @IsPositive()
   @Max(MAX_AMOUNT)
   amount: number;
@@ -82,7 +81,7 @@ export class UpdateTransactionDto {
   type?: TxType;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt({ message: "$property must be a whole number of rupiah" })
   @IsPositive()
   @Max(MAX_AMOUNT)
   amount?: number;

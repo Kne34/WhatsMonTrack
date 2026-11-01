@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 
 export interface LedgerEntry {
   type: string;
-  amount: number;
+  amount: number | bigint;
   fromAccountId: string | null;
   toAccountId: string | null;
 }
@@ -13,19 +13,20 @@ export interface LedgerEntry {
  * Must run inside a Prisma $transaction so the record and balances change atomically.
  */
 export async function applyToBalances(tx: Prisma.TransactionClient, entry: LedgerEntry, direction: 1 | -1) {
+  const amount = Number(entry.amount);
   const debitsFrom = entry.type === 'EXPENSE' || entry.type === 'TRANSFER';
   const creditsTo = entry.type === 'INCOME' || entry.type === 'TRANSFER';
 
   if (debitsFrom && entry.fromAccountId) {
     await tx.account.update({
       where: { id: entry.fromAccountId },
-      data: { balance: { increment: -entry.amount * direction } },
+      data: { balance: { increment: -amount * direction } },
     });
   }
   if (creditsTo && entry.toAccountId) {
     await tx.account.update({
       where: { id: entry.toAccountId },
-      data: { balance: { increment: entry.amount * direction } },
+      data: { balance: { increment: amount * direction } },
     });
   }
 }

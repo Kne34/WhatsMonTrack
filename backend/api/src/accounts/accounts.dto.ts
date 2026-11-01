@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 const MAX_AMOUNT = 1e12;
 
@@ -14,7 +14,7 @@ export class CreateAccountDto {
   type?: string;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt({ message: "$property must be a whole number of rupiah" })
   @Min(-MAX_AMOUNT)
   @Max(MAX_AMOUNT)
   initialBalance?: number;
@@ -28,7 +28,7 @@ export class UpdateAccountDto {
   name?: string;
 
   @IsOptional()
-  @IsNumber()
+  @IsInt({ message: "$property must be a whole number of rupiah" })
   @Min(-MAX_AMOUNT)
   @Max(MAX_AMOUNT)
   balance?: number;

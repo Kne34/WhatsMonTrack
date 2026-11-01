@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { BigIntSerializerInterceptor } from './common/bigint.interceptor';
 
 /** Shared HTTP setup, used by main.ts and the integration tests so both behave identically. */
 export function configureApp(app: NestExpressApplication) {
@@ -13,5 +14,8 @@ export function configureApp(app: NestExpressApplication) {
       transform: true,
     }),
   );
+
+  // Money columns are BIGINT; serialize them as JSON numbers
+  app.useGlobalInterceptors(new BigIntSerializerInterceptor());
   return app;
 }
