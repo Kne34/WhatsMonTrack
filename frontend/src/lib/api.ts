@@ -33,6 +33,17 @@ export const login = async (data: any) => {
   return res.data;
 };
 
+/** Always resolves with the same message whether or not the email exists. */
+export const forgotPassword = async (email: string) => {
+  const res = await api.post('/auth/forgot-password', { email });
+  return res.data;
+};
+
+export const resetPassword = async (data: { email: string; otpCode: string; password: string }) => {
+  const res = await api.post('/auth/reset-password', data);
+  return res.data;
+};
+
 export const getProfile = async () => {
   const res = await api.get('/auth/me');
   return res.data;
@@ -119,6 +130,40 @@ export const fetchWhatsAppStatus = async () => {
 
 export const resetWhatsAppSession = async () => {
   const { data } = await api.post('/whatsapp/reset');
+  return data;
+};
+
+// --- Linking the user's WhatsApp number ---
+export interface PhoneLinkInfo {
+  code: string;
+  /** The exact text to send to the bot, e.g. "VERIFIKASI K7Q2MX" */
+  message: string;
+  botPhone: string;
+  /** wa.me link that opens a chat with the bot with `message` pre-filled */
+  waLink: string;
+  expiresAt: string;
+  pendingPhone: string | null;
+}
+
+export interface PhoneStatus {
+  phoneNumber: string | null;
+  botConnected: boolean;
+  pending: PhoneLinkInfo | null;
+}
+
+export const fetchPhoneStatus = async (): Promise<PhoneStatus> => {
+  const { data } = await api.get('/phone');
+  return data;
+};
+
+/** `phoneNumber` is optional: when given, only that number can complete the link. */
+export const startPhoneLink = async (phoneNumber?: string): Promise<PhoneLinkInfo> => {
+  const { data } = await api.post('/phone/link', phoneNumber ? { phoneNumber } : {});
+  return data;
+};
+
+export const unlinkPhone = async () => {
+  const { data } = await api.delete('/phone');
   return data;
 };
 
