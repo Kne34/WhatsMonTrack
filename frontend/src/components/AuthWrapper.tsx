@@ -16,6 +16,15 @@ export interface SessionUser {
 type Mode = 'LOGIN' | 'REGISTER' | 'VERIFY' | 'FORGOT' | 'RESET';
 
 const RESEND_COOLDOWN_SECONDS = 60;
+
+/** The user's IANA zone (e.g. Asia/Jakarta): the server uses it for day/month boundaries. */
+function browserTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** API errors may carry a string or (from validation) an array of strings. */
@@ -113,7 +122,7 @@ export default function AuthWrapper() {
     if (!validate({ email: true, password: 'any' })) return;
     setNeedsVerification(false);
     run(async () => {
-      const res = await login({ email: email.trim(), password });
+      const res = await login({ email: email.trim(), password, timeZone: browserTimeZone() });
       if (res.success) return signedIn(res.token);
       setError(res.message || 'Email atau password salah.');
       setNeedsVerification(res.reason === 'EMAIL_NOT_VERIFIED');
@@ -122,7 +131,7 @@ export default function AuthWrapper() {
 
   const sendVerificationCode = () =>
     run(async () => {
-      const res = await register({ email: email.trim(), password });
+      const res = await register({ email: email.trim(), password, timeZone: browserTimeZone() });
       if (!res.success) return setError(res.message || 'Gagal mengirim kode.');
       setMode('VERIFY');
       setFieldErrors({});

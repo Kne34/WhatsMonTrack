@@ -123,7 +123,6 @@ export class PhoneLinkService {
         where: { userId: orphanId, categoryName: { in: targetBudgets.map((b) => b.categoryName) } },
       });
       await tx.budget.updateMany({ where: { userId: orphanId }, data: { userId: targetId } });
-      await tx.session.deleteMany({ where: { userId: orphanId } });
       await tx.user.delete({ where: { id: orphanId } });
     });
     this.logger.log(`Merged orphan user ${orphanId} into ${targetId}`);

@@ -21,7 +21,7 @@ function setup(users: UserRow[] = []) {
     deleteMany: jest.fn(async () => ({ count: 0 })),
     findMany: jest.fn(async () => []),
   });
-  const tx = { user, account: many('account'), transaction: many('transaction'), budget: many('budget'), session: many('session') };
+  const tx = { user, account: many('account'), transaction: many('transaction'), budget: many('budget') };
   const prisma = { user, $transaction: (fn: any) => fn(tx) };
   return { service: new PhoneLinkService(prisma as any), db, moved };
 }

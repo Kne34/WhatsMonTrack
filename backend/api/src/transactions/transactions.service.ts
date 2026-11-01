@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { applyToBalances } from './ledger';
+import { DEFAULT_TIMEZONE, dayRange, monthRange, zonedParts } from '../common/time';
 import { CreateTransactionDataDto, TransactionsQueryDto, TxType, UpdateTransactionDto } from './transactions.dto';
 
 /** Below this AI confidence a transaction is saved as a draft (NEEDS_REVIEW) without touching balances. */
@@ -18,6 +19,8 @@ export interface NewTransaction {
   rawText?: string | null;
   confidence?: number;
   createdAt?: Date;
+  /** WhatsApp message id: unique, so a re-delivered message can't be recorded twice */
+  sourceMessageId?: string | null;
 }
 
 @Injectable()
@@ -32,9 +35,9 @@ export class TransactionsService {
     const where: Prisma.TransactionWhereInput = { userId };
 
     if (month && year) {
-      // month is 1-indexed; range is [start, end)
-      const start = day ? new Date(year, month - 1, day) : new Date(year, month - 1, 1);
-      const end = day ? new Date(year, month - 1, day + 1) : new Date(year, month, 1);
+      // Calendar boundaries in the user's zone (not the server's), as a UTC [start, end) range
+      const tz = await this.timezoneOf(userId);
+      const { start, end } = day ? dayRange(year, month, day, tz) : monthRange(year, month, tz);
       where.createdAt = { gte: start, lt: end };
     }
 
@@ -71,6 +74,7 @@ export class TransactionsService {
           fromAccountId: input.fromAccountId || null,
           toAccountId: input.toAccountId || null,
           rawText: input.rawText ?? null,
+          sourceMessageId: input.sourceMessageId ?? null,
           confidenceScore: confidence,
           status,
           ...(input.createdAt && { createdAt: input.createdAt }),
@@ -154,10 +158,11 @@ export class TransactionsService {
     return { success: true };
   }
 
-  /** Confirmed income/expense totals for the calendar month containing `date`. */
+  /** Confirmed income/expense totals for the calendar month (in the user's zone) containing `date`. */
   async monthlySummary(userId: string, date = new Date()) {
-    const start = new Date(date.getFullYear(), date.getMonth(), 1);
-    const end = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+    const tz = await this.timezoneOf(userId);
+    const { year, month } = zonedParts(date, tz);
+    const { start, end } = monthRange(year, month, tz);
 
     const transactions = await this.prisma.transaction.findMany({
       where: { userId, status: 'CONFIRMED', createdAt: { gte: start, lt: end } },
@@ -168,14 +173,25 @@ export class TransactionsService {
     let totalExpense = 0;
     const expenseByCategory: Record<string, number> = {};
     for (const t of transactions) {
+      const amount = Number(t.amount);
       if (t.type === 'INCOME') {
-        totalIncome += t.amount;
+        totalIncome += amount;
       } else if (t.type === 'EXPENSE') {
-        totalExpense += t.amount;
-        expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + t.amount;
+        totalExpense += amount;
+        expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + amount;
       }
     }
-    return { totalIncome, totalExpense, expenseByCategory };
+    return { totalIncome, totalExpense, expenseByCategory, year, month, timezone: tz };
+  }
+
+  /** Has a transaction already been recorded from this WhatsApp message? */
+  async existsForMessage(sourceMessageId: string) {
+    return (await this.prisma.transaction.count({ where: { sourceMessageId } })) > 0;
+  }
+
+  private async timezoneOf(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+    return user?.timezone || DEFAULT_TIMEZONE;
   }
 
   private async findOwned(userId: string, id: string) {

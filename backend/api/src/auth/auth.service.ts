@@ -29,7 +29,7 @@ export class AuthService {
   ) {}
 
   /** Re-registering an *unverified* email acts as "resend code" (e.g. the email never arrived). */
-  async register({ email, password }: RegisterDto) {
+  async register({ email, password, timeZone }: RegisterDto) {
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing?.isVerified) {
       return { success: false, message: 'Email sudah terdaftar. Silakan masuk.' };
@@ -47,6 +47,7 @@ export class AuthService {
       otpCode,
       otpExpiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000),
       otpAttempts: 0,
+      ...(timeZone && { timezone: timeZone }),
     };
     if (existing) {
       await this.prisma.user.update({ where: { id: existing.id }, data: fields });
@@ -120,7 +121,7 @@ export class AuthService {
     return this.loginResult(user);
   }
 
-  async login({ email, password }: LoginDto) {
+  async login({ email, password, timeZone }: LoginDto) {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) return { success: false, message: 'Email atau password salah.' };
 
@@ -129,6 +130,9 @@ export class AuthService {
     if (!isMatch) return { success: false, message: 'Email atau password salah.' };
     if (!user.isVerified) {
       return { success: false, reason: 'EMAIL_NOT_VERIFIED', message: 'Email belum diverifikasi.' };
+    }
+    if (timeZone && timeZone !== user.timezone) {
+      await this.prisma.user.update({ where: { id: user.id }, data: { timezone: timeZone } });
     }
 
     return this.loginResult(user);
