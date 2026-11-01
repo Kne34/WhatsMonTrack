@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
+import { renderOtpEmail, type OtpPurpose } from './otp-email';
 
 @Injectable()
 export class MailService {
@@ -17,23 +18,14 @@ export class MailService {
     },
   });
 
-  async sendOtp(to: string, otpCode: string, ttlMinutes: number, purpose: 'verify' | 'reset' = 'verify') {
-    const subject = purpose === 'reset' ? 'Reset password WhatsMonTrack' : 'Verifikasi akun WhatsMonTrack';
-    const intro =
-      purpose === 'reset'
-        ? 'Gunakan kode berikut untuk membuat password baru'
-        : 'Gunakan kode berikut untuk memverifikasi email Anda';
+  async sendOtp(to: string, otpCode: string, ttlMinutes: number, purpose: OtpPurpose = 'verify') {
+    const { subject, html, text } = renderOtpEmail({ code: otpCode, ttlMinutes, purpose });
     const info = await this.transporter.sendMail({
       from: process.env.SMTP_FROM || '"WhatsMonTrack" <noreply@whatsmontrack.com>',
       to,
-      subject: `${otpCode} adalah kode ${purpose === 'reset' ? 'reset password' : 'verifikasi'} Anda`,
-      text: `${intro}:
-
-${otpCode}
-
-Kode berlaku ${ttlMinutes} menit. Abaikan email ini jika Anda tidak memintanya.
-
-${subject}`,
+      subject,
+      html,
+      text, // plain-text alternative for clients that don't render HTML
     });
 
     // Ethereal (test SMTP) never delivers to real inboxes; it gives a URL where the email can be read.
