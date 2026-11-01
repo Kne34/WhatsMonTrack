@@ -304,12 +304,13 @@ export interface MenuItem {
 }
 
 /** Minimal accessible dropdown: closes on outside click, Escape, or selection. */
-export function Menu({ trigger, items, align = "end", header, className }: {
+export function Menu({ trigger, items, align = "end", header, footer, className }: {
   /** Render the trigger button and spread `triggerProps` onto it (onClick + ARIA state). */
   trigger: (props: { open: boolean; triggerProps: { onClick: () => void; "aria-expanded": boolean; "aria-haspopup": "menu" } }) => React.ReactNode;
   items: MenuItem[];
   align?: "start" | "end";
   header?: React.ReactNode;
+  footer?: React.ReactNode;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -363,6 +364,7 @@ export function Menu({ trigger, items, align = "end", header, className }: {
               </span>
             </button>
           ))}
+          {footer && <div className="mt-1 border-t border-border px-3 py-2.5">{footer}</div>}
         </div>
       )}
     </div>

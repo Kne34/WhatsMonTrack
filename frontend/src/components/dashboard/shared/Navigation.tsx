@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Inbox, LayoutGrid, LogOut, MessageCircle, Pl
 import { cn } from "@/lib/utils";
 import { formatMonth, formatPhone } from "@/lib/format";
 import { Button, IconButton, Menu, focusRing, type MenuItem } from "../../common/ui";
+import { ThemeSwitcher } from "../../theme";
 
 export type Tab = "dashboard" | "transactions" | "inbox";
 
@@ -77,6 +78,10 @@ export function Sidebar({ active, onNavigate, reviewCount, ...status }: StatusPr
       </nav>
 
       <div className="space-y-1 border-t border-border/70 p-3">
+        <div className="flex items-center justify-between gap-2 px-3 py-2">
+          <span className="text-xs text-muted-foreground">Tema</span>
+          <ThemeSwitcher compact />
+        </div>
         <button type="button" onClick={status.onPhoneClick}
           className={cn("flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60", focusRing)}>
           <Smartphone className="mt-0.5 size-4 text-muted-foreground" aria-hidden />
@@ -135,6 +140,12 @@ export function MobileAccountMenu(status: StatusProps) {
     <Menu
       items={items}
       header={<p className="truncate text-xs text-muted-foreground">{status.email}</p>}
+      footer={
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Tema</p>
+          <ThemeSwitcher className="flex w-full" />
+        </div>
+      }
       trigger={({ triggerProps }) => (
         <IconButton label="Akun" {...triggerProps}>
           <User className="size-5" />

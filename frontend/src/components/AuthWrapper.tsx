@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { forgotPassword, getProfile, login, register, resetPassword, verifyOtp } from '@/lib/api';
 import Dashboard from './Dashboard';
 import { Alert, Button, PasswordField, Skeleton, TextField } from './common/ui';
+import { ThemeSwitcher } from './theme';
 
 export interface SessionUser {
   id: string;
@@ -229,7 +230,10 @@ export default function AuthWrapper() {
     <div className="min-h-screen bg-background text-foreground">
       {/* Content sits near the top (not vertically centered) so mobile keyboards don't cover the button */}
       <div className="mx-auto w-full max-w-sm px-4 pt-14 pb-12 sm:pt-24">
-        <p className="mb-8 font-heading text-lg font-semibold tracking-tight">WhatsMonTrack</p>
+        <div className="mb-8 flex items-center justify-between gap-4">
+          <p className="font-heading text-lg font-semibold tracking-tight">WhatsMonTrack</p>
+          <ThemeSwitcher compact />
+        </div>
 
         <h1 className="font-heading text-2xl font-semibold tracking-tight">{title}</h1>
         {subtitle && <p className="mt-1.5 text-sm text-muted-foreground">{subtitle}</p>}
