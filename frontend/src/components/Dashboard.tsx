@@ -1,408 +1,360 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { fetchTransactions, fetchAccounts, confirmTransaction, createAccount, updateTransaction, fetchBudgets, setBudget, createTransaction, deleteTransaction, updateAccount, deleteAccount, deleteBudget, fetchWhatsAppStatus } from "@/lib/api";
-
-import DashboardHeader from "./dashboard/shared/DashboardHeader";
-import BottomNav from "./dashboard/shared/BottomNav";
+import {
+  confirmTransaction, createAccount, createTransaction, deleteAccount, deleteBudget, deleteTransaction,
+  fetchAccounts, fetchBudgets, fetchPhoneStatus, fetchTransactions, fetchWhatsAppStatus, setBudget,
+  updateAccount, updateTransaction, type PhoneStatus,
+} from "@/lib/api";
+import { categoryLabel, formatRupiah } from "@/lib/format";
+import type { SessionUser } from "./AuthWrapper";
+import { Skeleton } from "./common/ui";
+import { AddMenu, BottomTabs, MobileAccountMenu, MonthSwitcher, NAV_ITEMS, Sidebar, type Tab } from "./dashboard/shared/Navigation";
 import HomeView from "./dashboard/views/HomeView";
-import LedgerView from "./dashboard/views/LedgerView";
-import InboxView from "./dashboard/views/InboxView";
-import AddAccountModal from "./dashboard/modals/AddAccountModal";
-import EditTransactionModal from "./dashboard/modals/EditTransactionModal";
-import EditAccountModal from "./dashboard/modals/EditAccountModal";
-import SetBudgetModal from "./dashboard/modals/SetBudgetModal";
-import AddTransactionModal from "./dashboard/modals/AddTransactionModal";
-import ConfirmModal from "./dashboard/modals/ConfirmModal";
-import AlertModal from "./dashboard/modals/AlertModal";
+import LedgerView, { type LedgerTx } from "./dashboard/views/LedgerView";
+import InboxView, { type ReviewTx } from "./dashboard/views/InboxView";
+import {
+  AccountDialog, BudgetDialog, ConfirmDialog, TransactionDialog, categoryOptions,
+  type AccountLike, type BudgetLike, type TransactionInput, type TransactionLike,
+} from "./dashboard/dialogs";
 import WhatsAppStatusModal from "./dashboard/modals/WhatsAppStatusModal";
-import FloatingActionMenu from "./dashboard/shared/FloatingActionMenu";
+import LinkWhatsAppModal from "./dashboard/modals/LinkWhatsAppModal";
 
-export default function Dashboard() {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ApiTx = any;
+type WaStatus = { connected: boolean; qr: string; canManage?: boolean };
+
+type DialogState =
+  | { kind: "none" }
+  | { kind: "account"; account: AccountLike | null }
+  | { kind: "transaction"; tx: TransactionLike | null }
+  | { kind: "budget"; budget: BudgetLike | null }
+  | { kind: "confirm"; title: string; description: string; confirmLabel: string; action: () => Promise<void> }
+  | { kind: "link" }
+  | { kind: "bot" };
+
+const PAGE_TITLES: Record<Tab, string> = { dashboard: "Ringkasan", transactions: "Transaksi", inbox: "Perlu ditinjau" };
+const REFRESH_MS = 15_000;
+
+export default function Dashboard({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'dashboard';
+  const tabParam = searchParams.get("tab") as Tab | null;
+  const activeTab: Tab = NAV_ITEMS.some((n) => n.id === tabParam) ? (tabParam as Tab) : "dashboard";
+  const navigate = (tab: Tab) => router.push(`/?tab=${tab}`);
 
-  const setActiveTab = (tab: string) => {
-    router.push(`/?tab=${tab}`);
-  };
-
-  const [monthlyTxs, setMonthlyTxs] = useState<any[]>([]);
-  const [tableTxs, setTableTxs] = useState<any[]>([]);
-  const [accounts, setAccounts] = useState<any[]>([]);
-  const [budgets, setBudgets] = useState<any[]>([]);
-  const [waStatus, setWaStatus] = useState<{ connected: boolean; qr: string; canManage?: boolean } | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  // Filters and Pagination
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
+  const [year, setYear] = useState(new Date().getFullYear());
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(15);
+
+  const [monthlyTxs, setMonthlyTxs] = useState<ApiTx[]>([]);
+  const [pageTxs, setPageTxs] = useState<ApiTx[]>([]);
   const [totalPages, setTotalPages] = useState(1);
+  const [accounts, setAccounts] = useState<AccountLike[]>([]);
+  const [budgets, setBudgets] = useState<BudgetLike[]>([]);
+  const [waStatus, setWaStatus] = useState<WaStatus | null>(null);
+  const [phoneStatus, setPhoneStatus] = useState<PhoneStatus | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
-  // Add Account State
-  const [newAccountName, setNewAccountName] = useState("");
-  const [newAccountBalance, setNewAccountBalance] = useState("");
-  const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
+  const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
+  const closeDialog = () => setDialog({ kind: "none" });
 
-  // Edit Transaction State
-  const [editingTx, setEditingTx] = useState<any>(null);
-  const [editTxData, setEditTxData] = useState<any>({});
-  const [isEditTxOpen, setIsEditTxOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notify = useCallback((message: string) => {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 4000);
+  }, []);
 
-  // Edit Account State
-  const [accountToEdit, setAccountToEdit] = useState<any>(null);
-  const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
-
-  // Budget State
-  const [budgetToEdit, setBudgetToEdit] = useState<any>(null);
-  const [isSetBudgetOpen, setIsSetBudgetOpen] = useState(false);
-  const [isAddTxOpen, setIsAddTxOpen] = useState(false);
-
-  // Global Confirm/Alert State
-  const [confirmState, setConfirmState] = useState<{isOpen: boolean, txId: string, type?: 'single' | 'inbox'}>({isOpen: false, txId: '', type: 'single'});
-  const [alertState, setAlertState] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
-
-  // WA Status Modal
-  const [isWaModalOpen, setIsWaModalOpen] = useState(false);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
-      const [monthlyData, tableData, accs, budgs, wa] = await Promise.all([
-        fetchTransactions({ month: selectedMonth, year: selectedYear, page: 1, limit: 1000 }),
-        fetchTransactions({ month: selectedMonth, year: selectedYear, day: selectedDay || undefined, page, limit }),
+      const [monthly, table, accs, budgs, wa, phone] = await Promise.all([
+        fetchTransactions({ month, year, page: 1, limit: 1000 }),
+        fetchTransactions({ month, year, day: selectedDay || undefined, page, limit }),
         fetchAccounts(),
         fetchBudgets(),
-        fetchWhatsAppStatus().catch(() => null)
+        fetchWhatsAppStatus().catch(() => null),
+        fetchPhoneStatus().catch(() => null),
       ]);
-      setMonthlyTxs(monthlyData.data || monthlyData);
-      setTableTxs(tableData.data || tableData);
-      setTotalPages(tableData.totalPages || 1);
+      setMonthlyTxs(monthly.data ?? monthly);
+      setPageTxs((table.data ?? table).filter((t: ApiTx) => t.status === "CONFIRMED"));
+      setTotalPages(table.totalPages || 1);
       setAccounts(accs);
       setBudgets(budgs);
       if (wa) setWaStatus(wa);
+      if (phone) setPhoneStatus(phone);
+      setLoadError(false);
     } catch (e) {
       console.error(e);
+      setLoadError(true);
     } finally {
-      setLoading(false);
+      setLoaded(true);
     }
-  };
+  }, [month, year, selectedDay, page, limit]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount/filter change, then poll
     loadData();
-    const interval = setInterval(loadData, 5000);
-    return () => clearInterval(interval);
-  }, [selectedMonth, selectedYear, selectedDay, page, limit]);
+    const interval = setInterval(loadData, REFRESH_MS);
+    const onFocus = () => loadData();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [loadData]);
 
-  useEffect(() => {
+  const changeMonth = (m: number, y: number) => {
+    setMonth(m);
+    setYear(y);
     setSelectedDay(null);
     setPage(1);
-  }, [selectedMonth, selectedYear]);
-
-  useEffect(() => {
-    const handleOpenBudget = () => { setBudgetToEdit(null); setIsSetBudgetOpen(true); };
-    const handleOpenAddTx = () => setIsAddTxOpen(true);
-    const handleOpenAddAcc = () => setIsAddAccountOpen(true);
-    
-    document.addEventListener('openSetBudgetModal', handleOpenBudget);
-    document.addEventListener('openAddTransactionModal', handleOpenAddTx);
-    document.addEventListener('openAddAccountModal', handleOpenAddAcc);
-    
-    return () => {
-      document.removeEventListener('openSetBudgetModal', handleOpenBudget);
-      document.removeEventListener('openAddTransactionModal', handleOpenAddTx);
-      document.removeEventListener('openAddAccountModal', handleOpenAddAcc);
-    };
-  }, []);
-
-  const handleConfirm = async (id: string) => {
-    await confirmTransaction(id);
-    loadData();
   };
 
-  const handleAddAccount = async () => {
-    try {
-      await createAccount(newAccountName, "BANK", Number(newAccountBalance));
-      setNewAccountName("");
-      setNewAccountBalance("");
-      setIsAddAccountOpen(false);
-      loadData();
-    } catch (e) {
-      console.error(e);
-    }
+  const confirmedMonthly = useMemo(() => monthlyTxs.filter((t: ApiTx) => t.status === "CONFIRMED"), [monthlyTxs]);
+  const reviewItems = useMemo(() => monthlyTxs.filter((t: ApiTx) => t.status === "NEEDS_REVIEW"), [monthlyTxs]);
+  const categories = useMemo(
+    () => categoryOptions([...monthlyTxs.map((t: ApiTx) => t.category), ...budgets.map((b) => b.categoryName)]),
+    [monthlyTxs, budgets],
+  );
+
+  // ---------- Actions (throwing lets dialogs show the error and stay open) ----------
+
+  const saveAccount = (account: AccountLike | null) => async (name: string, balance: number) => {
+    if (account) await updateAccount(account.id, { name, balance });
+    else await createAccount(name, "BANK", balance);
+    await loadData();
+    notify(account ? "Rekening diperbarui" : "Rekening ditambahkan");
   };
 
-  const handleEditAccountClick = (acc: any) => {
-    setAccountToEdit(acc);
-    setIsEditAccountOpen(true);
-  };
-
-  const handleUpdateAccount = async (id: string, name: string, balance: number) => {
-    try {
-      await updateAccount(id, { name, balance });
-      loadData();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleDeleteAccount = async (id: string) => {
-    try {
-      await deleteAccount(id);
-      loadData();
-    } catch (e: any) {
-      setAlertState({
-        isOpen: true,
-        message: e.response?.data?.message || 'Failed to delete account. Ensure it has no transactions.'
-      });
-    }
-  };
-
-  const handleEditBudgetClick = (budget: any) => {
-    setBudgetToEdit(budget);
-    setIsSetBudgetOpen(true);
-  };
-
-  const handleEditClick = (tx: any) => {
-    setEditingTx(tx);
-    setEditTxData({
-      type: tx.type,
-      category: tx.category,
-      subcategory: tx.subcategory || '',
-      amount: tx.amount,
-      fromAccountId: tx.fromAccountId || '',
-      toAccountId: tx.toAccountId || '',
-      createdAt: tx.createdAt || ''
+  const askDeleteAccount = (account: AccountLike) =>
+    setDialog({
+      kind: "confirm",
+      title: `Hapus rekening ${account.name}?`,
+      description: "Rekening yang masih memiliki transaksi tidak bisa dihapus. Hapus transaksinya terlebih dahulu.",
+      confirmLabel: "Hapus rekening",
+      action: async () => {
+        await deleteAccount(account.id);
+        await loadData();
+        notify("Rekening dihapus");
+      },
     });
-    setIsEditTxOpen(true);
+
+  const saveTransaction = (tx: TransactionLike | null) => async (data: TransactionInput) => {
+    if (tx) await updateTransaction(tx.id, data);
+    else await createTransaction(data);
+    await loadData();
+    notify(tx ? "Transaksi diperbarui" : "Transaksi ditambahkan");
   };
 
-  const handleSaveEdit = async () => {
-    if (!editingTx) return;
+  const askDeleteTransaction = (tx: { id: string; amount: number; category: string; subcategory?: string | null }) =>
+    setDialog({
+      kind: "confirm",
+      title: "Hapus transaksi?",
+      description: `${tx.subcategory || categoryLabel(tx.category)} sebesar ${formatRupiah(tx.amount)} akan dihapus dan saldo rekening dikembalikan.`,
+      confirmLabel: "Hapus",
+      action: async () => {
+        await deleteTransaction(tx.id);
+        await loadData();
+        notify("Transaksi dihapus");
+      },
+    });
+
+  const askDeleteAllReview = () =>
+    setDialog({
+      kind: "confirm",
+      title: `Hapus ${reviewItems.length} transaksi yang perlu ditinjau?`,
+      description: "Transaksi ini belum memengaruhi saldo. Tindakan ini tidak bisa dibatalkan.",
+      confirmLabel: "Hapus semua",
+      action: async () => {
+        for (const t of reviewItems) await deleteTransaction(t.id);
+        await loadData();
+        notify("Semua transaksi yang perlu ditinjau dihapus");
+      },
+    });
+
+  const confirmReview = async (tx: ReviewTx) => {
     try {
-      await updateTransaction(editingTx.id, {
-        ...editTxData,
-        amount: Number(editTxData.amount),
-        fromAccountId: editTxData.fromAccountId || null,
-        toAccountId: editTxData.toAccountId || null
-      });
-      setIsEditTxOpen(false);
-      setEditingTx(null);
-      loadData();
-    } catch (e) {
-      console.error(e);
+      await confirmTransaction(tx.id);
+      await loadData();
+      notify("Transaksi dikonfirmasi, saldo diperbarui");
+    } catch {
+      notify("Gagal mengonfirmasi. Coba lagi.");
     }
   };
 
-  const handleSaveBudget = async (cat: string, limit: number) => {
-    try {
-      await setBudget(cat, limit);
-      loadData();
-    } catch (e) {
-      console.error(e);
-    }
+  const saveBudget = async (category: string, limitValue: number) => {
+    await setBudget(category, limitValue);
+    await loadData();
+    notify("Anggaran disimpan");
   };
 
-  const handleDeleteBudget = async (id: string) => {
-    try {
-      await deleteBudget(id);
-      loadData();
-    } catch (e) {
-      console.error(e);
-    }
+  const askDeleteBudget = (budget: BudgetLike) =>
+    setDialog({
+      kind: "confirm",
+      title: `Hapus anggaran ${categoryLabel(budget.categoryName)}?`,
+      description: "Transaksi tidak ikut terhapus.",
+      confirmLabel: "Hapus anggaran",
+      action: async () => {
+        await deleteBudget(budget.id);
+        await loadData();
+        notify("Anggaran dihapus");
+      },
+    });
+
+  const statusProps = {
+    email: user.email,
+    phoneNumber: phoneStatus?.phoneNumber ?? null,
+    isAdmin: waStatus?.canManage ?? user.isAdmin,
+    botConnected: waStatus ? waStatus.connected : null,
+    onPhoneClick: () => setDialog({ kind: "link" }),
+    onBotClick: () => setDialog({ kind: "bot" }),
+    onLogout,
   };
 
-  const handleSaveNewTx = async (data: any) => {
-    try {
-      await createTransaction(data);
-      loadData();
-    } catch (e) {
-      console.error(e);
-    }
+  const addActions = {
+    onAddTransaction: () => setDialog({ kind: "transaction", tx: null }),
+    onAddAccount: () => setDialog({ kind: "account", account: null }),
+    onAddBudget: () => setDialog({ kind: "budget", budget: null }),
   };
-
-  const handleDeleteClick = (id: string) => {
-    setConfirmState({ isOpen: true, txId: id, type: 'single' });
-  };
-
-  const handleDeleteAllInboxClick = () => {
-    setConfirmState({ isOpen: true, txId: 'ALL_INBOX', type: 'inbox' });
-  };
-
-  const confirmDeleteTransaction = async () => {
-    try {
-      if (confirmState.type === 'inbox') {
-        const needsReviewIds = needsReviewTxs.map(t => t.id);
-        // Delete sequentially to avoid overwhelming the database/Prisma
-        for (const id of needsReviewIds) {
-          await deleteTransaction(id);
-        }
-      } else {
-        await deleteTransaction(confirmState.txId);
-      }
-      setConfirmState({isOpen: false, txId: '', type: 'single'});
-      loadData();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // Derive data from MONTHLY transactions for Analytics, Inbox, and Calendar
-  const monthlyConfirmedTxs = monthlyTxs.filter(t => t.status === "CONFIRMED");
-  const needsReviewTxs = monthlyTxs.filter(t => t.status === "NEEDS_REVIEW");
-
-  // Derive table transactions from TABLE data
-  const tableConfirmedTxs = tableTxs.filter(t => t.status === "CONFIRMED");
-
-  const totalBalance = accounts.reduce((acc, a) => acc + a.balance, 0);
-
-  const formatRupiah = (val: number) =>
-    new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(val);
-
-  if (loading && monthlyTxs.length === 0) {
-    return (
-      <div className="flex flex-col h-screen bg-background items-center justify-center animate-pulse">
-        <div className="w-12 h-12 rounded-full border-4 border-muted border-t-primary animate-spin mb-4"></div>
-        <p className="text-muted-foreground font-mono text-sm">Syncing Ledger...</p>
-      </div>
-    );
-  }
 
   return (
-    <div className="flex flex-col h-screen bg-background text-foreground overflow-hidden font-sans antialiased">
-      <DashboardHeader
-        selectedMonth={selectedMonth}
-        selectedYear={selectedYear}
-        setSelectedMonth={setSelectedMonth}
-        setSelectedYear={setSelectedYear}
-        waStatus={waStatus}
-        onWaStatusClick={() => setIsWaModalOpen(true)}
-      />
+    <div className="min-h-screen bg-background text-foreground">
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:px-3 focus:py-2 focus:shadow">
+        Lewati ke konten
+      </a>
 
-      <main className="flex-1 overflow-y-auto px-6 pb-28">
-        {activeTab === "dashboard" && (
-          <HomeView
-            monthlyTxs={monthlyTxs}
-            budgets={budgets}
-            selectedMonth={selectedMonth}
-            selectedYear={selectedYear}
-            totalBalance={totalBalance}
-            accounts={accounts}
-            formatRupiah={formatRupiah}
-            onEditAccount={handleEditAccountClick}
-            onEditBudget={handleEditBudgetClick}
-          />
+      <Sidebar active={activeTab} onNavigate={navigate} reviewCount={reviewItems.length} {...statusProps} />
+
+      <div className="md:pl-60">
+        {/* Phone top bar */}
+        <div className="flex items-center justify-between border-b border-border/70 bg-card px-4 py-2 md:hidden">
+          <span className="font-heading text-base font-semibold tracking-tight">WhatsMonTrack</span>
+          <MobileAccountMenu {...statusProps} />
+        </div>
+
+        <main id="main" className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-8 md:pb-12">
+          <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <h1 className="font-heading text-2xl font-semibold tracking-tight">{PAGE_TITLES[activeTab]}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <MonthSwitcher month={month} year={year} onChange={changeMonth} />
+              <AddMenu {...addActions} />
+            </div>
+          </header>
+
+          {loadError && loaded && (
+            <div role="alert" className="mb-6 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              Gagal memuat data terbaru. Kami akan mencoba lagi otomatis.
+            </div>
+          )}
+
+          {!loaded ? (
+            <div className="space-y-6" aria-busy="true" aria-label="Memuat data">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}
+              </div>
+              <Skeleton className="h-72" />
+            </div>
+          ) : activeTab === "dashboard" ? (
+            <HomeView
+              monthlyTxs={monthlyTxs}
+              accounts={accounts}
+              budgets={budgets}
+              month={month}
+              year={year}
+              phoneLinked={!!phoneStatus?.phoneNumber}
+              onEditAccount={(account) => setDialog({ kind: "account", account })}
+              onEditBudget={(budget) => setDialog({ kind: "budget", budget })}
+              onLinkPhone={() => setDialog({ kind: "link" })}
+              {...addActions}
+            />
+          ) : activeTab === "transactions" ? (
+            <LedgerView
+              month={month}
+              year={year}
+              monthlyTxs={confirmedMonthly as LedgerTx[]}
+              pageTxs={pageTxs as LedgerTx[]}
+              selectedDay={selectedDay}
+              onSelectDay={(d) => { setSelectedDay(d); setPage(1); }}
+              page={page}
+              totalPages={totalPages}
+              limit={limit}
+              onPageChange={setPage}
+              onLimitChange={(l) => { setLimit(l); setPage(1); }}
+              onAdd={addActions.onAddTransaction}
+              onEdit={(tx) => setDialog({ kind: "transaction", tx: tx as unknown as TransactionLike })}
+              onDelete={askDeleteTransaction}
+            />
+          ) : (
+            <InboxView
+              items={reviewItems as ReviewTx[]}
+              onConfirm={confirmReview}
+              onEdit={(tx) => setDialog({ kind: "transaction", tx: tx as unknown as TransactionLike })}
+              onDelete={askDeleteTransaction}
+              onDeleteAll={askDeleteAllReview}
+            />
+          )}
+        </main>
+      </div>
+
+      <BottomTabs active={activeTab} onNavigate={navigate} reviewCount={reviewItems.length} />
+
+      {/* Feedback after actions */}
+      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4 md:bottom-6 md:pl-60">
+        {toast && (
+          <div role="status" className="rounded-xl bg-foreground px-4 py-2.5 text-sm text-background shadow-lg">{toast}</div>
         )}
+      </div>
 
-        {activeTab === "inbox" && (
-          <InboxView
-            needsReviewTxs={needsReviewTxs}
-            handleConfirm={handleConfirm}
-            handleEditClick={handleEditClick}
-            handleDeleteClick={handleDeleteClick}
-            handleDeleteAllClick={handleDeleteAllInboxClick}
-            formatRupiah={formatRupiah}
-          />
-        )}
-
-        {activeTab === "transactions" && (
-          <LedgerView
-            selectedMonth={selectedMonth}
-            selectedYear={selectedYear}
-            monthlyConfirmedTxs={monthlyConfirmedTxs}
-            tableConfirmedTxs={tableConfirmedTxs}
-            selectedDay={selectedDay}
-            setSelectedDay={setSelectedDay}
-            limit={limit}
-            page={page}
-            totalPages={totalPages}
-            setLimit={setLimit}
-            setPage={setPage}
-            handleEditClick={handleEditClick}
-            handleDeleteClick={handleDeleteClick}
-            formatRupiah={formatRupiah}
-          />
-        )}
-      </main>
-
-      <BottomNav
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        needsReviewCount={needsReviewTxs.length}
-      />
-
-      <FloatingActionMenu />
-
-      <AddAccountModal
-        isOpen={isAddAccountOpen}
-        setIsOpen={setIsAddAccountOpen}
-        newAccountName={newAccountName}
-        setNewAccountName={setNewAccountName}
-        newAccountBalance={newAccountBalance}
-        setNewAccountBalance={setNewAccountBalance}
-        handleAddAccount={handleAddAccount}
-      />
-
-      <EditTransactionModal
-        isOpen={isEditTxOpen}
-        setIsOpen={setIsEditTxOpen}
-        editTxData={editTxData}
-        setEditTxData={setEditTxData}
-        accounts={accounts}
-        handleSaveEdit={handleSaveEdit}
-      />
-
-      <SetBudgetModal
-        isOpen={isSetBudgetOpen}
-        onClose={() => setIsSetBudgetOpen(false)}
-        onSave={handleSaveBudget}
-        initialBudget={budgetToEdit}
-        onDelete={handleDeleteBudget}
-      />
-
-      <EditAccountModal
-        isOpen={isEditAccountOpen}
-        setIsOpen={setIsEditAccountOpen}
-        account={accountToEdit}
-        onSave={handleUpdateAccount}
-        onDelete={handleDeleteAccount}
-      />
-
-      <AddTransactionModal
-        isOpen={isAddTxOpen}
-        onClose={() => setIsAddTxOpen(false)}
-        onSave={handleSaveNewTx}
-        accounts={accounts}
-      />
-
-      <ConfirmModal
-        isOpen={confirmState.isOpen}
-        onClose={() => setConfirmState({ isOpen: false, txId: '', type: 'single' })}
-        onConfirm={confirmDeleteTransaction}
-        title={confirmState.type === 'inbox' ? "Delete All Inbox Items" : "Delete Transaction"}
-        description={confirmState.type === 'inbox' ? "Are you sure you want to delete all items in the inbox? This action cannot be undone." : "Are you sure you want to delete this transaction? This will reverse its balance impact."}
-        confirmText="Delete"
-      />
-
-      <AlertModal
-        isOpen={alertState.isOpen}
-        onClose={() => setAlertState({ isOpen: false, message: '' })}
-        title="Action Failed"
-        description={alertState.message}
-      />
-
-      <WhatsAppStatusModal
-        isOpen={isWaModalOpen}
-        onClose={() => setIsWaModalOpen(false)}
-        status={waStatus}
-        onResetComplete={() => {
-          // It will poll automatically, but we can fast-track a reload
-          loadData();
-        }}
-      />
+      {/* Dialogs (mounted only while open, so their fields always start fresh) */}
+      {dialog.kind === "account" && (
+        <AccountDialog
+          account={dialog.account}
+          onClose={closeDialog}
+          onSave={saveAccount(dialog.account)}
+          onDelete={dialog.account ? () => askDeleteAccount(dialog.account!) : undefined}
+        />
+      )}
+      {dialog.kind === "transaction" && (
+        <TransactionDialog
+          transaction={dialog.tx}
+          accounts={accounts}
+          categories={categories}
+          onClose={closeDialog}
+          onSave={saveTransaction(dialog.tx)}
+          onAddAccount={() => setDialog({ kind: "account", account: null })}
+        />
+      )}
+      {dialog.kind === "budget" && (
+        <BudgetDialog
+          budget={dialog.budget}
+          categories={categories}
+          onClose={closeDialog}
+          onSave={saveBudget}
+          onDelete={dialog.budget ? () => askDeleteBudget(dialog.budget!) : undefined}
+        />
+      )}
+      {dialog.kind === "confirm" && (
+        <ConfirmDialog
+          open
+          title={dialog.title}
+          description={dialog.description}
+          confirmLabel={dialog.confirmLabel}
+          onConfirm={dialog.action}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog.kind === "link" && (
+        <LinkWhatsAppModal isOpen onClose={closeDialog} status={phoneStatus} onChanged={loadData} />
+      )}
+      {dialog.kind === "bot" && (
+        <WhatsAppStatusModal onClose={closeDialog} status={waStatus} onChanged={loadData} />
+      )}
     </div>
   );
 }

@@ -1,331 +1,332 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { getProfile, login, register, verifyOtp } from '@/lib/api';
+import React, { useCallback, useEffect, useState } from 'react';
+import { forgotPassword, getProfile, login, register, resetPassword, verifyOtp } from '@/lib/api';
 import Dashboard from './Dashboard';
-import { Mail, Lock, Phone, KeyRound, Loader2, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Alert, Button, PasswordField, Skeleton, TextField } from './common/ui';
+
+export interface SessionUser {
+  id: string;
+  email: string;
+  phoneNumber: string | null;
+  isAdmin: boolean;
+}
+
+type Mode = 'LOGIN' | 'REGISTER' | 'VERIFY' | 'FORGOT' | 'RESET';
+
+const RESEND_COOLDOWN_SECONDS = 60;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** API errors may carry a string or (from validation) an array of strings. */
+function errorMessage(err: unknown): string {
+  const msg = (err as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
+  if (Array.isArray(msg)) return msg.join('. ');
+  return msg || 'Tidak dapat terhubung ke server. Periksa koneksi Anda.';
+}
+
+const COPY: Record<Mode, { title: string; subtitle: string }> = {
+  LOGIN: { title: 'Masuk', subtitle: 'Lanjutkan mencatat keuangan Anda.' },
+  REGISTER: { title: 'Buat akun', subtitle: 'Catat pemasukan dan pengeluaran cukup lewat chat WhatsApp.' },
+  VERIFY: { title: 'Verifikasi email', subtitle: '' },
+  FORGOT: { title: 'Lupa password', subtitle: 'Masukkan email akun Anda. Kami akan mengirim kode untuk membuat password baru.' },
+  RESET: { title: 'Buat password baru', subtitle: '' },
+};
 
 export default function AuthWrapper() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState<'LOGIN' | 'REGISTER' | 'VERIFY'>('LOGIN');
+  const [mode, setMode] = useState<Mode>('LOGIN');
 
-  // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [otpCode, setOtpCode] = useState('');
-  const [phoneCode, setPhoneCode] = useState('');
+  const [code, setCode] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; code?: string }>({});
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [notice, setNotice] = useState('');
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-      const profile = await getProfile();
-      setUser(profile);
-    } catch (err) {
+      if (localStorage.getItem('token')) setUser(await getProfile());
+    } catch {
       localStorage.removeItem('token');
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time session restore from localStorage (browser-only)
+    checkAuth();
+  }, [checkAuth]);
+
+  // Countdown for "Kirim ulang kode"
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  const go = (next: Mode) => {
+    setMode(next);
+    setError('');
+    setNotice('');
+    setFieldErrors({});
+    setNeedsVerification(false);
+    if (next === 'VERIFY' || next === 'RESET') setCode('');
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const signedIn = async (token: string) => {
+    localStorage.setItem('token', token);
+    setLoading(true);
+    await checkAuth();
+  };
+
+  /** Client-side checks so obvious mistakes are shown next to the field, before a round trip. */
+  const validate = (fields: { email?: boolean; password?: 'any' | 'new'; code?: boolean }) => {
+    const errs: typeof fieldErrors = {};
+    if (fields.email && !EMAIL_RE.test(email.trim())) errs.email = 'Masukkan alamat email yang valid.';
+    if (fields.password === 'any' && !password) errs.password = 'Masukkan password Anda.';
+    if (fields.password === 'new' && password.length < 8) errs.password = 'Password minimal 8 karakter.';
+    if (fields.code && !/^\d{6}$/.test(code)) errs.code = 'Masukkan 6 digit kode.';
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const run = async (action: () => Promise<void>) => {
     setIsSubmitting(true);
     setError('');
     try {
-      const res = await login({ email, password });
-      if (res.success) {
-        localStorage.setItem('token', res.token);
-        await checkAuth();
-      } else {
-        setError(res.message || 'Login failed');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Network error');
+      await action();
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
-    setError('');
-    try {
-      let formattedPhone = phoneNumber;
-      if (formattedPhone.startsWith('0')) {
-        formattedPhone = '62' + formattedPhone.substring(1);
-      } else if (!formattedPhone.startsWith('62')) {
-        formattedPhone = '62' + formattedPhone;
-      }
-
-      const res = await register({ email, password, phoneNumber: formattedPhone });
-      if (res.success) {
-        setSuccess(res.message || 'Kode verifikasi telah dikirim ke email dan WhatsApp Anda.');
-        setMode('VERIFY');
-      } else {
-        setError(res.message || 'Registration failed');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Network error');
-    } finally {
-      setIsSubmitting(false);
-    }
+    if (!validate({ email: true, password: 'any' })) return;
+    setNeedsVerification(false);
+    run(async () => {
+      const res = await login({ email: email.trim(), password });
+      if (res.success) return signedIn(res.token);
+      setError(res.message || 'Email atau password salah.');
+      setNeedsVerification(res.reason === 'EMAIL_NOT_VERIFIED');
+    });
   };
 
-  const handleVerify = async (e: React.FormEvent) => {
+  const sendVerificationCode = () =>
+    run(async () => {
+      const res = await register({ email: email.trim(), password });
+      if (!res.success) return setError(res.message || 'Gagal mengirim kode.');
+      setMode('VERIFY');
+      setFieldErrors({});
+      setNeedsVerification(false);
+      setCode('');
+      setNotice(`Kode dikirim ke ${email.trim()}. Cek juga folder Spam.`);
+      setResendIn(RESEND_COOLDOWN_SECONDS);
+    });
+
+  const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
-    setError('');
-    try {
-      const res = await verifyOtp({ email, otpCode, phoneCode });
-      if (res.success) {
-        localStorage.setItem('token', res.token);
-        await checkAuth();
-      } else {
-        setError(res.message || 'Verification failed');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Network error');
-    } finally {
-      setIsSubmitting(false);
-    }
+    if (!validate({ email: true, password: 'new' })) return;
+    sendVerificationCode();
+  };
+
+  const submitVerify = (value: string) =>
+    run(async () => {
+      const res = await verifyOtp({ email: email.trim(), otpCode: value });
+      if (res.success) return signedIn(res.token);
+      setError(res.message || 'Kode salah.');
+    });
+
+  const handleVerify = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (validate({ code: true })) submitVerify(code);
+  };
+
+  const sendResetCode = () =>
+    run(async () => {
+      const res = await forgotPassword(email.trim());
+      if (!res.success) return setError(res.message || 'Gagal mengirim kode.');
+      setMode('RESET');
+      setFieldErrors({});
+      setCode('');
+      setPassword('');
+      setNotice(res.message || 'Jika email terdaftar, kode reset telah dikirim.');
+      setResendIn(RESEND_COOLDOWN_SECONDS);
+    });
+
+  const handleForgot = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (validate({ email: true })) sendResetCode();
+  };
+
+  const handleReset = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validate({ code: true, password: 'new' })) return;
+    run(async () => {
+      const res = await resetPassword({ email: email.trim(), otpCode: code, password });
+      if (res.success) return signedIn(res.token);
+      setError(res.message || 'Kode salah.');
+    });
   };
 
   const logout = () => {
     localStorage.removeItem('token');
     setUser(null);
+    setPassword('');
+    go('LOGIN');
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+      <div className="flex min-h-screen items-center justify-center bg-background" aria-busy="true" aria-label="Memuat">
+        <Skeleton className="h-8 w-40" />
       </div>
     );
   }
 
   if (user) {
-    return (
-      <div className="relative">
-        <div className="absolute top-4 right-4 z-50">
-          <button 
-            onClick={logout}
-            className="px-4 py-2 bg-slate-800 text-slate-300 rounded-lg hover:bg-slate-700 hover:text-white transition-colors text-sm font-medium border border-slate-700/50 flex items-center gap-2"
-          >
-            Logout ({user.email})
-          </button>
-        </div>
-        <Dashboard />
-      </div>
-    );
+    return <Dashboard user={user} onLogout={logout} />;
   }
 
+  const codeField = (onComplete?: (value: string) => void) => (
+    <TextField
+      label="Kode verifikasi"
+      name="one-time-code"
+      inputMode="numeric"
+      autoComplete="one-time-code"
+      autoFocus
+      maxLength={6}
+      value={code}
+      error={fieldErrors.code}
+      hint={`Kode 6 digit yang dikirim ke ${email.trim()}`}
+      onChange={(e) => {
+        const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+        setCode(value);
+        if (value.length === 6 && onComplete && !isSubmitting) onComplete(value);
+      }}
+      placeholder="000000"
+      className="tracking-[0.3em]"
+    />
+  );
+
+  const resendButton = (onResend: () => void) => (
+    <Button variant="ghost" size="sm" onClick={onResend} disabled={resendIn > 0 || isSubmitting}>
+      {resendIn > 0 ? `Kirim ulang dalam ${resendIn} dtk` : 'Kirim ulang kode'}
+    </Button>
+  );
+
+  const { title, subtitle } = COPY[mode];
+  const linkClass = 'font-medium text-foreground underline-offset-4 hover:underline';
+
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 selection:bg-indigo-500/30">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[128px]" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-[128px]" />
-      </div>
+    <div className="min-h-screen bg-background text-foreground">
+      {/* Content sits near the top (not vertically centered) so mobile keyboards don't cover the button */}
+      <div className="mx-auto w-full max-w-sm px-4 pt-14 pb-12 sm:pt-24">
+        <p className="mb-8 font-heading text-lg font-semibold tracking-tight">WhatsMonTrack</p>
 
-      <div className="w-full max-w-md relative z-10">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-tr from-indigo-500 to-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/20 rotate-3">
-            <span className="text-2xl font-bold text-white -rotate-3">W</span>
-          </div>
-          <h1 className="text-2xl font-bold text-white">WhatsMonTrack</h1>
-          <p className="text-slate-400 mt-2 text-sm">
-            {mode === 'LOGIN' ? 'Masuk ke akun Anda' : mode === 'REGISTER' ? 'Buat akun baru' : 'Verifikasi Email Anda'}
-          </p>
-        </div>
+        <h1 className="font-heading text-2xl font-semibold tracking-tight">{title}</h1>
+        {subtitle && <p className="mt-1.5 text-sm text-muted-foreground">{subtitle}</p>}
 
-        <div className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 shadow-2xl">
-          {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg text-sm mb-6 flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
-              {error}
-            </div>
-          )}
-          
-          {success && mode === 'VERIFY' && (
-            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-3 rounded-lg text-sm mb-6 flex items-start gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
-              {success}
-            </div>
-          )}
+        <div className="mt-6 rounded-2xl border border-border/70 bg-card p-6 shadow-sm">
+          {error && <Alert className="mb-4">{error}</Alert>}
+          {notice && !error && <Alert tone="info" className="mb-4">{notice}</Alert>}
 
           {mode === 'LOGIN' && (
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} noValidate className="space-y-4">
+              {needsVerification && (
+                <div className="-mt-1 flex flex-wrap gap-2">
+                  <Button variant="secondary" size="sm" onClick={sendVerificationCode} loading={isSubmitting}>
+                    Kirim kode verifikasi
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => go('VERIFY')}>
+                    Sudah punya kode
+                  </Button>
+                </div>
+              )}
+              <TextField label="Email" type="email" name="email" autoComplete="username" required
+                value={email} onChange={(e) => setEmail(e.target.value)} error={fieldErrors.email} />
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-950/50 border border-slate-800 text-slate-200 text-sm rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-slate-600"
-                    placeholder="nama@email.com"
-                  />
+                <PasswordField label="Password" name="password" autoComplete="current-password" required
+                  value={password} onChange={(e) => setPassword(e.target.value)} error={fieldErrors.password} />
+                <div className="mt-2 text-right">
+                  <button type="button" onClick={() => go('FORGOT')} className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
+                    Lupa password?
+                  </button>
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-950/50 border border-slate-800 text-slate-200 text-sm rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-slate-600"
-                    placeholder="••••••••"
-                  />
-                </div>
-              </div>
-              <button
-                disabled={isSubmitting}
-                type="submit"
-                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2.5 rounded-xl transition-colors mt-2 flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Masuk'}
-              </button>
-              <div className="text-center mt-6">
-                <button type="button" onClick={() => setMode('REGISTER')} className="text-sm text-slate-400 hover:text-indigo-400 transition-colors">
-                  Belum punya akun? Daftar sekarang
-                </button>
-              </div>
+              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>Masuk</Button>
             </form>
           )}
 
           {mode === 'REGISTER' && (
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-950/50 border border-slate-800 text-slate-200 text-sm rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-slate-600"
-                    placeholder="nama@email.com"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">No. WhatsApp</label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="text"
-                    required
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    className="w-full bg-slate-950/50 border border-slate-800 text-slate-200 text-sm rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-slate-600"
-                    placeholder="08123456789"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-950/50 border border-slate-800 text-slate-200 text-sm rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-slate-600"
-                    placeholder="••••••••"
-                  />
-                </div>
-              </div>
-              <button
-                disabled={isSubmitting}
-                type="submit"
-                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2.5 rounded-xl transition-colors mt-2 flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Daftar'}
-              </button>
-              <div className="text-center mt-6">
-                <button type="button" onClick={() => setMode('LOGIN')} className="text-sm text-slate-400 hover:text-indigo-400 transition-colors">
-                  Sudah punya akun? Masuk
-                </button>
-              </div>
+            <form onSubmit={handleRegister} noValidate className="space-y-4">
+              <TextField label="Email" type="email" name="email" autoComplete="username" required
+                value={email} onChange={(e) => setEmail(e.target.value)} error={fieldErrors.email}
+                hint="Kami kirim kode verifikasi ke email ini." />
+              <PasswordField label="Password" name="new-password" autoComplete="new-password" required minLength={8}
+                value={password} onChange={(e) => setPassword(e.target.value)} error={fieldErrors.password}
+                hint="Minimal 8 karakter." />
+              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>Buat akun</Button>
+              <p className="text-xs text-muted-foreground">
+                Nomor WhatsApp dihubungkan setelah masuk, dari dashboard.
+              </p>
             </form>
           )}
 
           {mode === 'VERIFY' && (
-            <form onSubmit={handleVerify} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Kode dari Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    required
-                    maxLength={6}
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                    className="w-full bg-slate-950/50 border border-slate-800 text-slate-200 text-center tracking-widest text-lg rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-slate-600"
-                    placeholder="123456"
-                  />
-                </div>
-                <p className="text-xs text-slate-500 mt-2 text-center">
-                  Kode 6 digit yang dikirim ke email {email}
-                </p>
+            <form onSubmit={handleVerify} noValidate className="space-y-4">
+              {codeField(submitVerify)}
+              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>Verifikasi</Button>
+              <div className="flex items-center justify-between">
+                {resendButton(sendVerificationCode)}
+                <Button variant="ghost" size="sm" onClick={() => go('REGISTER')}>Ganti email</Button>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Kode dari WhatsApp</label>
-                <div className="relative">
-                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    required
-                    maxLength={6}
-                    value={phoneCode}
-                    onChange={(e) => setPhoneCode(e.target.value.replace(/\D/g, ''))}
-                    className="w-full bg-slate-950/50 border border-slate-800 text-slate-200 text-center tracking-widest text-lg rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-slate-600"
-                    placeholder="123456"
-                  />
-                </div>
-                <p className="text-xs text-slate-500 mt-2 text-center">
-                  Kode 6 digit yang dikirim bot WhatsMonTrack ke WhatsApp {phoneNumber}
-                </p>
-              </div>
-              <button
-                disabled={isSubmitting}
-                type="submit"
-                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-medium py-2.5 rounded-xl transition-colors mt-2 flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verifikasi'}
-              </button>
-              <div className="text-center mt-6">
-                <button type="button" onClick={() => setMode('REGISTER')} className="text-sm text-slate-400 hover:text-indigo-400 transition-colors">
-                  Kembali
-                </button>
+            </form>
+          )}
+
+          {mode === 'FORGOT' && (
+            <form onSubmit={handleForgot} noValidate className="space-y-4">
+              <TextField label="Email" type="email" name="email" autoComplete="username" required autoFocus
+                value={email} onChange={(e) => setEmail(e.target.value)} error={fieldErrors.email} />
+              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>Kirim kode</Button>
+            </form>
+          )}
+
+          {mode === 'RESET' && (
+            <form onSubmit={handleReset} noValidate className="space-y-4">
+              {/* Lets password managers save the new password under the right account (web.dev) */}
+              <input type="email" name="email" autoComplete="username" value={email} readOnly hidden />
+              {codeField()}
+              <PasswordField label="Password baru" name="new-password" autoComplete="new-password" required minLength={8}
+                value={password} onChange={(e) => setPassword(e.target.value)} error={fieldErrors.password}
+                hint="Minimal 8 karakter." />
+              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>Simpan password baru</Button>
+              <div className="flex items-center justify-between">
+                {resendButton(sendResetCode)}
+                <Button variant="ghost" size="sm" onClick={() => go('FORGOT')}>Ganti email</Button>
               </div>
             </form>
           )}
         </div>
+
+        <p className="mt-6 text-center text-sm text-muted-foreground">
+          {mode === 'LOGIN' && (
+            <>Belum punya akun? <button type="button" onClick={() => go('REGISTER')} className={linkClass}>Buat akun</button></>
+          )}
+          {mode === 'REGISTER' && (
+            <>Sudah punya akun? <button type="button" onClick={() => go('LOGIN')} className={linkClass}>Masuk</button></>
+          )}
+          {(mode === 'VERIFY' || mode === 'FORGOT' || mode === 'RESET') && (
+            <button type="button" onClick={() => go('LOGIN')} className={linkClass}>Kembali ke halaman masuk</button>
+          )}
+        </p>
       </div>
     </div>
   );
