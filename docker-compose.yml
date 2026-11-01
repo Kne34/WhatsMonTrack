@@ -89,13 +89,17 @@ services:
     build: ./backend/api
     container_name: whatsmon-api
     ports:
-      # Localhost only: public traffic must go through nginx (rate limiting relies on X-Forwarded-For)
-      - "127.0.0.1:3000:3000"
+      # Debug access only (nginx talks to the API over the internal network).
+      # Localhost-only so public traffic must go through nginx (rate limiting relies on X-Forwarded-For).
+      # Host port defaults to 3001 because 3000 is commonly taken (Grafana, other dev servers).
+      - "127.0.0.1:${API_HOST_PORT:-3001}:3000"
     volumes:
       - ./backend/api:/app
       - /app/node_modules
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@pgpool:5432/postgres?schema=public
+      # Migrations must bypass pgpool: it load-balances reads to the replica, which breaks Prisma Migrate
+      - MIGRATE_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-master:5432/postgres?schema=public
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set in .env}
       - ADMIN_EMAILS=${ADMIN_EMAILS:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -104,11 +108,15 @@ services:
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
       - SMTP_SECURE=${SMTP_SECURE}
+      - SMTP_FROM=${SMTP_FROM:-}
       - NODE_OPTIONS=--dns-result-order=ipv4first
       - CHOKIDAR_USEPOLLING=true
       - TSC_WATCHFILE=UsePolling
     depends_on:
-      - pgpool
+      postgres-master:
+        condition: service_healthy
+      pgpool:
+        condition: service_started
     networks:
       - whatsmontrack
 

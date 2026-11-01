@@ -63,9 +63,9 @@ DATABASE_URL=postgresql://postgres:test@localhost:54329/postgres npx prisma migr
 TEST_DATABASE_URL=postgresql://postgres:test@localhost:54329/postgres npm run test:e2e
 ```
 
-Registration sends **two** codes — one by email and one by the WhatsApp bot to the given number — and the account is only activated when both are entered. This proves the user owns the phone number the bot will serve. Phone numbers are stored everywhere in canonical `62xxxxxxxxxx` form (`src/common/phone.ts`).
+**Accounts and WhatsApp numbers.** Registration only needs an email and password (verified with an emailed OTP), so it never depends on the bot being online. After logging in, a user links their WhatsApp number from the dashboard: the web shows a QR code for a `wa.me` link that opens a chat with the shared bot pre-filled with `VERIFIKASI <code>`; sending it proves the user owns that number (`src/whatsapp/phone-link.service.ts`). Entering the number on the web first is optional. The number can be changed or unlinked at any time. Numbers are stored in canonical `62xxxxxxxxxx` form (`src/common/phone.ts`).
 
-Database migrations live in `backend/api/prisma/migrations` and are applied automatically (`prisma migrate deploy`) when the API container starts. To create a new migration after editing `schema.prisma`:
+Database migrations live in `backend/api/prisma/migrations` and are applied automatically (`prisma migrate deploy`, directly on `postgres-master`) when the API container starts; the Prisma client is regenerated on start too. To create a new migration after editing `schema.prisma`:
 
 ```bash
 docker compose exec api npx prisma migrate dev --name <name>
@@ -89,20 +89,19 @@ To avoid startup race conditions, we have provided automated startup scripts.
 - **PowerShell:** Run `./start_app.ps1`
 - **Manual/Linux:** You can run `docker compose up -d` but ensure databases are initialized first.
 
-The script will automatically fetch the API logs at the end. Look for the WhatsApp Web QR Code in the terminal and scan it with your WhatsApp app (Linked Devices) to authorize the bot.
-
-### 3. Register and Initialize Dashboard (Accounts & Budgets)
+### 3. Register, Connect the Bot and Link Your Number
 Open your browser and navigate to `http://localhost`.
-Since this is a multi-tenant platform, you must first register your account using your email and WhatsApp number. 
-An OTP will be sent to your email (check your Ethereal Mail console or configured SMTP service).
+1. **Register** with your email and password, then enter the OTP sent to your email (check your Ethereal Mail console or configured SMTP service).
+2. **Connect the bot (admin, once):** if your email is in `ADMIN_EMAILS`, click the **Bot offline** badge in the header and scan the QR code with the bot's WhatsApp (Linked Devices). The QR code is also printed in `docker logs whatsmon-api -f`.
+3. **Link your number:** click **Hubungkan WhatsApp**, optionally enter your number, press **Buat QR**, scan it with your phone camera and press **Send** in WhatsApp.
 
-After verifying and logging in, set up your baseline data:
+Then set up your baseline data:
 - Click the **+** button (Floating Action Menu) on the bottom right.
 - **Add Accounts**: Create the accounts you frequently use (e.g., BCA, OVO, Cash) and their current balances.
 - **Set Budgets**: Define monthly limits for your categories (e.g., `FOOD`, `TRANSPORT`, `SHOPPING`).
 
 ### 4. Log Expenses via WhatsApp
-Open WhatsApp and send a message to the bot (or use the "Message Yourself" feature). Just type naturally:
+From your linked number, send a message to the bot. Just type naturally:
 - *"50k makan siang bca"*
 - *"bayar gojek 20k pake ovo"*
 - *"gajian 5jt masuk ke bca"*
