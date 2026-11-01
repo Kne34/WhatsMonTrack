@@ -32,7 +32,7 @@ export default function Dashboard() {
   const [tableTxs, setTableTxs] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [budgets, setBudgets] = useState<any[]>([]);
-  const [waStatus, setWaStatus] = useState<{ connected: boolean; qr: string } | null>(null);
+  const [waStatus, setWaStatus] = useState<{ connected: boolean; qr: string; canManage?: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Filters and Pagination
@@ -72,8 +72,8 @@ export default function Dashboard() {
   const loadData = async () => {
     try {
       const [monthlyData, tableData, accs, budgs, wa] = await Promise.all([
-        fetchTransactions(undefined, { month: selectedMonth, year: selectedYear, page: 1, limit: 1000 }),
-        fetchTransactions(undefined, { month: selectedMonth, year: selectedYear, day: selectedDay || undefined, page, limit }),
+        fetchTransactions({ month: selectedMonth, year: selectedYear, page: 1, limit: 1000 }),
+        fetchTransactions({ month: selectedMonth, year: selectedYear, day: selectedDay || undefined, page, limit }),
         fetchAccounts(),
         fetchBudgets(),
         fetchWhatsAppStatus().catch(() => null)
