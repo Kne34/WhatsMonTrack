@@ -1,10 +1,9 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthGuard } from '../common/auth.guard';
-import { isAdmin } from '../common/config';
 import type { JwtUser } from '../common/config';
 import { CurrentUser } from '../common/current-user.decorator';
-import { LoginDto, RegisterDto, VerifyOtpDto } from './auth.dto';
+import { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto, VerifyOtpDto } from './auth.dto';
 import { AuthService } from './auth.service';
 
 const STRICT = { default: { ttl: 60_000, limit: 5 } };
@@ -31,9 +30,21 @@ export class AuthController {
     return this.auth.login(body);
   }
 
+  @Throttle(STRICT)
+  @Post('forgot-password')
+  forgotPassword(@Body() body: ForgotPasswordDto) {
+    return this.auth.forgotPassword(body);
+  }
+
+  @Throttle(STRICT)
+  @Post('reset-password')
+  resetPassword(@Body() body: ResetPasswordDto) {
+    return this.auth.resetPassword(body);
+  }
+
   @UseGuards(AuthGuard)
   @Get('me')
   me(@CurrentUser() user: JwtUser) {
-    return { ...user, isAdmin: isAdmin(user.email) };
+    return this.auth.profile(user.id);
   }
 }

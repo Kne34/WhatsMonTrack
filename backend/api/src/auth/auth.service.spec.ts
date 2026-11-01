@@ -1,17 +1,15 @@
-// These are injected as plain mocks below; stub the modules so Jest (CommonJS) doesn't load
-// their ESM-only dependencies (@nestjs/jwt, Baileys) or a real DB client.
+// Injected as plain mocks below; stub the modules so Jest (CommonJS) doesn't load
+// their ESM-only dependencies (@nestjs/jwt) or a real DB client.
 jest.mock('@nestjs/jwt', () => ({ JwtService: class {} }));
-jest.mock('../whatsapp/whatsapp.service', () => ({ WhatsAppService: class {} }));
 jest.mock('../database/prisma.service', () => ({ PrismaService: class {} }));
 
-import { ServiceUnavailableException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { AuthService, MAX_OTP_ATTEMPTS, OTP_TTL_MINUTES } from './auth.service';
 
 type UserRow = Record<string, any>;
 
-function setup(users: UserRow[] = [], opts: { connected?: boolean; onWhatsApp?: boolean } = {}) {
-  const db: UserRow[] = users.map((u) => ({ isVerified: false, otpAttempts: 0, ...u }));
+function setup(users: UserRow[] = [], opts: { mailFails?: boolean } = {}) {
+  const db: UserRow[] = users.map((u) => ({ isVerified: false, otpAttempts: 0, phoneNumber: null, ...u }));
   const prisma = {
     user: {
       findUnique: jest.fn(async ({ where }) => db.find((u) => Object.entries(where).every(([k, v]) => u[k] === v)) ?? null),
@@ -23,81 +21,62 @@ function setup(users: UserRow[] = [], opts: { connected?: boolean; onWhatsApp?: 
         return u;
       }),
       create: jest.fn(async ({ data }) => {
-        const u = { id: `new-${db.length}`, isVerified: false, ...data };
+        const u = { id: `new-${db.length}`, isVerified: false, phoneNumber: null, ...data };
         db.push(u);
         return u;
       }),
     },
   };
-  const whatsapp = {
-    isConnected: jest.fn(() => opts.connected ?? true),
-    sendToPhone: jest.fn(async () => opts.onWhatsApp ?? true),
+  const mail = {
+    sendOtp: jest.fn(async () => {
+      if (opts.mailFails) throw new Error('smtp down');
+    }),
   };
-  const mail = { sendOtp: jest.fn(async () => undefined) };
   const jwt = { signAsync: jest.fn(async () => 'signed-token') };
-  const service = new AuthService(prisma as any, jwt as any, mail as any, whatsapp as any);
-  return { service, db, prisma, whatsapp, mail, jwt };
+  const service = new AuthService(prisma as any, jwt as any, mail as any);
+  return { service, db, mail, jwt };
 }
 
-const reg = { email: 'a@test.com', password: 'password123', phoneNumber: '6281111111111' };
-const sentPhoneCode = (whatsapp: any) => /\*(\d{6})\*/.exec(whatsapp.sendToPhone.mock.calls.at(-1)[1])![1];
+const reg = { email: 'a@test.com', password: 'password123' };
 
 describe('AuthService.register', () => {
-  it('creates an unverified user and sends one code by WhatsApp and one by email', async () => {
-    const { service, db, whatsapp, mail } = setup();
+  it('creates an unverified user without a phone number and emails a code', async () => {
+    const { service, db, mail } = setup();
     const res = await service.register(reg);
 
     expect(res.success).toBe(true);
     expect(db).toHaveLength(1);
-    const user = db[0];
-    expect(user.isVerified).toBe(false);
-    expect(user.phoneNumber).toBe('6281111111111');
-    expect(await bcrypt.compare('password123', user.password)).toBe(true);
-
-    expect(whatsapp.sendToPhone).toHaveBeenCalledWith('6281111111111', expect.any(String));
-    expect(sentPhoneCode(whatsapp)).toBe(user.phoneOtpCode);
-    expect(mail.sendOtp).toHaveBeenCalledWith('a@test.com', user.otpCode, OTP_TTL_MINUTES);
-    expect(user.otpCode).not.toBe(user.phoneOtpCode);
+    expect(db[0]).toMatchObject({ email: reg.email, isVerified: false, phoneNumber: null });
+    expect(await bcrypt.compare('password123', db[0].password)).toBe(true);
+    expect(mail.sendOtp).toHaveBeenCalledWith(reg.email, db[0].otpCode, OTP_TTL_MINUTES);
   });
 
-  it('rejects a phone number that already belongs to a verified user', async () => {
-    const { service, whatsapp } = setup([{ id: 'u1', email: 'victim@test.com', phoneNumber: reg.phoneNumber, isVerified: true }]);
-    const res = await service.register(reg);
-    expect(res.success).toBe(false);
-    expect(whatsapp.sendToPhone).not.toHaveBeenCalled();
-  });
-
-  it('rejects an email that already belongs to a verified user', async () => {
-    const { service } = setup([{ id: 'u1', email: reg.email, phoneNumber: '6289999999999', isVerified: true }]);
+  it('rejects an email that is already verified', async () => {
+    const { service, mail } = setup([{ id: 'u1', email: reg.email, isVerified: true }]);
     expect((await service.register(reg)).success).toBe(false);
+    expect(mail.sendOtp).not.toHaveBeenCalled();
   });
 
-  it('fails when the number is not on WhatsApp, without creating a user', async () => {
-    const { service, db } = setup([], { onWhatsApp: false });
-    const res = await service.register(reg);
-    expect(res).toEqual({ success: false, message: 'Nomor ini tidak terdaftar di WhatsApp.' });
-    expect(db).toHaveLength(0);
-  });
-
-  it('returns 503 when the bot is offline', async () => {
-    const { service } = setup([], { connected: false });
-    await expect(service.register(reg)).rejects.toBeInstanceOf(ServiceUnavailableException);
-  });
-
-  it('lets the bot owner claim the bare user created by "Note to Self" (keeps its id/data)', async () => {
-    const { service, db } = setup([{ id: 'bot-user', email: 'some-uuid', phoneNumber: reg.phoneNumber }]);
-    const res = await service.register(reg);
-    expect(res.success).toBe(true);
-    expect(db).toHaveLength(1);
-    expect(db[0]).toMatchObject({ id: 'bot-user', email: reg.email, isVerified: false });
-  });
-
-  it('enforces a cooldown between code sends', async () => {
-    const { service, whatsapp } = setup();
+  it('re-registering an unverified email resends a new code (after the cooldown)', async () => {
+    const { service, db, mail } = setup();
     await service.register(reg);
-    const again = await service.register(reg);
-    expect(again.success).toBe(false);
-    expect(whatsapp.sendToPhone).toHaveBeenCalledTimes(1);
+    const first = db[0].otpCode;
+
+    // within the cooldown: refused
+    expect((await service.register(reg)).success).toBe(false);
+
+    // pretend the first code was sent 2 minutes ago
+    db[0].otpExpiresAt = new Date(Date.now() + (OTP_TTL_MINUTES - 2) * 60 * 1000);
+    expect((await service.register(reg)).success).toBe(true);
+    expect(db).toHaveLength(1);
+    expect(mail.sendOtp).toHaveBeenCalledTimes(2);
+    expect(mail.sendOtp).toHaveBeenLastCalledWith(reg.email, db[0].otpCode, OTP_TTL_MINUTES);
+    expect(typeof first).toBe('string');
+  });
+
+  it('reports an email delivery failure', async () => {
+    const { service } = setup([], { mailFails: true });
+    expect((await service.register(reg)).success).toBe(false);
   });
 });
 
@@ -108,49 +87,84 @@ describe('AuthService.verifyOtp', () => {
     return ctx;
   }
 
-  it('activates the account only when both codes are correct', async () => {
+  it('activates the account with the emailed code and returns a token', async () => {
     const { service, db } = await registered();
-    const { otpCode, phoneOtpCode } = db[0];
-    const res = await service.verifyOtp({ email: reg.email, otpCode, phoneCode: phoneOtpCode });
-
+    const res = await service.verifyOtp({ email: reg.email, otpCode: db[0].otpCode });
     expect(res).toMatchObject({ success: true, token: 'signed-token' });
-    expect(db[0]).toMatchObject({ isVerified: true, otpCode: null, phoneOtpCode: null });
+    expect(db[0]).toMatchObject({ isVerified: true, otpCode: null });
   });
 
-  it('rejects a correct email code with a wrong WhatsApp code (phone not proven)', async () => {
+  it('rejects a wrong code and counts the attempt', async () => {
     const { service, db } = await registered();
-    const wrong = db[0].phoneOtpCode === '000000' ? '111111' : '000000';
-    const res = await service.verifyOtp({ email: reg.email, otpCode: db[0].otpCode, phoneCode: wrong });
-
-    expect(res.success).toBe(false);
-    expect(db[0].isVerified).toBe(false);
+    const wrong = db[0].otpCode === '000000' ? '111111' : '000000';
+    expect((await service.verifyOtp({ email: reg.email, otpCode: wrong })).success).toBe(false);
     expect(db[0].otpAttempts).toBe(1);
+    expect(db[0].isVerified).toBe(false);
   });
 
-  it('locks verification after too many wrong attempts, even with the right codes', async () => {
+  it('locks after too many wrong attempts, even with the right code', async () => {
     const { service, db } = await registered();
     db[0].otpAttempts = MAX_OTP_ATTEMPTS;
-    const res = await service.verifyOtp({ email: reg.email, otpCode: db[0].otpCode, phoneCode: db[0].phoneOtpCode });
-    expect(res.success).toBe(false);
-    expect(db[0].isVerified).toBe(false);
+    expect((await service.verifyOtp({ email: reg.email, otpCode: db[0].otpCode })).success).toBe(false);
   });
 
   it('rejects expired codes', async () => {
     const { service, db } = await registered();
     db[0].otpExpiresAt = new Date(Date.now() - 1000);
-    const res = await service.verifyOtp({ email: reg.email, otpCode: db[0].otpCode, phoneCode: db[0].phoneOtpCode });
-    expect(res.success).toBe(false);
+    expect((await service.verifyOtp({ email: reg.email, otpCode: db[0].otpCode })).success).toBe(false);
   });
 });
 
 describe('AuthService.login', () => {
-  it('refuses unverified users and accepts verified ones', async () => {
+  it('refuses unverified users and wrong passwords, accepts verified ones', async () => {
     const password = await bcrypt.hash('password123', 4);
-    const { service, db } = setup([{ id: 'u1', email: reg.email, phoneNumber: reg.phoneNumber, password }]);
+    const { service, db } = setup([{ id: 'u1', email: reg.email, password }]);
 
     expect((await service.login({ email: reg.email, password: 'password123' })).success).toBe(false);
     db[0].isVerified = true;
     expect(await service.login({ email: reg.email, password: 'password123' })).toMatchObject({ success: true });
     expect((await service.login({ email: reg.email, password: 'wrong-password' })).success).toBe(false);
+  });
+});
+
+describe('AuthService.forgotPassword / resetPassword', () => {
+  async function verifiedUser() {
+    const password = await bcrypt.hash('old-password', 4);
+    return setup([{ id: 'u1', email: reg.email, password, isVerified: true }]);
+  }
+
+  it('answers identically for unknown emails and sends nothing', async () => {
+    const known = await verifiedUser();
+    const unknown = setup();
+    const a = await known.service.forgotPassword({ email: reg.email });
+    const b = await unknown.service.forgotPassword({ email: reg.email });
+    expect(a).toEqual(b);
+    expect(unknown.mail.sendOtp).not.toHaveBeenCalled();
+    expect(known.mail.sendOtp).toHaveBeenCalledWith(reg.email, known.db[0].otpCode, OTP_TTL_MINUTES, 'reset');
+  });
+
+  it('sets the new password with the right code and signs in', async () => {
+    const { service, db } = await verifiedUser();
+    await service.forgotPassword({ email: reg.email });
+    const res = await service.resetPassword({ email: reg.email, otpCode: db[0].otpCode, password: 'new-password' });
+
+    expect(res).toMatchObject({ success: true, token: 'signed-token' });
+    expect(await bcrypt.compare('new-password', db[0].password)).toBe(true);
+    expect(db[0].otpCode).toBeNull();
+    expect((await service.login({ email: reg.email, password: 'old-password' })).success).toBe(false);
+  });
+
+  it('rejects a wrong code without changing the password', async () => {
+    const { service, db } = await verifiedUser();
+    await service.forgotPassword({ email: reg.email });
+    const wrong = db[0].otpCode === '000000' ? '111111' : '000000';
+    expect((await service.resetPassword({ email: reg.email, otpCode: wrong, password: 'new-password' })).success).toBe(false);
+    expect(await bcrypt.compare('old-password', db[0].password)).toBe(true);
+    expect(db[0].otpAttempts).toBe(1);
+  });
+
+  it('cannot be used to take over an unverified account', async () => {
+    const { service } = setup([{ id: 'u1', email: reg.email, otpCode: '123456', otpExpiresAt: new Date(Date.now() + 60_000) }]);
+    expect((await service.resetPassword({ email: reg.email, otpCode: '123456', password: 'new-password' })).success).toBe(false);
   });
 });

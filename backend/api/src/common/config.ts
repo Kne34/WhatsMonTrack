@@ -31,8 +31,8 @@ export function isAdmin(email?: string): boolean {
   return !!email && getAdminEmails().includes(email.toLowerCase());
 }
 
+/** JWT payload. The phone number is deliberately not included: it can be (re)linked at any time. */
 export interface JwtUser {
   id: string;
-  phoneNumber: string;
   email?: string;
 }
