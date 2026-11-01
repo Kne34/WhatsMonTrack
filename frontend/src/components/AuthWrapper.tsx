@@ -15,6 +15,7 @@ export default function AuthWrapper() {
   const [password, setPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [otpCode, setOtpCode] = useState('');
+  const [phoneCode, setPhoneCode] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,7 +73,7 @@ export default function AuthWrapper() {
 
       const res = await register({ email, password, phoneNumber: formattedPhone });
       if (res.success) {
-        setSuccess('OTP telah dikirim ke email Anda!');
+        setSuccess(res.message || 'Kode verifikasi telah dikirim ke email dan WhatsApp Anda.');
         setMode('VERIFY');
       } else {
         setError(res.message || 'Registration failed');
@@ -89,7 +90,7 @@ export default function AuthWrapper() {
     setIsSubmitting(true);
     setError('');
     try {
-      const res = await verifyOtp({ email, otpCode });
+      const res = await verifyOtp({ email, otpCode, phoneCode });
       if (res.success) {
         localStorage.setItem('token', res.token);
         await checkAuth();
@@ -272,21 +273,42 @@ export default function AuthWrapper() {
           {mode === 'VERIFY' && (
             <form onSubmit={handleVerify} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Kode OTP</label>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Kode dari Email</label>
                 <div className="relative">
-                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input
                     type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
                     required
                     maxLength={6}
                     value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value)}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
                     className="w-full bg-slate-950/50 border border-slate-800 text-slate-200 text-center tracking-widest text-lg rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-slate-600"
                     placeholder="123456"
                   />
                 </div>
                 <p className="text-xs text-slate-500 mt-2 text-center">
-                  Masukkan 6 digit kode yang dikirimkan ke email {email}
+                  Kode 6 digit yang dikirim ke email {email}
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">Kode dari WhatsApp</label>
+                <div className="relative">
+                  <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    required
+                    maxLength={6}
+                    value={phoneCode}
+                    onChange={(e) => setPhoneCode(e.target.value.replace(/\D/g, ''))}
+                    className="w-full bg-slate-950/50 border border-slate-800 text-slate-200 text-center tracking-widest text-lg rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder:text-slate-600"
+                    placeholder="123456"
+                  />
+                </div>
+                <p className="text-xs text-slate-500 mt-2 text-center">
+                  Kode 6 digit yang dikirim bot WhatsMonTrack ke WhatsApp {phoneNumber}
                 </p>
               </div>
               <button
