@@ -1,210 +1,232 @@
+"use client";
+
 import React from "react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ArrowDownIcon, ArrowUpIcon, ChevronLeft, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, ReceiptText, Trash2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { categoryLabel, formatDayMonth, formatMonth, formatRupiah, formatTime, TX_TYPE_LABEL, type TxType } from "@/lib/format";
+import { Button, Card, EmptyState, IconButton, focusRing } from "../../common/ui";
+
+export interface LedgerTx {
+  id: string;
+  type: TxType;
+  amount: number;
+  category: string;
+  subcategory?: string | null;
+  createdAt: string;
+  fromAccount?: { name: string } | null;
+  toAccount?: { name: string } | null;
+}
 
 interface LedgerViewProps {
-  selectedMonth: number;
-  selectedYear: number;
-  monthlyConfirmedTxs: any[];
-  tableConfirmedTxs: any[];
+  month: number;
+  year: number;
+  monthlyTxs: LedgerTx[];
+  pageTxs: LedgerTx[];
   selectedDay: number | null;
-  setSelectedDay: (day: number | null) => void;
-  limit: number;
+  onSelectDay: (day: number | null) => void;
   page: number;
   totalPages: number;
-  setLimit: (l: number) => void;
-  setPage: React.Dispatch<React.SetStateAction<number>>;
-  handleEditClick: (tx: any) => void;
-  handleDeleteClick: (id: string) => void;
-  formatRupiah: (val: number) => string;
+  limit: number;
+  onPageChange: (page: number) => void;
+  onLimitChange: (limit: number) => void;
+  onAdd: () => void;
+  onEdit: (tx: LedgerTx) => void;
+  onDelete: (tx: LedgerTx) => void;
+}
+
+const WEEKDAYS = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+
+const accountLabel = (tx: LedgerTx) =>
+  tx.type === "TRANSFER" ? `${tx.fromAccount?.name ?? "?"} → ${tx.toAccount?.name ?? "?"}` : tx.fromAccount?.name ?? tx.toAccount?.name ?? "-";
+
+function Amount({ tx }: { tx: LedgerTx }) {
+  const sign = tx.type === "INCOME" ? "+" : tx.type === "EXPENSE" ? "−" : "";
+  return (
+    <span className={cn("tabular-nums font-medium", tx.type === "INCOME" ? "text-income" : "text-foreground")}>
+      {sign}{formatRupiah(tx.amount)}
+    </span>
+  );
+}
+
+function Title({ tx }: { tx: LedgerTx }) {
+  return tx.type === "TRANSFER" ? "Transfer" : tx.subcategory || categoryLabel(tx.category);
+}
+
+function Meta({ tx }: { tx: LedgerTx }) {
+  const parts = [tx.type === "TRANSFER" ? null : tx.subcategory ? categoryLabel(tx.category) : TX_TYPE_LABEL[tx.type], accountLabel(tx)];
+  return <>{parts.filter(Boolean).join(" · ")}</>;
 }
 
 export default function LedgerView({
-  selectedMonth,
-  selectedYear,
-  monthlyConfirmedTxs,
-  tableConfirmedTxs,
-  selectedDay,
-  setSelectedDay,
-  limit,
-  page,
-  totalPages,
-  setLimit,
-  setPage,
-  handleEditClick,
-  handleDeleteClick,
-  formatRupiah
+  month, year, monthlyTxs, pageTxs, selectedDay, onSelectDay,
+  page, totalPages, limit, onPageChange, onLimitChange, onAdd, onEdit, onDelete,
 }: LedgerViewProps) {
-  return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <h2 className="text-xl font-heading font-bold mb-2">Ledger History</h2>
-      
-      {/* Calendar View Always Visible */}
-      <div className="mb-8 border border-border/50 rounded-3xl p-4 bg-card/30">
-        <div className="grid grid-cols-7 gap-2 text-center" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => <div key={i} className="text-xs font-mono text-muted-foreground">{d}</div>)}
-          
-          {/* Blank days */}
-          {Array.from({ length: new Date(selectedYear, selectedMonth - 1, 1).getDay() === 0 ? 6 : new Date(selectedYear, selectedMonth - 1, 1).getDay() - 1 }).map((_, i) => (
-            <div key={`blank-${i}`} className="p-2"></div>
-          ))}
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstWeekday = (new Date(year, month - 1, 1).getDay() + 6) % 7; // Monday = 0
+  const today = new Date();
 
-          {/* Calendar Days */}
-          {Array.from({ length: new Date(selectedYear, selectedMonth, 0).getDate() }, (_, i) => i + 1).map(day => {
-            const txs = monthlyConfirmedTxs.filter(t => new Date(t.createdAt).getDate() === day);
-            const income = txs.filter(t => t.type === 'INCOME').reduce((a, b) => a + b.amount, 0);
-            const expense = txs.filter(t => t.type === 'EXPENSE').reduce((a, b) => a + b.amount, 0);
-            
-            const isSelected = selectedDay === day;
-            
+  const perDay = new Map<number, { income: number; expense: number; count: number }>();
+  for (const t of monthlyTxs) {
+    const date = new Date(t.createdAt);
+    if (date.getMonth() + 1 !== month || date.getFullYear() !== year) continue; // stale data from the previous month
+    const d = date.getDate();
+    const v = perDay.get(d) ?? { income: 0, expense: 0, count: 0 };
+    if (t.type === "INCOME") v.income += t.amount;
+    if (t.type === "EXPENSE") v.expense += t.amount;
+    v.count++;
+    perDay.set(d, v);
+  }
+
+  const period = selectedDay
+    ? new Date(year, month - 1, selectedDay).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
+    : formatMonth(month, year);
+
+  return (
+    <div className="grid items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+      {/* Day filter */}
+      <Card className="p-4 lg:sticky lg:top-6">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-foreground">Pilih tanggal</p>
+          {selectedDay && (
+            <Button variant="ghost" size="sm" onClick={() => onSelectDay(null)}>
+              <X className="size-3.5" aria-hidden /> Semua tanggal
+            </Button>
+          )}
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-center">
+          {WEEKDAYS.map((d) => (
+            <div key={d} className="pb-1 text-xs text-muted-foreground" aria-hidden>{d}</div>
+          ))}
+          {Array.from({ length: firstWeekday }).map((_, i) => <div key={`b${i}`} />)}
+          {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+            const info = perDay.get(day);
+            const selected = selectedDay === day;
+            const isToday = day === today.getDate() && month === today.getMonth() + 1 && year === today.getFullYear();
             return (
-              <button 
-                key={day} 
-                onClick={() => {
-                  setSelectedDay(isSelected ? null : day);
-                  setPage(1); // Reset page on filter change
-                }}
-                className={`p-1.5 sm:p-2 rounded-xl border flex flex-col items-center justify-center min-h-[50px] relative transition-all active:scale-95 cursor-pointer outline-none ${
-                  isSelected 
-                    ? 'bg-foreground text-background border-foreground shadow-md'
-                    : txs.length > 0 
-                      ? 'bg-card border-border/50 shadow-sm hover:border-foreground/30 hover:shadow-md' 
-                      : 'border-transparent opacity-50 hover:bg-muted/50 hover:opacity-100'
-                }`}
+              <button
+                key={day}
+                type="button"
+                onClick={() => onSelectDay(selected ? null : day)}
+                aria-pressed={selected}
+                aria-label={`${day} ${formatMonth(month, year)}${info ? `, ${info.count} transaksi` : ", tidak ada transaksi"}`}
+                className={cn(
+                  "flex h-11 flex-col items-center justify-center rounded-lg text-sm transition-colors",
+                  focusRing,
+                  selected ? "bg-foreground text-background" : info ? "text-foreground hover:bg-muted" : "text-muted-foreground/70 hover:bg-muted",
+                  isToday && !selected && "ring-1 ring-border",
+                )}
               >
-                <span className={`text-[10px] sm:text-xs font-heading font-medium`}>{day}</span>
-                <div className="flex gap-1 mt-1">
-                  {income > 0 && <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-background' : 'bg-income'}`} />}
-                  {expense > 0 && <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-background' : 'bg-expense'}`} />}
-                </div>
+                <span className="tabular-nums">{day}</span>
+                <span className="mt-0.5 flex h-1.5 gap-0.5" aria-hidden>
+                  {info && info.expense > 0 && <span className={cn("size-1.5 rounded-full", selected ? "bg-background" : "bg-foreground")} />}
+                  {info && info.income > 0 && <span className={cn("size-1.5 rounded-full", selected ? "bg-background" : "bg-income")} />}
+                </span>
               </button>
             );
           })}
         </div>
-      </div>
+        <p className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-foreground" /> Pengeluaran</span>
+          <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-income" /> Pemasukan</span>
+        </p>
+      </Card>
 
-      {/* Pagination Limit & Table Header */}
-      <div className="flex items-center justify-between mt-8 mb-4">
-        <h3 className="font-heading font-semibold text-lg">Transactions</h3>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-muted-foreground">Show</span>
-          <select 
-            className="bg-secondary/50 border border-border/50 rounded-lg text-xs font-mono px-2 py-1 outline-none focus:ring-1 focus:ring-ring"
-            value={limit}
-            onChange={(e) => {
-              setLimit(Number(e.target.value));
-              setPage(1); // Reset to page 1 on limit change
-            }}
-          >
-            <option value={10}>10</option>
-            <option value={15}>15</option>
-            <option value={50}>50</option>
-            <option value={100}>100</option>
-          </select>
+      <Card className="p-0">
+        <div className="flex items-center justify-between gap-3 border-b border-border/70 px-5 py-4">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Daftar transaksi</h2>
+            <p className="mt-0.5 text-xs capitalize text-muted-foreground">{period}</p>
+          </div>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Per halaman
+            <select
+              value={limit}
+              onChange={(e) => onLimitChange(Number(e.target.value))}
+              className={cn("h-8 rounded-lg border border-border bg-card px-2 text-sm text-foreground", focusRing)}
+            >
+              {[10, 15, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
         </div>
-      </div>
 
-      {/* Transactions Table */}
-      <div className="bg-card border border-border/50 rounded-2xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="text-xs text-muted-foreground uppercase bg-secondary/30 font-mono tracking-widest">
-              <tr>
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Category</th>
-                <th className="px-4 py-3 font-medium">Description</th>
-                <th className="px-4 py-3 font-medium">Account</th>
-                <th className="px-4 py-3 font-medium text-right">Amount</th>
-                <th className="px-4 py-3 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/50">
-              {tableConfirmedTxs.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No recorded transactions.</td>
+        {pageTxs.length === 0 ? (
+          <EmptyState
+            className="py-12"
+            icon={<ReceiptText className="size-5" />}
+            title={`Tidak ada transaksi pada ${period}`}
+            description="Transaksi dari WhatsApp yang belum yakin dibaca ada di menu Perlu ditinjau."
+            action={<Button variant="secondary" size="sm" onClick={onAdd}>Tambah transaksi</Button>}
+          />
+        ) : (
+          <>
+            {/* Desktop: table */}
+            <table className="hidden w-full text-sm md:table">
+              <thead>
+                <tr className="border-b border-border/70 text-left text-xs text-muted-foreground">
+                  <th scope="col" className="px-5 py-2.5 font-medium">Tanggal</th>
+                  <th scope="col" className="px-5 py-2.5 font-medium">Keterangan</th>
+                  <th scope="col" className="px-5 py-2.5 font-medium">Rekening</th>
+                  <th scope="col" className="px-5 py-2.5 text-right font-medium">Jumlah</th>
+                  <th scope="col" className="w-24 px-5 py-2.5"><span className="sr-only">Aksi</span></th>
                 </tr>
-              ) : (
-                tableConfirmedTxs.map(tx => (
-                  <tr key={tx.id} className="hover:bg-muted/10 transition-colors">
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex flex-col">
-                        <span className="font-medium text-foreground">{new Date(tx.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}</span>
-                        <span className="text-[10px] font-mono text-muted-foreground">{new Date(tx.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
+              </thead>
+              <tbody className="divide-y divide-border/70">
+                {pageTxs.map((tx) => (
+                  <tr key={tx.id} className="hover:bg-muted/40">
+                    <td className="whitespace-nowrap px-5 py-3">
+                      <span className="text-foreground">{formatDayMonth(tx.createdAt)}</span>
+                      <span className="ml-2 text-xs tabular-nums text-muted-foreground">{formatTime(tx.createdAt)}</span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center ${tx.type === 'INCOME' ? 'bg-income/10 text-income' : tx.type === 'TRANSFER' ? 'bg-blue-500/10 text-blue-500' : 'bg-expense/10 text-expense'}`}>
-                          {tx.type === 'INCOME' ? <ArrowDownIcon className="w-3 h-3"/> : tx.type === 'TRANSFER' ? <ArrowUpIcon className="w-3 h-3 rotate-45"/> : <ArrowUpIcon className="w-3 h-3"/>}
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-foreground">{tx.category}</span>
-                          <span className={`text-[10px] font-mono ${tx.type === 'INCOME' ? 'text-income' : tx.type === 'TRANSFER' ? 'text-blue-500' : 'text-expense'}`}>{tx.type}</span>
-                        </div>
-                      </div>
+                    <td className="px-5 py-3">
+                      <p className="text-foreground"><Title tx={tx} /></p>
+                      <p className="text-xs text-muted-foreground">
+                        {tx.type === "TRANSFER" ? "Transfer antar rekening" : tx.subcategory ? categoryLabel(tx.category) : TX_TYPE_LABEL[tx.type]}
+                      </p>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="text-foreground">{tx.subcategory || '-'}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {tx.type === 'TRANSFER' ? (
-                        <div className="flex items-center gap-1">
-                          <Badge variant="outline" className="font-mono text-[10px] bg-secondary/50">{tx.fromAccount?.name}</Badge>
-                          <span className="text-muted-foreground text-xs">→</span>
-                          <Badge variant="outline" className="font-mono text-[10px] bg-secondary/50">{tx.toAccount?.name}</Badge>
-                        </div>
-                      ) : (
-                        <Badge variant="outline" className="font-mono text-[10px] bg-secondary/50">{tx.fromAccount?.name || tx.toAccount?.name}</Badge>
-                      )}
-                    </td>
-                    <td className={`px-4 py-3 text-right font-heading font-bold tabular-nums tracking-tight whitespace-nowrap ${tx.type === 'INCOME' ? 'text-income' : tx.type === 'TRANSFER' ? 'text-blue-500' : 'text-foreground'}`}>
-                      {tx.type === 'INCOME' ? '+' : tx.type === 'EXPENSE' ? '-' : ''}{formatRupiah(tx.amount)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1">
-                        <button onClick={() => handleEditClick(tx)} className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Edit">
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => handleDeleteClick(tx.id)} className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors" title="Delete">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                    <td className="px-5 py-3 text-muted-foreground">{accountLabel(tx)}</td>
+                    <td className="whitespace-nowrap px-5 py-3 text-right"><Amount tx={tx} /></td>
+                    <td className="px-5 py-3">
+                      <div className="flex justify-end">
+                        <IconButton label="Ubah transaksi" onClick={() => onEdit(tx)}><Pencil className="size-4" /></IconButton>
+                        <IconButton label="Hapus transaksi" onClick={() => onDelete(tx)} className="hover:text-destructive"><Trash2 className="size-4" /></IconButton>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-          
-      {/* Pagination Controls */}
-      {tableConfirmedTxs.length > 0 && (
-        <div className="flex items-center justify-between pt-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            disabled={page === 1}
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            className="font-mono text-xs h-8 rounded-lg"
-          >
-            <ChevronLeft className="w-4 h-4 mr-1" /> Prev
-          </Button>
-          <span className="text-xs font-mono text-muted-foreground">
-            Page {page} of {Math.max(1, totalPages)}
-          </span>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            disabled={page >= totalPages}
-            onClick={() => setPage(p => p + 1)}
-            className="font-mono text-xs h-8 rounded-lg"
-          >
-            Next <ChevronRight className="w-4 h-4 ml-1" />
-          </Button>
-        </div>
-      )}
+                ))}
+              </tbody>
+            </table>
+
+            {/* Phone: stacked list */}
+            <ul className="divide-y divide-border/70 md:hidden">
+              {pageTxs.map((tx) => (
+                <li key={tx.id} className="flex items-center gap-2 py-3 pl-5 pr-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <p className="truncate text-sm text-foreground"><Title tx={tx} /></p>
+                      <span className="shrink-0 text-sm"><Amount tx={tx} /></span>
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {formatDayMonth(tx.createdAt)}, {formatTime(tx.createdAt)} · <Meta tx={tx} />
+                    </p>
+                  </div>
+                  <IconButton label="Ubah transaksi" onClick={() => onEdit(tx)}><Pencil className="size-4" /></IconButton>
+                  <IconButton label="Hapus transaksi" onClick={() => onDelete(tx)}><Trash2 className="size-4" /></IconButton>
+                </li>
+              ))}
+            </ul>
+
+            <div className="flex items-center justify-between gap-3 border-t border-border/70 px-5 py-3">
+              <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
+                <ChevronLeft className="size-4" aria-hidden /> Sebelumnya
+              </Button>
+              <span className="text-xs text-muted-foreground">Halaman {page} dari {Math.max(1, totalPages)}</span>
+              <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
+                Berikutnya <ChevronRight className="size-4" aria-hidden />
+              </Button>
+            </div>
+          </>
+        )}
+      </Card>
     </div>
   );
 }

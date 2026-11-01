@@ -1,358 +1,374 @@
-import React, { useMemo, useState } from "react";
-import {
-  ResponsiveContainer, PieChart, Pie, Cell, Tooltip,
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, AreaChart, Area, ReferenceLine, Legend
-} from "recharts";
-import { Pencil } from "lucide-react";
+"use client";
 
-const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
+import React, { useEffect, useMemo, useState } from "react";
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Check, Eye, EyeOff, ReceiptText, Target, Wallet } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { categoryLabel, formatCompact, formatMonth, formatRupiah } from "@/lib/format";
+import { Button, Card, CardHeader, EmptyState, IconButton, SegmentedControl, focusRing } from "../../common/ui";
+
+interface Tx {
+  id: string;
+  type: "EXPENSE" | "INCOME" | "TRANSFER";
+  amount: number;
+  category: string;
+  status: "CONFIRMED" | "NEEDS_REVIEW";
+  createdAt: string;
+}
+interface Account { id: string; name: string; balance: number }
+interface Budget { id: string; categoryName: string; limit: number }
 
 interface HomeViewProps {
-  monthlyTxs: any[];
-  budgets: any[];
-  selectedMonth: number;
-  selectedYear: number;
-  totalBalance: number;
-  accounts: any[];
-  formatRupiah: (val: number) => string;
-  onEditAccount?: (acc: any) => void;
-  onEditBudget?: (budget: any) => void;
+  monthlyTxs: Tx[];
+  accounts: Account[];
+  budgets: Budget[];
+  month: number;
+  year: number;
+  phoneLinked: boolean;
+  onAddTransaction: () => void;
+  onAddAccount: () => void;
+  onEditAccount: (account: Account) => void;
+  onAddBudget: () => void;
+  onEditBudget: (budget: Budget) => void;
+  onLinkPhone: () => void;
+}
+
+const HIDE_KEY = "wmt.hideBalances";
+const MASK = "Rp ••••••";
+
+// Chart chrome: recessive, solid hairlines; text in muted ink (dataviz guidelines)
+const axisTick = { fontSize: 11, fill: "var(--muted-foreground)" };
+
+function ChartTooltip({ active, payload, label, month, year }: {
+  active?: boolean;
+  payload?: { value: number | null }[];
+  label?: string | number;
+  month: number;
+  year: number;
+}) {
+  const value = payload?.[0]?.value;
+  if (!active || value == null) return null;
+  const date = new Date(year, month - 1, Number(label)).toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+  return (
+    <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
+      <p className="text-muted-foreground">{date}</p>
+      <p className="mt-0.5 font-medium text-foreground tabular-nums">{formatRupiah(value)}</p>
+    </div>
+  );
+}
+
+function StatTile({ label, value, sub, action }: { label: string; value: string; sub?: string; action?: React.ReactNode }) {
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">{label}</p>
+        {action}
+      </div>
+      {/* Proportional figures for standalone numbers */}
+      <p className="mt-2 break-words text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{value}</p>
+      {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
+    </Card>
+  );
+}
+
+function Onboarding({ hasAccount, phoneLinked, hasTransaction, onAddAccount, onLinkPhone, onAddTransaction }: {
+  hasAccount: boolean;
+  phoneLinked: boolean;
+  hasTransaction: boolean;
+  onAddAccount: () => void;
+  onLinkPhone: () => void;
+  onAddTransaction: () => void;
+}) {
+  const steps = [
+    { done: hasAccount, title: "Tambah rekening", text: "Bank, e-wallet, atau tunai beserta saldonya.", action: "Tambah rekening", onClick: onAddAccount },
+    { done: phoneLinked, title: "Hubungkan WhatsApp", text: "Agar bisa mencatat cukup dengan chat ke bot.", action: "Hubungkan", onClick: onLinkPhone },
+    { done: hasTransaction, title: "Catat transaksi pertama", text: 'Kirim chat seperti "makan siang 25rb pakai BCA".', action: "Tambah manual", onClick: onAddTransaction },
+  ];
+  const done = steps.filter((s) => s.done).length;
+  return (
+    <Card>
+      <CardHeader title="Mulai menggunakan WhatsMonTrack" description={`${done} dari ${steps.length} langkah selesai`} />
+      <ol className="grid gap-3 md:grid-cols-3">
+        {steps.map((s, i) => (
+          <li key={s.title} className="flex gap-3 rounded-xl border border-border/70 p-4">
+            <span className={cn("flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium",
+              s.done ? "bg-foreground text-background" : "border border-border text-muted-foreground")}>
+              {s.done ? <Check className="size-3.5" aria-label="Selesai" /> : i + 1}
+            </span>
+            <div className="min-w-0">
+              <p className={cn("text-sm font-medium", s.done ? "text-muted-foreground line-through" : "text-foreground")}>{s.title}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{s.text}</p>
+              {!s.done && <Button variant="secondary" size="sm" className="mt-3" onClick={s.onClick}>{s.action}</Button>}
+            </div>
+          </li>
+        ))}
+      </ol>
+    </Card>
+  );
 }
 
 export default function HomeView({
-  monthlyTxs, budgets, selectedMonth, selectedYear, totalBalance, accounts, formatRupiah, onEditAccount, onEditBudget
+  monthlyTxs, accounts, budgets, month, year, phoneLinked,
+  onAddTransaction, onAddAccount, onEditAccount, onAddBudget, onEditBudget, onLinkPhone,
 }: HomeViewProps) {
+  const [hidden, setHidden] = useState(false);
+  const [breakdown, setBreakdown] = useState<"EXPENSE" | "INCOME">("EXPENSE");
 
-  // 1. Data Parsing
-  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
-  const [breakdownType, setBreakdownType] = useState<'EXPENSE' | 'INCOME'>('EXPENSE');
-
-  // Confirmed transactions only for analytics
-  const confirmedTxs = monthlyTxs.filter(t => t.status === "CONFIRMED");
-
-  // A. Cash Flow & Velocity & Net Worth Data
-  const dailyData = useMemo(() => {
-    let cumulative = 0;
-    const days = Array.from({ length: daysInMonth }, (_, i) => {
-      const day = i + 1;
-      return { day: day.toString(), income: 0, expense: 0, cumulativeFlow: 0 };
+  // Remember the "hide balances" preference per browser
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reading a browser-only preference after mount
+      setHidden(localStorage.getItem(HIDE_KEY) === "1");
+    } catch { /* storage unavailable */ }
+  }, []);
+  const toggleHidden = () => {
+    setHidden((h) => {
+      try { localStorage.setItem(HIDE_KEY, h ? "0" : "1"); } catch { /* ignore */ }
+      return !h;
     });
-
-    confirmedTxs.forEach(t => {
-      const date = new Date(t.createdAt);
-      const dayIdx = date.getDate() - 1;
-      if (t.type === 'INCOME') days[dayIdx].income += t.amount;
-      if (t.type === 'EXPENSE') days[dayIdx].expense += t.amount;
-    });
-
-    // Calculate cumulative
-    days.forEach(d => {
-      cumulative += (d.income - d.expense);
-      d.cumulativeFlow = cumulative;
-    });
-
-    return days;
-  }, [confirmedTxs, daysInMonth]);
-
-  // B. Expense Breakdown
-  const expenseData = useMemo(() => {
-    const data = confirmedTxs
-      .filter(t => t.type === 'EXPENSE')
-      .reduce((acc, t) => {
-        const cat = t.category || 'UNCATEGORIZED';
-        const existing = acc.find((x: any) => x.name === cat);
-        if (existing) existing.value += t.amount;
-        else acc.push({ name: cat, value: t.amount });
-        return acc;
-      }, [] as any[])
-      .sort((a: any, b: any) => b.value - a.value);
-
-    const total = data.reduce((sum: number, item: any) => sum + item.value, 0);
-    return data.map((d: any) => ({ ...d, percent: total > 0 ? (d.value / total) * 100 : 0 }));
-  }, [confirmedTxs]);
-
-  const incomeData = useMemo(() => {
-    const data = confirmedTxs
-      .filter(t => t.type === 'INCOME')
-      .reduce((acc, t) => {
-        const cat = t.category || 'UNCATEGORIZED';
-        const existing = acc.find((x: any) => x.name === cat);
-        if (existing) existing.value += t.amount;
-        else acc.push({ name: cat, value: t.amount });
-        return acc;
-      }, [] as any[])
-      .sort((a: any, b: any) => b.value - a.value);
-
-    const total = data.reduce((sum: number, item: any) => sum + item.value, 0);
-    return data.map((d: any) => ({ ...d, percent: total > 0 ? (d.value / total) * 100 : 0 }));
-  }, [confirmedTxs]);
-
-  // D. Budget vs Actual
-  const budgetData = useMemo(() => {
-    return budgets.map(b => {
-      const spent = confirmedTxs
-        .filter(t => t.type === 'EXPENSE' && (t.category || 'UNCATEGORIZED').toUpperCase() === b.categoryName)
-        .reduce((sum, t) => sum + t.amount, 0);
-
-      const percent = b.limit > 0 ? Math.min((spent / b.limit) * 100, 100) : 0;
-      let status = "SAFE";
-      let color = "bg-green-500";
-      if (percent >= 100) { status = "OVER"; color = "bg-red-500"; }
-      else if (percent >= 80) { status = "WARNING"; color = "bg-orange-500"; }
-
-      return {
-        id: b.id,
-        categoryName: b.categoryName,
-        limit: b.limit,
-        spent,
-        percent,
-        status,
-        color
-      };
-    });
-  }, [budgets, confirmedTxs]);
-
-  // Global Budget for Velocity Reference Line
-  const totalBudget = budgets.reduce((sum, b) => sum + b.limit, 0);
-  const dailyAverageThreshold = totalBudget > 0 ? totalBudget / daysInMonth : 0;
-
-  const [isPrivacyMode, setIsPrivacyMode] = useState(true);
-  const [revealedAccounts, setRevealedAccounts] = useState<Record<string, boolean>>({});
-
-  const toggleAccountVisibility = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    setRevealedAccounts(prev => ({ ...prev, [id]: !prev[id] }));
   };
+  const money = (v: number) => (hidden ? MASK : formatRupiah(v));
 
-  // Custom Tooltip components to keep JSX clean
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-card border border-border p-3 rounded-lg shadow-md font-mono text-xs z-50">
-          <p className="font-bold mb-2">Day {label}</p>
-          {payload.map((p: any, i: number) => (
-            <div key={i} style={{ color: p.color }}>
-              {p.name}: {formatRupiah(p.value)}
-            </div>
-          ))}
-        </div>
-      );
+  // Only the selected month: right after switching months the previous month's data is still loaded,
+  // and e.g. a transaction on Oct 31 must not be placed on a non-existent "Nov 31".
+  const confirmed = useMemo(
+    () =>
+      monthlyTxs.filter((t) => {
+        const d = new Date(t.createdAt);
+        return t.status === "CONFIRMED" && d.getMonth() + 1 === month && d.getFullYear() === year;
+      }),
+    [monthlyTxs, month, year],
+  );
+  const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
+  const income = confirmed.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
+  const expense = confirmed.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
+  const net = income - expense;
+  const monthName = formatMonth(month, year);
+
+  // Daily series. In the current month, days after today are left empty so the line stops at today.
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const now = new Date();
+  const lastDay = month === now.getMonth() + 1 && year === now.getFullYear() ? now.getDate() : daysInMonth;
+  const daily = useMemo(() => {
+    const rows = Array.from({ length: daysInMonth }, (_, i) => ({ day: i + 1, income: 0, expense: 0, net: null as number | null }));
+    for (const t of confirmed) {
+      const d = new Date(t.createdAt).getDate() - 1;
+      if (t.type === "INCOME") rows[d].income += t.amount;
+      if (t.type === "EXPENSE") rows[d].expense += t.amount;
     }
-    return null;
-  };
+    let running = 0;
+    for (const r of rows) {
+      running += r.income - r.expense;
+      r.net = r.day <= lastDay ? running : null;
+    }
+    return rows;
+  }, [confirmed, daysInMonth, lastDay]);
+  const netGoesNegative = daily.some((r) => (r.net ?? 0) < 0);
+
+  const totalBudget = budgets.reduce((s, b) => s + b.limit, 0);
+  const dailyBudget = totalBudget > 0 ? totalBudget / daysInMonth : 0;
+
+  // Ranked categories (top 5 + "Lainnya")
+  const categories = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const t of confirmed.filter((x) => x.type === breakdown)) {
+      const key = (t.category || "UNCATEGORIZED").toUpperCase();
+      totals.set(key, (totals.get(key) ?? 0) + t.amount);
+    }
+    const sorted = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+    const top = sorted.slice(0, 5).map(([code, value]) => ({ label: categoryLabel(code), value }));
+    const rest = sorted.slice(5).reduce((s, [, v]) => s + v, 0);
+    if (rest > 0) top.push({ label: "Lainnya", value: rest });
+    const sum = top.reduce((s, c) => s + c.value, 0);
+    return top.map((c) => ({ ...c, share: sum ? c.value / sum : 0 }));
+  }, [confirmed, breakdown]);
+
+  const budgetRows = budgets.map((b) => {
+    const spent = confirmed
+      .filter((t) => t.type === "EXPENSE" && (t.category || "UNCATEGORIZED").toUpperCase() === b.categoryName)
+      .reduce((s, t) => s + t.amount, 0);
+    const ratio = b.limit > 0 ? spent / b.limit : 0;
+    return { budget: b, spent, ratio, status: ratio >= 1 ? "over" : ratio >= 0.8 ? "warn" : "ok" };
+  });
+
+  const hasTransactions = confirmed.length > 0;
+  const showOnboarding = accounts.length === 0 || !phoneLinked;
+  const noTxState = (
+    <EmptyState
+      icon={<ReceiptText className="size-5" />}
+      title={`Belum ada transaksi di ${monthName}`}
+      description="Catat lewat chat WhatsApp ke bot, atau tambahkan secara manual."
+      action={<Button variant="secondary" size="sm" onClick={onAddTransaction}>Tambah transaksi</Button>}
+    />
+  );
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="space-y-6">
+      {showOnboarding && (
+        <Onboarding hasAccount={accounts.length > 0} phoneLinked={phoneLinked} hasTransaction={hasTransactions}
+          onAddAccount={onAddAccount} onLinkPhone={onLinkPhone} onAddTransaction={onAddTransaction} />
+      )}
 
-      {/* 1. Header & Net Worth */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="flex flex-col justify-center relative group">
-          <div className="flex items-center gap-3 mb-1">
-            <span className="text-sm font-medium text-muted-foreground uppercase tracking-widest">Total Net Worth</span>
-            <button 
-              onClick={() => {
-                setIsPrivacyMode(!isPrivacyMode);
-                setRevealedAccounts({}); // Reset individual states when global toggles
-              }}
-              className="text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {isPrivacyMode ? (
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-              )}
-            </button>
-          </div>
-          <span className="text-5xl font-heading font-bold tabular-nums tracking-tighter text-foreground">
-            {isPrivacyMode ? 'Rp *******' : formatRupiah(totalBalance)}
-          </span>
-        </div>
-
-        {/* Accounts Summary */}
-        <div className="grid grid-cols-2 gap-3">
-          {accounts.map(acc => {
-            const isHidden = isPrivacyMode && !revealedAccounts[acc.id];
-            return (
-              <div key={acc.id} className="bg-card border border-border/50 rounded-2xl p-4 flex flex-col justify-between h-24 shadow-sm relative group cursor-pointer hover:border-primary/50 transition-colors" onClick={() => onEditAccount?.(acc)}>
-                <div className="absolute top-3 right-3 flex gap-2">
-                  <button 
-                    onClick={(e) => toggleAccountVisibility(e, acc.id)}
-                    className="text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
-                  >
-                    {isHidden ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                    )}
-                  </button>
-                  <div className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Pencil size={14} />
-                  </div>
-                </div>
-                <span className="text-xs text-muted-foreground font-medium">{acc.name}</span>
-                <span className="text-lg font-heading font-semibold tabular-nums">
-                  {isHidden ? '***' : formatRupiah(acc.balance)}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+      {/* Key numbers */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatTile
+          label="Saldo total"
+          value={money(totalBalance)}
+          sub={`${accounts.length} rekening`}
+          action={
+            <IconButton label={hidden ? "Tampilkan saldo" : "Sembunyikan saldo"} aria-pressed={hidden} onClick={toggleHidden} className="-my-2 -mr-2 size-8">
+              {hidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </IconButton>
+          }
+        />
+        <StatTile label="Pemasukan" value={formatRupiah(income)} sub={monthName} />
+        <StatTile label="Pengeluaran" value={formatRupiah(expense)} sub={monthName} />
+        <StatTile label="Selisih" value={`${net > 0 ? "+" : ""}${formatRupiah(net)}`} sub="Pemasukan dikurangi pengeluaran" />
       </div>
 
-      {/* 2. Net Worth Growth / Cumulative Flow (Area Chart) */}
-      <div className="bg-card border border-border/50 rounded-3xl p-5 shadow-sm">
-        <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-4">Cumulative Net Flow (This Month)</h3>
-        <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={dailyData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorFlow" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
-              <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area type="step" dataKey="cumulativeFlow" name="Net Flow" stroke="var(--primary)" strokeWidth={2} fillOpacity={1} fill="url(#colorFlow)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* 3. Cash Flow Trend (Grouped Bar Chart) */}
-        <div className="bg-card border border-border/50 rounded-3xl p-5 shadow-sm">
-          <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-4">Daily Cash Flow</h3>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dailyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} />
-                <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `${val / 1000}k`} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
-                <Bar dataKey="income" name="Income" fill="#10b981" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* 4. Daily Spending Velocity (Bar + Reference Line) */}
-        <div className="bg-card border border-border/50 rounded-3xl p-5 shadow-sm">
-          <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-4">Spending Velocity</h3>
-          <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dailyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.5} />
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} />
-                <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `${val / 1000}k`} tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} />
-                <Tooltip content={<CustomTooltip />} />
-                {dailyAverageThreshold > 0 && (
-                  <ReferenceLine y={dailyAverageThreshold} stroke="#f59e0b" strokeDasharray="3 3" label={{ position: 'top', value: 'Avg Budget', fill: '#f59e0b', fontSize: 10 }} />
-                )}
-                <Bar dataKey="expense" name="Expense" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-card border border-border/50 rounded-3xl p-5 shadow-sm flex flex-col">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-widest">Category Breakdown</h3>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setBreakdownType('EXPENSE')}
-                className={`text-[10px] px-2 py-1 rounded-md font-mono transition-colors ${breakdownType === 'EXPENSE' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary'}`}
-              >
-                EXPENSE
-              </button>
-              <button
-                onClick={() => setBreakdownType('INCOME')}
-                className={`text-[10px] px-2 py-1 rounded-md font-mono transition-colors ${breakdownType === 'INCOME' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-secondary'}`}
-              >
-                INCOME
-              </button>
-            </div>
-          </div>
-
-          {(breakdownType === 'EXPENSE' ? expenseData : incomeData).length > 0 ? (
-            <div className="flex items-center h-48">
-              <div className="w-1/2 h-full relative">
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          {hasTransactions ? (
+            <>
+          <Card>
+            <CardHeader title="Arus kas" description={`Akumulasi pemasukan dikurangi pengeluaran, ${monthName}`} />
+            {hasTransactions ? (
+              <div className="h-56" role="img" aria-label={`Arus kas ${monthName}: akhir periode ${formatRupiah(daily[lastDay - 1]?.net ?? 0)}`}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={breakdownType === 'EXPENSE' ? expenseData : incomeData} innerRadius="60%" outerRadius="80%" paddingAngle={2} dataKey="value" stroke="none">
-                      {(breakdownType === 'EXPENSE' ? expenseData : incomeData).map((entry: any, index: number) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: '8px' }}
-                      itemStyle={{ color: 'var(--foreground)', fontFamily: 'var(--font-heading)', fontSize: '12px' }}
-                      formatter={(value: any, name: any, props: any) => [`${formatRupiah(value as number)} (${props.payload.percent.toFixed(1)}%)`, name]}
-                    />
-                  </PieChart>
+                  <AreaChart data={daily} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid vertical={false} stroke="var(--border)" />
+                    <XAxis dataKey="day" tick={axisTick} tickLine={false} axisLine={{ stroke: "var(--border)" }} interval="preserveStartEnd" minTickGap={20} />
+                    <YAxis tick={axisTick} tickLine={false} axisLine={false} tickFormatter={formatCompact} width={52} tickCount={4} />
+                    {netGoesNegative && <ReferenceLine y={0} stroke="var(--muted-foreground)" />}
+                    <Tooltip content={<ChartTooltip month={month} year={year} />} cursor={{ stroke: "var(--border)" }} />
+                    <Area type="linear" dataKey="net" stroke="var(--foreground)" strokeWidth={2} fill="var(--foreground)" fillOpacity={0.05}
+                      dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }} connectNulls={false} isAnimationActive={false} />
+                  </AreaChart>
                 </ResponsiveContainer>
-                {/* Center Label */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-[10px] text-muted-foreground font-mono">TOTAL</span>
-                  <span className="text-sm font-bold">
-                    Rp {((breakdownType === 'EXPENSE' ? expenseData : incomeData).reduce((a: any, b: any) => a + b.value, 0) / 1000).toLocaleString('id-ID', { maximumFractionDigits: 1 })}k
-                  </span>
-                </div>
               </div>
-              <div className="w-1/2 flex flex-col pl-4 space-y-2 overflow-y-auto max-h-full">
-                {(breakdownType === 'EXPENSE' ? expenseData : incomeData).map((d: any, i: number) => (
-                  <div key={i} className="flex justify-between items-center text-xs">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <div className="w-2 h-2 shrink-0 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }}></div>
-                      <span className="font-medium text-foreground truncate">{d.name}</span>
+            ) : noTxState}
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Pengeluaran harian"
+              description={dailyBudget > 0 ? `Garis putus-putus: rata-rata anggaran per hari (${formatRupiah(Math.round(dailyBudget))})` : monthName}
+            />
+            {expense > 0 ? (
+              <div className="h-56" role="img" aria-label={`Pengeluaran harian ${monthName}, total ${formatRupiah(expense)}`}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={daily} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid vertical={false} stroke="var(--border)" />
+                    <XAxis dataKey="day" tick={axisTick} tickLine={false} axisLine={{ stroke: "var(--border)" }} interval="preserveStartEnd" minTickGap={20} />
+                    <YAxis tick={axisTick} tickLine={false} axisLine={false} tickFormatter={formatCompact} width={52} tickCount={4} />
+                    <Tooltip content={<ChartTooltip month={month} year={year} />} cursor={{ fill: "var(--muted)" }} />
+                    {dailyBudget > 0 && <ReferenceLine y={dailyBudget} stroke="var(--muted-foreground)" strokeDasharray="4 4" />}
+                    <Bar dataKey="expense" fill="var(--foreground)" radius={[4, 4, 0, 0]} maxBarSize={14} isAnimationActive={false} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyState icon={<ReceiptText className="size-5" />} title={`Belum ada pengeluaran di ${monthName}`} />
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Per kategori"
+              description={monthName}
+              action={
+                <SegmentedControl label="Jenis" value={breakdown} onChange={setBreakdown}
+                  options={[{ value: "EXPENSE", label: "Pengeluaran" }, { value: "INCOME", label: "Pemasukan" }]} />
+              }
+            />
+            {categories.length > 0 ? (
+              <ul className="space-y-3">
+                {categories.map((c) => (
+                  <li key={c.label}>
+                    <div className="flex items-baseline justify-between gap-3 text-sm">
+                      <span className="truncate text-foreground">{c.label}</span>
+                      <span className="shrink-0 tabular-nums text-foreground">
+                        {formatRupiah(c.value)} <span className="text-muted-foreground">· {Math.round(c.share * 100)}%</span>
+                      </span>
                     </div>
-                    <span className="font-mono text-muted-foreground shrink-0 pl-2">{d.percent.toFixed(0)}%</span>
-                  </div>
+                    <div className="mt-1.5 h-1.5 rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-foreground" style={{ width: `${Math.max(c.share * 100, 1)}%` }} />
+                    </div>
+                  </li>
                 ))}
-              </div>
-            </div>
+              </ul>
+            ) : (
+              <EmptyState title={breakdown === "EXPENSE" ? "Belum ada pengeluaran" : "Belum ada pemasukan"} description={`Untuk ${monthName}.`} />
+            )}
+          </Card>
+            </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">No data for {breakdownType.toLowerCase()}.</div>
+            <Card>
+              <CardHeader title="Aktivitas bulan ini" description="Arus kas, pengeluaran harian, dan kategori akan tampil di sini." />
+              {noTxState}
+            </Card>
           )}
         </div>
 
-        {/* 6. Budget vs Actual (Progress Bars) */}
-        <div className="bg-card border border-border/50 rounded-3xl p-5 shadow-sm">
-          <h3 className="text-xs font-mono text-muted-foreground uppercase tracking-widest mb-4">Budget vs Actual</h3>
-          {budgetData.length > 0 ? (
-            <div className="space-y-4 overflow-y-auto max-h-48 pr-2">
-              {budgetData.map((b, i) => (
-                <div key={i} className="flex flex-col space-y-1">
-                  <div className="flex justify-between items-end">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium">{b.categoryName}</span>
-                      <button onClick={() => onEditBudget?.(b)} className="text-muted-foreground hover:text-primary transition-colors">
-                        <Pencil size={12} />
-                      </button>
-                    </div>
-                    <span className="text-xs font-mono text-muted-foreground">
-                      {formatRupiah(b.spent)} / {formatRupiah(b.limit)}
-                    </span>
-                  </div>
-                  <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                    <div className={`h-full ${b.color} transition-all duration-500`} style={{ width: `${b.percent}%` }}></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="h-48 flex flex-col items-center justify-center text-xs text-muted-foreground text-center">
-              No budgets set. <br />
-            </div>
-          )}
-        </div>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader title="Rekening" action={accounts.length > 0 && <Button variant="ghost" size="sm" onClick={onAddAccount}>Tambah</Button>} />
+            {accounts.length > 0 ? (
+              <ul className="-mx-2">
+                {accounts.map((a) => (
+                  <li key={a.id}>
+                    <button type="button" onClick={() => onEditAccount(a)}
+                      className={cn("flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition-colors hover:bg-muted", focusRing)}>
+                      <span className="truncate text-foreground">{a.name}</span>
+                      <span className="shrink-0 tabular-nums text-foreground">{money(a.balance)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState icon={<Wallet className="size-5" />} title="Belum ada rekening"
+                description="Tambahkan rekening bank, e-wallet, atau tunai."
+                action={<Button variant="secondary" size="sm" onClick={onAddAccount}>Tambah rekening</Button>} />
+            )}
+          </Card>
 
+          <Card>
+            <CardHeader title="Anggaran" description={monthName} action={budgets.length > 0 && <Button variant="ghost" size="sm" onClick={onAddBudget}>Tambah</Button>} />
+            {budgetRows.length > 0 ? (
+              <ul className="-mx-2 space-y-1">
+                {budgetRows.map(({ budget, spent, ratio, status }) => (
+                  <li key={budget.id}>
+                    <button type="button" onClick={() => onEditBudget(budget)}
+                      className={cn("w-full rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-muted", focusRing)}>
+                      <div className="flex items-baseline justify-between gap-3 text-sm">
+                        <span className="truncate text-foreground">{categoryLabel(budget.categoryName)}</span>
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                          {formatRupiah(spent)} / {formatRupiah(budget.limit)}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 rounded-full bg-muted">
+                        <div
+                          className={cn("h-full rounded-full", status === "over" ? "bg-destructive" : status === "warn" ? "bg-warning" : "bg-foreground")}
+                          style={{ width: `${Math.min(ratio * 100, 100)}%` }}
+                        />
+                      </div>
+                      {/* Status is never color-only */}
+                      {status !== "ok" && (
+                        <p className={cn("mt-1 text-xs", status === "over" ? "text-destructive" : "text-foreground")}>
+                          {status === "over" ? `Melebihi ${formatRupiah(spent - budget.limit)}` : `Hampir habis · sisa ${formatRupiah(budget.limit - spent)}`}
+                        </p>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState icon={<Target className="size-5" />} title="Belum ada anggaran"
+                description="Tetapkan batas pengeluaran per kategori, misalnya makanan."
+                action={<Button variant="secondary" size="sm" onClick={onAddBudget}>Atur anggaran</Button>} />
+            )}
+          </Card>
+        </div>
       </div>
     </div>
   );
