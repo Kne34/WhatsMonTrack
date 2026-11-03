@@ -8,6 +8,20 @@ Every user has their own login, bank/e-wallet accounts, budgets and transactions
 
 ---
 
+## Documentation
+
+Quick access to every document in this repository.
+
+| Document | What it covers | Jump to |
+|---|---|---|
+| **README.md** (this file) | Features, architecture, local setup, full user guide, development, history | [Features](#features) · [Architecture](#architecture) · [REST API](#rest-api) · [Setup](#installation-and-setup) · [User guide](#user-guide) · [Development](#development) · [History](#project-history) |
+| [**LIVE.md**](LIVE.md) | The deployed app: link, what runs where, getting started, limitations, releasing updates | [What is running](LIVE.md#what-is-running) · [Getting started](LIVE.md#getting-started-users) · [Limitations](LIVE.md#limitations) · [Releasing an update](LIVE.md#releasing-an-update-build-on-the-laptop) · [Custom domain](LIVE.md#moving-to-a-custom-domain) |
+| [**deploy/vps/README.md**](deploy/vps/README.md) | Step-by-step learning guide: deploying to an Ubuntu VPS | [Big picture](deploy/vps/README.md#0-the-big-picture) · [SSH](deploy/vps/README.md#1-log-in-to-the-vps-over-ssh) · [Server setup](deploy/vps/README.md#2-prepare-the-server-once) · [Secrets](deploy/vps/README.md#3-fill-in-the-secrets) · [Build & deploy](deploy/vps/README.md#4-build-on-the-laptop-run-on-the-server) · [First use](deploy/vps/README.md#5-first-use) · [Operations](deploy/vps/README.md#6-day-to-day-operations) · [Backups](deploy/vps/README.md#backups) · [Troubleshooting](deploy/vps/README.md#7-troubleshooting) · [DNS problems](deploy/vps/README.md#dns-problems-lessons-from-the-first-deployment) · [Security](deploy/vps/README.md#8-security-in-short) |
+| [**backend/api/README.md**](backend/api/README.md) | The NestJS API and WhatsApp bot: code layout, scripts, migrations | [Layout](backend/api/README.md#layout) · [Scripts](backend/api/README.md#scripts) · [Configuration](backend/api/README.md#configuration) · [Migrations](backend/api/README.md#migrations) |
+| [**frontend/README.md**](frontend/README.md) | The Next.js web dashboard: code layout and scripts | [Layout](frontend/README.md#layout) · [Scripts](frontend/README.md#scripts) |
+
+---
+
 ## Table of contents
 
 1. [Features](#features)
