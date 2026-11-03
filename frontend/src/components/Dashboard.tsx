@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   confirmTransaction, createAccount, createTransaction, deleteAccount, deleteBudget, deleteTransaction,
   fetchAccounts, fetchBudgets, fetchPhoneStatus, fetchTransactions, fetchWhatsAppStatus, setBudget,
-  updateAccount, updateTransaction, type PhoneStatus,
+  updateAccount, updateTransaction, type PhoneStatus, type WhatsAppStatus,
 } from "@/lib/api";
 import { categoryLabel, formatRupiah } from "@/lib/format";
 import type { SessionUser } from "./AuthWrapper";
@@ -23,7 +23,6 @@ import LinkWhatsAppModal from "./dashboard/modals/LinkWhatsAppModal";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ApiTx = any;
-type WaStatus = { connected: boolean; qr: string; canManage?: boolean };
 
 type DialogState =
   | { kind: "none" }
@@ -55,7 +54,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   const [totalPages, setTotalPages] = useState(1);
   const [accounts, setAccounts] = useState<AccountLike[]>([]);
   const [budgets, setBudgets] = useState<BudgetLike[]>([]);
-  const [waStatus, setWaStatus] = useState<WaStatus | null>(null);
+  const [waStatus, setWaStatus] = useState<WhatsAppStatus | null>(null);
   const [phoneStatus, setPhoneStatus] = useState<PhoneStatus | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -225,6 +224,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     phoneNumber: phoneStatus?.phoneNumber ?? null,
     isAdmin: waStatus?.canManage ?? user.isAdmin,
     botConnected: waStatus ? waStatus.connected : null,
+    botStopped: waStatus?.state === "stopped",
     onPhoneClick: () => setDialog({ kind: "link" }),
     onBotClick: () => setDialog({ kind: "bot" }),
     onLogout,

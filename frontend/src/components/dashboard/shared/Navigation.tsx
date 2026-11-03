@@ -20,6 +20,8 @@ interface StatusProps {
   phoneNumber: string | null;
   isAdmin: boolean;
   botConnected: boolean | null;
+  /** The bot was unlinked on purpose by an admin */
+  botStopped?: boolean;
   onPhoneClick: () => void;
   onBotClick: () => void;
   onLogout: () => void;
@@ -33,6 +35,11 @@ function CountBadge({ count, className }: { count: number; className?: string })
       <span className="sr-only"> perlu ditinjau</span>
     </span>
   );
+}
+
+function botLabel(status: { botConnected: boolean | null; botStopped?: boolean }) {
+  if (status.botStopped) return "Dicabut";
+  return status.botConnected ? "Online" : status.botConnected === false ? "Offline" : "Memeriksa…";
 }
 
 function BotDot({ connected }: { connected: boolean | null }) {
@@ -100,7 +107,7 @@ export function Sidebar({ active, onNavigate, reviewCount, ...status }: StatusPr
               <span className="block text-xs text-muted-foreground">Bot WhatsApp</span>
               <span className="flex items-center gap-2 text-sm text-foreground">
                 <BotDot connected={status.botConnected} />
-                {status.botConnected ? "Online" : status.botConnected === false ? "Offline" : "Memeriksa…"}
+                {botLabel(status)}
               </span>
             </span>
           </button>
@@ -129,7 +136,7 @@ export function MobileAccountMenu(status: StatusProps) {
     ...(status.isAdmin
       ? [{
           label: "Bot WhatsApp",
-          description: status.botConnected ? "Online" : status.botConnected === false ? "Offline, ketuk untuk scan QR" : "Memeriksa…",
+          description: status.botStopped ? "Dicabut, ketuk untuk menghubungkan" : status.botConnected === false ? "Offline, ketuk untuk scan QR" : botLabel(status),
           icon: <MessageCircle className="size-4" />,
           onSelect: status.onBotClick,
         }]

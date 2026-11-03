@@ -122,14 +122,40 @@ export const deleteTransaction = async (id: string) => {
   return data;
 };
 
-// --- WhatsApp Setup ---
-export const fetchWhatsAppStatus = async () => {
+// --- WhatsApp bot (shared) ---
+/** connecting | waiting_qr (QR ready to scan) | connected | stopped (unlinked on purpose by an admin) */
+export type BotState = 'connecting' | 'waiting_qr' | 'connected' | 'stopped';
+
+export interface WhatsAppStatus {
+  connected: boolean;
+  state: BotState;
+  /** QR code to link the bot (admins only) */
+  qr: string;
+  /** The bot's number while connected (admins only) */
+  botPhone: string | null;
+  canManage?: boolean;
+}
+
+export const fetchWhatsAppStatus = async (): Promise<WhatsAppStatus> => {
   const { data } = await api.get('/whatsapp/status');
   return data;
 };
 
+/** Change the bot number: logs the current number out and shows a new QR code. */
 export const resetWhatsAppSession = async () => {
   const { data } = await api.post('/whatsapp/reset');
+  return data;
+};
+
+/** Unlink the bot number; the bot stays off (also after restarts) until started again. */
+export const stopWhatsAppBot = async () => {
+  const { data } = await api.post('/whatsapp/stop');
+  return data;
+};
+
+/** Turn the bot back on after it was unlinked; a QR code appears. */
+export const startWhatsAppBot = async () => {
+  const { data } = await api.post('/whatsapp/start');
   return data;
 };
 
