@@ -1,201 +1,202 @@
-# Deploy WhatsMonTrack ke VPS (panduan belajar)
+# Deploying WhatsMonTrack to a VPS (learning guide)
 
-Panduan ini mengajak kamu men-deploy sendiri, langkah demi langkah, dengan penjelasan **kenapa** setiap langkah dilakukan. Target: VPS Ubuntu 24.04 dengan 1 GB RAM (contoh: Rumahweb VPS S, IP `80.43.0.155`).
+This guide walks you through deploying the app yourself, step by step, explaining **why** each step is done. Target: an Ubuntu 24.04 VPS with 1 GB of RAM (example: Rumahweb VPS S, IP `80.43.0.155`).
 
-Hasil akhirnya:
-- Web dashboard dan REST API di `https://80-43-0-155.sslip.io` (HTTPS otomatis, tanpa beli domain).
-- Bot WhatsApp menyala 24 jam.
-- Database ter-backup setiap hari.
+End result:
+- Web dashboard and REST API at `https://80-43-0-155.sslip.io` (automatic HTTPS, no domain to buy).
+- The WhatsApp bot running 24/7.
+- A daily database backup.
 
 ---
 
-## 0. Gambaran besar
+## 0. The big picture
 
 ```
- Browser / aplikasi Android
+ Browser / Android app
           │  HTTPS (443)
           ▼
  ┌──────────────── VPS ─────────────────┐
  │  Caddy  ── /api/* ──►  api (NestJS)  │◄──► WhatsApp, Gemini, email
  │    │                     │           │
- │    └── lainnya ──► web   ▼           │
- │              (Next.js)  postgres     │
+ │    └── everything else ► web         │
+ │                (Next.js) ▼           │
+ │                       postgres       │
  └──────────────────────────────────────┘
 ```
 
-Semua bagian berjalan sebagai **container Docker** yang diatur oleh satu file: `docker-compose.prod.yml`.
+Every part runs as a **Docker container**, all described in one file: `docker-compose.prod.yml`.
 
-| Bagian | Fungsi | Kenapa begini |
+| Part | What it does | Why it is set up this way |
 |---|---|---|
-| **Caddy** | Satu-satunya pintu masuk dari internet (port 80/443). Mengurus sertifikat HTTPS sendiri | HTTPS wajib supaya password dan token tidak bisa diintip. Caddy memperpanjang sertifikat otomatis |
-| **api** | Backend NestJS + bot WhatsApp | Dijalankan dari hasil build (`node dist/main`), bukan mode dev, supaya hemat RAM dan stabil |
-| **web** | Dashboard Next.js | Sama: hasil build production |
-| **postgres** | Database | **Tidak** dibuka ke internet, hanya bisa diakses container lain |
+| **Caddy** | The only entry point from the internet (ports 80/443). Gets and renews HTTPS certificates by itself | HTTPS keeps passwords and tokens from being read in transit; Caddy renews certificates automatically |
+| **api** | NestJS backend + WhatsApp bot | Runs from a production build (`node dist/main`), not dev mode: less RAM, more stable |
+| **web** | Next.js dashboard | Same: a production build |
+| **postgres** | Database | **Not** reachable from the internet, only from the other containers |
 
-> **Beda dengan `docker-compose.yml` (development):** di laptop ada master, replica dan Pgpool. Di satu VPS itu tidak menambah keamanan data (kalau VPS mati, semuanya ikut mati) tapi memakan RAM. Di produksi cukup satu PostgreSQL ditambah **backup harian**.
+> **Compared with `docker-compose.yml` (development):** the laptop setup has a primary, a replica and Pgpool. On a single VPS that adds no data safety (if the VPS goes down, all of it goes down) but costs RAM. In production, one PostgreSQL plus a **daily backup** is enough.
 
-**Istilah singkat:** *SSH* = remote terminal ke server · *container* = aplikasi yang dibungkus beserta semua kebutuhannya · *image* = "cetakan" container · *volume* = penyimpanan yang tetap ada walau container dihapus · *reverse proxy* = server yang meneruskan request ke aplikasi di belakangnya.
+**Quick glossary:** *SSH* = remote terminal into the server · *container* = an app packaged with everything it needs · *image* = the template a container is created from · *volume* = storage that survives when a container is removed · *reverse proxy* = a server that forwards requests to the apps behind it.
 
 ---
 
-## 1. Masuk ke VPS lewat SSH
+## 1. Log in to the VPS over SSH
 
-Di Windows, buka **PowerShell** (SSH sudah bawaan Windows 10/11):
+On Windows, open **PowerShell** (SSH is built into Windows 10/11):
 
 ```powershell
 ssh root@80.43.0.155
 ```
 
-- Pertama kali akan muncul *"The authenticity of host … can't be established"*. Ketik `yes`. Ini menyimpan "sidik jari" server supaya lain kali kamu tahu kalau ada yang menyamar.
-- Masukkan **password root** dari panel Rumahweb (ikon mata di *Password Root*). Saat mengetik password, layar memang tidak menampilkan apa-apa; itu normal.
+- The first time you will see *"The authenticity of host … can't be established"*. Type `yes`. This stores the server's fingerprint, so you would be warned if someone ever impersonated it.
+- Enter the **root password** from the Rumahweb panel (eye icon next to *Password Root*). Nothing appears on screen while you type a password; that is normal.
 
-Berhasil kalau prompt berubah menjadi seperti `root@whatsmon:~#`. Semua perintah selanjutnya dijalankan **di VPS**, kecuali disebut lain.
+You are in when the prompt looks like `root@whatsmon:~#`. All following commands run **on the VPS** unless stated otherwise.
 
-### Ganti password root (penting)
-Password dari panel pernah tampil di layar/email. Ganti dengan yang hanya kamu tahu:
+### Change the root password (important)
+The panel password has been shown on screen and by email. Replace it with one only you know:
 
 ```bash
 passwd
 ```
 
-### (Disarankan) Login pakai SSH key, bukan password
-Kunci SSH jauh lebih aman dari password. Di **PowerShell laptop** (bukan di VPS):
+### (Recommended) Log in with an SSH key instead of a password
+SSH keys are far safer than passwords. In **PowerShell on your laptop** (not on the VPS):
 
 ```powershell
-ssh-keygen -t ed25519            # tekan Enter terus; boleh isi passphrase
+ssh-keygen -t ed25519            # press Enter for the defaults; a passphrase is optional
 type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh root@80.43.0.155 "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
-ssh root@80.43.0.155             # sekarang tidak menanyakan password VPS lagi
+ssh root@80.43.0.155             # no VPS password prompt any more
 ```
 
-`id_ed25519` (tanpa `.pub`) adalah kunci rahasiamu: **jangan pernah dibagikan**. File `.pub` boleh ditaruh di server mana pun.
+`id_ed25519` (without `.pub`) is your private key: **never share it**. The `.pub` file is safe to put on any server.
 
 ---
 
-## 2. Siapkan server (sekali saja)
+## 2. Prepare the server (once)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Kne34/WhatsMonTrack/deploy/vps/deploy/vps/setup.sh -o setup.sh
-less setup.sh        # baca dulu isinya (q untuk keluar) — biasakan membaca skrip sebelum menjalankannya sebagai root
+less setup.sh        # read it first (q to quit) — make a habit of reading scripts before running them as root
 bash setup.sh
 ```
 
-Yang dilakukan `setup.sh` (5–10 menit):
+What `setup.sh` does (5–10 minutes):
 
-| Langkah | Kenapa |
+| Step | Why |
 |---|---|
-| `apt upgrade` + *unattended-upgrades* | Menambal celah keamanan, dan ke depannya update keamanan terpasang otomatis |
-| Zona waktu Asia/Jakarta | Jam di log dan jadwal backup sesuai WIB |
-| **Swap 2 GB** | "RAM cadangan" di disk. Build aplikasi butuh lebih dari 1 GB RAM sesaat; tanpa swap build bisa gagal karena kehabisan memori |
-| **Docker** | Menjalankan semua container |
-| Batas log Docker (10 MB × 3) | Disk hanya 20 GB; log yang tidak dibatasi bisa memenuhi disk |
-| **Firewall (ufw)**: hanya port 22, 80, 443 | Port lain tertutup dari internet |
-| **fail2ban** | Memblokir IP yang berkali-kali salah login SSH (bot penebak password sangat banyak di internet) |
-| `git clone` ke `/opt/whatsmontrack` | Mengambil kode branch `deploy/vps` |
-| Jadwal backup 03:30 setiap hari | Lihat bagian 6 |
+| `apt upgrade` + *unattended-upgrades* | Patches security holes now, and installs security updates automatically from then on |
+| Time zone Asia/Jakarta | Log timestamps and the backup schedule use WIB |
+| **2 GB swap** | "Spare RAM" on disk. Building the app briefly needs more than 1 GB of RAM; without swap the build can be killed for running out of memory |
+| **Docker** | Runs all the containers |
+| Docker log limits (10 MB × 3) | The disk is only 20 GB; unlimited logs can fill it up |
+| **Firewall (ufw)**: only ports 22, 80, 443 | Every other port is closed to the internet |
+| **fail2ban** | Blocks IPs that keep failing SSH logins (password-guessing bots are everywhere) |
+| `git clone` into `/opt/whatsmontrack` | Fetches the code of the `deploy/vps` branch |
+| Backup every day at 03:30 | See section 6 |
 
-Cek hasilnya:
+Check the result:
 ```bash
-docker --version        # Docker terpasang
+docker --version        # Docker is installed
 ufw status              # 22, 80, 443 ALLOW
-free -h                 # baris "Swap" berisi 2.0Gi
+free -h                 # the "Swap" row shows 2.0Gi
 ```
 
 ---
 
-## 3. Isi konfigurasi rahasia
+## 3. Fill in the secrets
 
 ```bash
 cd /opt/whatsmontrack
 cp .env.prod.example .env.prod
-openssl rand -hex 32     # salin hasilnya untuk POSTGRES_PASSWORD
-openssl rand -hex 48     # salin hasilnya untuk JWT_SECRET
+openssl rand -hex 32     # copy the output for POSTGRES_PASSWORD
+openssl rand -hex 48     # copy the output for JWT_SECRET
 nano .env.prod
 ```
 
-Di `nano`: pindah baris dengan panah, tempel dengan klik kanan, simpan dengan **Ctrl+O** lalu **Enter**, keluar dengan **Ctrl+X**.
+In `nano`: move with the arrow keys, paste with a right click, save with **Ctrl+O** then **Enter**, quit with **Ctrl+X**.
 
-| Variabel | Isi |
+| Variable | Value |
 |---|---|
-| `SITE_ADDRESS` | `80-43-0-155.sslip.io` (IP dengan tanda `-`). sslip.io adalah DNS gratis yang otomatis mengarah ke IP itu, sehingga Caddy bisa mendapat sertifikat HTTPS tanpa domain |
-| `POSTGRES_PASSWORD` | Hasil `openssl rand -hex 32` |
-| `JWT_SECRET` | Hasil `openssl rand -hex 48`. Dipakai menandatangani token login; kalau bocor, orang bisa memalsukan login |
-| `GEMINI_API_KEY` | Dari Google AI Studio |
-| `ADMIN_EMAILS` | Email yang boleh melihat QR bot |
-| `BREVO_API_KEY` + `MAIL_FROM` **atau** `SMTP_*` | Pengirim email OTP. Gmail: `SMTP_USER` = alamat Gmail, `SMTP_PASS` = *App Password* 16 karakter |
+| `SITE_ADDRESS` | `80-43-0-155.sslip.io` (the IP with dashes). sslip.io is a free DNS service that resolves to that IP, so Caddy can get an HTTPS certificate without a domain |
+| `POSTGRES_PASSWORD` | Output of `openssl rand -hex 32` |
+| `JWT_SECRET` | Output of `openssl rand -hex 48`. It signs login tokens; if it leaks, anyone can forge a login |
+| `GEMINI_API_KEY` | From Google AI Studio |
+| `ADMIN_EMAILS` | Emails allowed to see the bot QR |
+| `BREVO_API_KEY` + `MAIL_FROM` **or** `SMTP_*` | Sender of the OTP emails. Gmail: `SMTP_USER` = your Gmail address, `SMTP_PASS` = a 16-character *App Password* |
 
-Lindungi file ini supaya hanya root yang bisa membaca:
+Make the file readable by root only:
 ```bash
 chmod 600 .env.prod
 ```
 
-`.env.prod` sudah masuk `.gitignore`, jadi tidak akan pernah ter-upload ke GitHub.
+`.env.prod` is in `.gitignore`, so it can never be uploaded to GitHub.
 
 ---
 
-## 4. Jalankan
+## 4. Start it
 
-Supaya perintahnya pendek, buat *alias* (singkatan) sekali saja:
+To keep commands short, create an *alias* once:
 
 ```bash
 echo "alias dc='docker compose -f /opt/whatsmontrack/docker-compose.prod.yml --env-file /opt/whatsmontrack/.env.prod'" >> ~/.bashrc
 source ~/.bashrc
 ```
 
-Lalu:
+Then:
 
 ```bash
 cd /opt/whatsmontrack
 dc up -d --build
 ```
 
-- `--build`: membuat image dari kode (pertama kali 5–15 menit di VPS 1 GB; wajar kalau terasa lama).
-- `-d` (*detached*): berjalan di latar belakang, terminal bisa ditutup.
-- Saat start, **api menerapkan migration database** secara otomatis.
+- `--build`: builds the images from the code (5–15 minutes the first time on a 1 GB VPS; slow is normal).
+- `-d` (*detached*): runs in the background, so you can close the terminal.
+- On start, **the api applies the database migrations** automatically.
 
-Cek:
+Check:
 ```bash
-dc ps                       # semua service "Up", postgres "(healthy)"
-dc logs -f api              # log API (Ctrl+C untuk berhenti melihat; aplikasinya tetap jalan)
-dc logs caddy | grep -i certificate   # Caddy mendapatkan sertifikat HTTPS
+dc ps                       # every service "Up", postgres "(healthy)"
+dc logs -f api              # API logs (Ctrl+C stops watching; the app keeps running)
+dc logs caddy | grep -i certificate   # Caddy obtained the HTTPS certificate
 ```
 
-Buka di browser: **https://80-43-0-155.sslip.io/api/health** → harus `{"ok":true}`, lalu **https://80-43-0-155.sslip.io** → halaman login.
+Open in a browser: **https://80-43-0-155.sslip.io/api/health** → must show `{"ok":true}`, then **https://80-43-0-155.sslip.io** → the login page.
 
 ---
 
-## 5. Pemakaian pertama
-1. **Buat akun** dengan email yang ada di `ADMIN_EMAILS`, lalu masukkan kode OTP dari email.
-2. **Bot WhatsApp** (menu kiri bawah) → scan QR dengan WhatsApp **nomor bot**: *Perangkat tertaut → Tautkan perangkat*. QR juga muncul di `dc logs -f api`.
-3. **Hubungkan WhatsApp** → hubungkan nomormu sendiri, lalu tambahkan rekening.
+## 5. First use
+1. **Create an account** (*Buat akun*) with an email listed in `ADMIN_EMAILS`, then enter the emailed OTP.
+2. **Bot WhatsApp** (bottom-left menu) → scan the QR with the **bot number's** WhatsApp: *Linked devices* (*Perangkat tertaut*) → *Link a device* (*Tautkan perangkat*). The QR is also printed in `dc logs -f api`.
+3. **Hubungkan WhatsApp** (link WhatsApp) → link your own number, then add your accounts.
 
-Untuk aplikasi Android nanti, alamat API-nya: `https://80-43-0-155.sslip.io/api`.
+For the Android app later, the API address is `https://80-43-0-155.sslip.io/api`.
 
 ---
 
-## 6. Perawatan sehari-hari
+## 6. Day-to-day operations
 
-| Kebutuhan | Perintah |
+| Task | Command |
 |---|---|
-| Lihat status | `dc ps` |
-| Lihat log | `dc logs -f api` (atau `web`, `caddy`, `postgres`) |
-| Restart satu service | `dc restart api` |
-| Pemakaian RAM/CPU | `docker stats` |
-| Sisa disk / RAM | `df -h` · `free -h` |
-| **Update aplikasi** setelah ada commit baru | `/opt/whatsmontrack/deploy/vps/update.sh` |
-| Backup sekarang | `/opt/whatsmontrack/deploy/vps/backup.sh` |
-| Lihat daftar backup | `ls -lh /opt/whatsmontrack/backups` |
+| Show status | `dc ps` |
+| Show logs | `dc logs -f api` (or `web`, `caddy`, `postgres`) |
+| Restart one service | `dc restart api` |
+| RAM/CPU usage | `docker stats` |
+| Free disk / RAM | `df -h` · `free -h` |
+| **Update the app** after new commits | `/opt/whatsmontrack/deploy/vps/update.sh` |
+| Back up now | `/opt/whatsmontrack/deploy/vps/backup.sh` |
+| List backups | `ls -lh /opt/whatsmontrack/backups` |
 
-`update.sh` melakukan: `git pull` → **backup dulu** → build ulang yang berubah → hapus image lama supaya disk tidak penuh.
+`update.sh` does: `git pull` → **backup first** → rebuild what changed → delete old images so the disk doesn't fill up.
 
-### Backup
-Setiap hari pukul 03:30 database (termasuk sesi WhatsApp) disimpan ke `/opt/whatsmontrack/backups`, 14 hari terakhir dipertahankan.
+### Backups
+Every day at 03:30 the database (including the WhatsApp session) is saved to `/opt/whatsmontrack/backups`; the last 14 days are kept.
 
-Backup di disk yang sama **tidak** melindungi kalau VPS-nya hilang. Sesekali salin ke laptop (di **PowerShell laptop**):
+A backup on the same disk does **not** protect you if the VPS itself is lost. Copy them to your laptop now and then (in **PowerShell on your laptop**):
 ```powershell
 scp root@80.43.0.155:/opt/whatsmontrack/backups/*.sql.gz .
 ```
 
-### Restore (mengembalikan backup)
+### Restoring a backup
 ```bash
 cd /opt/whatsmontrack
 dc stop api web
@@ -206,21 +207,21 @@ dc start api web
 
 ---
 
-## 7. Kalau ada masalah
+## 7. Troubleshooting
 
-| Gejala | Cek / solusi |
+| Symptom | Check / fix |
 |---|---|
-| Build berhenti dengan `Killed` / `exit code 137` | Kehabisan RAM: pastikan swap aktif (`free -h`), lalu `dc up -d --build` lagi |
-| Browser: sertifikat tidak valid / tidak bisa dibuka | `dc logs caddy`. Pastikan port 80 dan 443 terbuka (`ufw status`) dan `SITE_ADDRESS` benar. Let's Encrypt butuh port 80 untuk verifikasi |
-| `502 Bad Gateway` | API/web belum siap atau crash: `dc ps`, `dc logs api` |
-| API restart terus | `dc logs api`: biasanya ada variabel `.env.prod` yang salah atau kosong |
-| OTP tidak masuk | `dc logs api \| grep -i mail`. Cek App Password Gmail / sender Brevo. Lihat folder spam |
-| Bot minta QR lagi | Bot dikeluarkan dari *Perangkat tertaut* di HP bot. Scan ulang lewat menu **Bot WhatsApp** |
-| Disk penuh | `docker system df`, lalu `docker image prune -f` dan `docker builder prune -f` |
-| Lupa perintah | Semua perintah `dc` = `docker compose -f docker-compose.prod.yml --env-file .env.prod` |
+| The build stops with `Killed` / `exit code 137` | Out of memory: make sure swap is on (`free -h`), then run `dc up -d --build` again |
+| Browser: invalid certificate / site doesn't open | `dc logs caddy`. Make sure ports 80 and 443 are open (`ufw status`) and `SITE_ADDRESS` is right. Let's Encrypt needs port 80 to verify the server |
+| `502 Bad Gateway` | The api/web isn't ready or crashed: `dc ps`, `dc logs api` |
+| The api keeps restarting | `dc logs api`: usually a wrong or empty variable in `.env.prod` |
+| No OTP email | `dc logs api \| grep -i mail`. Check the Gmail App Password / Brevo sender. Look in the spam folder |
+| The bot asks for a QR again | The bot was removed from *Linked devices* on the bot's phone. Scan again via **Bot WhatsApp** |
+| Disk full | `docker system df`, then `docker image prune -f` and `docker builder prune -f` |
+| Forgot a command | Every `dc` command = `docker compose -f docker-compose.prod.yml --env-file .env.prod` |
 
-## 8. Keamanan, ringkas
-- Hanya Caddy (80/443) dan SSH (22) yang terbuka; database dan API tidak bisa diakses langsung dari internet.
-- Rahasia hanya ada di `.env.prod` (chmod 600), tidak pernah di Git.
-- Pakai SSH key, dan jangan bagikan password root atau isi `.env.prod` (termasuk lewat screenshot).
-- Update keamanan Ubuntu berjalan otomatis; update aplikasi lewat `update.sh`.
+## 8. Security in short
+- Only Caddy (80/443) and SSH (22) are open; the database and the API cannot be reached directly from the internet.
+- Secrets live only in `.env.prod` (chmod 600), never in Git.
+- Use an SSH key, and never share the root password or the contents of `.env.prod` (screenshots included).
+- Ubuntu security updates install automatically; update the app with `update.sh`.
