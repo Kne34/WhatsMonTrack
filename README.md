@@ -10,7 +10,8 @@ Every user has their own login, bank/e-wallet accounts, budgets and transactions
 
 1. [Features](#features)
 2. [Architecture](#architecture)
-3. [Installation and setup](#installation-and-setup)
+3. [Installation and setup](#installation-and-setup) (Docker Compose)
+   - [Free cloud deployment: Render + Neon + Vercel](DEPLOY.md)
 4. [User guide](#user-guide)
 5. [Development](#development)
 6. [Project history](#project-history)
@@ -27,7 +28,7 @@ Every user has their own login, bank/e-wallet accounts, budgets and transactions
 - **Loose account matching.** `Go-Pay` = `GO PAY` = `gopay`, `cash` = `tunai` = `uang tunai`, case and punctuation are ignored.
 - **`/rekap` or `/recap`.** Monthly summary straight in WhatsApp without using AI credits.
 - **Casual chat.** "Halo" or "cara pakainya gimana?" gets a friendly answer instead of an error.
-- **Never double-counted.** Each WhatsApp message is recorded at most once (message id + database unique constraint), also when WhatsApp re-delivers messages after a reconnect. Messages sent while the bot was offline (less than 12 hours old) are still processed.
+- **Never double-counted.** Each WhatsApp message is recorded at most once (message id + database unique constraint), also when WhatsApp re-delivers messages after a reconnect. Messages sent while the bot was offline are still processed when it comes back (up to `WA_OFFLINE_MAX_AGE_HOURS`, default 72 hours).
 - **Private.** Only numbers linked to a verified account are served. Groups, status updates and the bot's own replies are ignored. Unknown numbers get linking instructions at most once per 10 minutes.
 
 ### Accounts and security
@@ -87,7 +88,7 @@ graph TD
 | `budgets/` | Monthly budget per category |
 | `transactions/` | Transactions, monthly summary, `ledger.ts` (the only place that changes balances) |
 | `parser/` | Gemini parsing with regex fallback |
-| `whatsapp/` | `WhatsAppService` (Baileys socket), `BotService` (conversation logic, `/rekap`), `PhoneLinkService` (number linking) |
+| `whatsapp/` | `WhatsAppService` (Baileys socket), `BotService` (conversation logic, `/rekap`), `PhoneLinkService` (number linking), WhatsApp session stored in PostgreSQL (`db-auth-state.ts`) |
 | `common/` | Auth/admin guards, `@CurrentUser()`, config, phone normalisation, time zone helpers, BigInt JSON serialisation |
 | `database/` | `PrismaService` |
 
@@ -112,6 +113,7 @@ All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-passwo
 | `PUT /api/transactions/:id/confirm` | Confirm a draft from the review inbox |
 | `GET /api/phone`, `POST /api/phone/link`, `DELETE /api/phone` | WhatsApp number status, create a linking code, unlink |
 | `GET /api/whatsapp/status`, `POST /api/whatsapp/reset` | Bot status (QR for admins only), reset the bot session (admin) |
+| `GET /api/health` | Liveness check for the host and uptime pingers (no auth, no database) |
 | `POST /parse` | Parse a text without saving it (testing) |
 
 ### Tech stack
@@ -145,6 +147,10 @@ Create a `.env` file in the project root based on `.env.example`:
 | `ADMIN_EMAILS` | Comma-separated emails that may see the bot QR and reset the bot |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Email server for OTPs |
 | `SMTP_SECURE` | `true` for TLS. Port 465 always uses TLS regardless of this value |
+| `BREVO_API_KEY`, `MAIL_FROM` (optional) | Send OTP emails over Brevo's HTTPS API instead of SMTP (needed on hosts that block SMTP, such as Render's free plan) |
+| `WA_OFFLINE_MAX_AGE_HOURS` (optional) | Process WhatsApp messages sent while the bot was offline up to this age, default `72` |
+| `FRONTEND_ORIGIN` (optional) | Frontend URL(s) on another domain allowed to call the API (CORS), e.g. the Vercel URL |
+| `TRUST_PROXY_HOPS` (optional) | Number of reverse proxies in front of the API, default `1` |
 | `API_HOST_PORT` (optional) | Local debug port of the API, default `3001` |
 
 ### 2. Start the app
@@ -156,6 +162,8 @@ To avoid startup race conditions, startup scripts are provided. They start the d
 Open `http://localhost`. Database migrations run automatically when the API container starts.
 
 To stop: `docker compose stop` (data is kept). To start again: `docker compose up -d`.
+
+> **Deploying online for free?** See [DEPLOY.md](DEPLOY.md): API and bot on Render, database on Neon, frontend on Vercel.
 
 ### 3. Connect the bot (admin, once)
 The bot is one shared WhatsApp number that all users chat with.
@@ -317,6 +325,7 @@ docker logs whatsmon-api -f           # API logs + WhatsApp QR code
 docker compose stop                   # stop (data is kept)
 
 cd backend/api && npm test            # unit tests
+cd backend/api && npm run test:auth-state   # WhatsApp session store (real Baileys, no database)
 cd frontend && npm run lint && npm run build
 ```
 
