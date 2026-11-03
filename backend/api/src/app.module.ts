@@ -11,6 +11,7 @@ import { BudgetsModule } from './budgets/budgets.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { ParserModule } from './parser/parser.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
     ParserModule,
     WhatsAppModule,
   ],
+  controllers: [HealthController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule {}
