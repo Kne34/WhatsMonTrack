@@ -11,6 +11,7 @@ Every user has their own login, bank/e-wallet accounts, budgets and transactions
 1. [Features](#features)
 2. [Architecture](#architecture)
 3. [Installation and setup](#installation-and-setup)
+   - [Deploy to a VPS (step-by-step guide, Indonesian)](deploy/vps/README.md)
 4. [User guide](#user-guide)
 5. [Development](#development)
 6. [Project history](#project-history)
