@@ -1,5 +1,7 @@
 # WhatsMonTrack - WhatsApp Expense Tracker Bot
 
+**Live app: https://bit.ly/WhatsMonTrack** — see [LIVE.md](LIVE.md) for what is deployed and how to get started.
+
 An LLM-powered WhatsApp bot and multi-tenant SaaS platform that lets multiple users log expenses in natural Indonesian chat shorthand (e.g. *"50k makan siang bca"*) and get structured tracking, corrections and monthly summaries on their own private dashboard.
 
 Every user has their own login, bank/e-wallet accounts, budgets and transactions. The REST API is shared by the web dashboard and (later) a Kotlin mobile app.

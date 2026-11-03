@@ -6,6 +6,10 @@ PLAN*.md
 !.env.example
 !.env.*.example
 
+# Docker images exported for deployment (docker save)
+*.tar
+*.tar.gz
+
 # Docker Volumes
 postgres_master_data/
 postgres_slave_data/
