@@ -3,16 +3,15 @@ echo =======================================
 echo    WhatsApp Session Reset Utility
 echo =======================================
 echo.
+rem The bot session is stored in the database (table "WhatsAppAuth"), not in a folder.
+rem Normally use the dashboard instead: Bot WhatsApp -^> Reset sesi.
 
-echo [1/4] Stopping API Container...
-docker compose stop api
+echo [1/3] Deleting the stored WhatsApp session...
+echo DELETE FROM "WhatsAppAuth"; | docker compose exec -T api npx prisma db execute --stdin
 
-echo [2/4] Deleting stale auth_info_baileys folder...
-rmdir /s /q backend\api\auth_info_baileys 2>nul
+echo [2/3] Restarting the API container...
+docker compose restart api
 
-echo [3/4] Restarting API Container...
-docker compose start api
-
-echo [4/4] Showing logs to scan new QR Code (Press Ctrl+C to exit)...
+echo [3/3] Showing logs to scan the new QR code (press Ctrl+C to exit)...
 echo.
 docker logs whatsmon-api -f

@@ -10,6 +10,8 @@ IMAGES="${1:-/root/whatsmontrack-images.tar.gz}"
 cd "$APP_DIR"
 dc() { docker compose -f docker-compose.prod.yml --env-file .env.prod "$@"; }
 step() { echo; echo "==> $*"; }
+# Retries a command: a DNS hiccup should not abort a release
+retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "  retry $i/5 in 5 s..."; sleep 5; done; return 1; }
 
 [ -f "$IMAGES" ] || {
   echo "No image file at $IMAGES."
@@ -18,7 +20,7 @@ step() { echo; echo "==> $*"; }
 }
 
 step "Latest code (compose file, Caddyfile, scripts)"
-git pull --ff-only
+retry git pull --ff-only
 chmod +x deploy/vps/*.sh
 
 step "Backup before the new version runs its database migrations"

@@ -37,7 +37,8 @@ scp "$TARBALL" "$VPS:/root/$TARBALL"
 
 step "Applying the release on the server"
 # Pull first, so the server runs the update.sh of this release (not the one it had before)
-ssh "$VPS" "cd /opt/whatsmontrack && git pull -q --ff-only && chmod +x deploy/vps/*.sh && ./deploy/vps/update.sh /root/$TARBALL"
+# (retried: a DNS hiccup on the server should not abort the release)
+ssh "$VPS" "cd /opt/whatsmontrack && for i in 1 2 3 4 5; do git pull -q --ff-only && break; [ \$i = 5 ] && exit 1; echo '  git pull failed, retrying in 5 s...'; sleep 5; done && chmod +x deploy/vps/*.sh && ./deploy/vps/update.sh /root/$TARBALL"
 
 rm -f "$TARBALL"
 echo

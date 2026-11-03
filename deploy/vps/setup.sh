@@ -55,6 +55,28 @@ fi
 systemctl enable --now docker
 systemctl restart docker
 
+step "DNS safety net (fix-dns.service)"
+# Some VPS panels rewrite /etc/resolv.conf with their own (sometimes dead) DNS servers and disable
+# systemd-resolved when the server is (re)started from the panel. This unit undoes that on every boot.
+IFACE="$(ip route show default | awk '{print $5; exit}')"
+cat > /etc/systemd/system/fix-dns.service <<UNIT
+[Unit]
+Description=Keep DNS on systemd-resolved with working servers (undo panel overrides)
+After=systemd-networkd.service
+Before=docker.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/systemctl start systemd-resolved.service
+ExecStart=/usr/bin/ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+ExecStart=/usr/bin/resolvectl dns ${IFACE:-eth0} 1.1.1.1 8.8.8.8
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable systemd-resolved >/dev/null 2>&1 || true
+systemctl enable --now fix-dns.service
+
 step "Firewall: only SSH, HTTP and HTTPS"
 ufw allow OpenSSH >/dev/null
 ufw allow 80/tcp >/dev/null
