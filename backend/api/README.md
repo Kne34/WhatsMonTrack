@@ -15,7 +15,8 @@ src/
   budgets/       monthly budget per category
   transactions/  transactions, monthly summary, ledger.ts (the only code that changes balances)
   parser/        Gemini parsing with a regex fallback
-  whatsapp/      Baileys socket, bot conversation logic, number linking, session store in PostgreSQL
+  whatsapp/      Baileys socket (link / change / unlink the bot), bot conversation logic,
+                 number linking, session store in PostgreSQL
   common/        guards, config, phone/time-zone helpers, BigInt JSON serialisation
   database/      PrismaService (pg driver adapter)
   health.controller.ts   GET /api/health

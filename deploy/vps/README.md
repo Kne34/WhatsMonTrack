@@ -221,7 +221,7 @@ Open in a browser: **https://80-43-0-155.sslip.io/api/health** → must show `{"
 
 ## 5. First use
 1. **Create an account** (*Buat akun*) with an email listed in `ADMIN_EMAILS`, then enter the emailed OTP.
-2. **Bot WhatsApp** (bottom-left menu) → scan the QR with the **bot number's** WhatsApp: *Linked devices* (*Perangkat tertaut*) → *Link a device* (*Tautkan perangkat*). The QR is also printed in `dc logs -f api`.
+2. **Bot WhatsApp** (bottom-left menu) → scan the QR with the **bot number's** WhatsApp: *Linked devices* (*Perangkat tertaut*) → *Link a device* (*Tautkan perangkat*). The QR is also printed in `dc logs -f api`. The same dialog later lets you **change** (*Ganti nomor bot*) or **unlink** (*Cabut nomor bot*) the bot number.
 3. **Hubungkan WhatsApp** (link WhatsApp) → link your own number, then add your accounts.
 
 For the Android app later, the API address is `https://80-43-0-155.sslip.io/api`.
@@ -240,6 +240,7 @@ For the Android app later, the API address is `https://80-43-0-155.sslip.io/api`
 | **Update the app** after new commits | Commit and push, then **on the laptop**: `deploy/vps/release.sh` |
 | Back up now | `/opt/whatsmontrack/deploy/vps/backup.sh` |
 | List backups | `ls -lh /opt/whatsmontrack/backups` |
+| Change / unlink the bot number | Web: **Bot WhatsApp** → *Ganti nomor bot* / *Cabut nomor bot* (unlinked stays off across restarts; *Hubungkan bot* turns it back on) |
 | Reset the bot session (if the dashboard is unreachable) | `dc exec -T postgres psql -U whatsmon -d whatsmon -c 'DELETE FROM "WhatsAppAuth";' && dc restart api`, then scan the QR from `dc logs -f api` |
 | DNS check | `systemctl is-active systemd-resolved fix-dns` · `time getent hosts github.com` |
 
@@ -276,7 +277,8 @@ dc start api web
 | `502 Bad Gateway` | The api/web isn't ready or crashed: `dc ps`, `dc logs api` |
 | The api keeps restarting | `dc logs api`: usually a wrong or empty variable in `.env.prod` |
 | No OTP email | `dc logs api \| grep -i mail`. Check the Gmail App Password / Brevo sender. Look in the spam folder |
-| The bot asks for a QR again | The bot was removed from *Linked devices* on the bot's phone. Scan again via **Bot WhatsApp** |
+| The bot asks for a QR again | The bot was removed from *Linked devices* on the bot's phone (or the phone was inactive for ~14 days). Scan again via **Bot WhatsApp** |
+| Sidebar shows **Dicabut** | An admin unlinked the bot on purpose; it stays off until **Bot WhatsApp** → *Hubungkan bot* |
 | Disk full | `docker system df`, then `docker image prune -f` and `docker builder prune -f` |
 | `Could not resolve host` on the server (e.g. `git pull`, `curl`) | DNS problem on the server, see *DNS problems* below |
 | `DNS: transient error` while building or inside containers | `/etc/docker/daemon.json` must contain `"dns": ["1.1.1.1", "8.8.8.8"]`; then `systemctl restart docker` |

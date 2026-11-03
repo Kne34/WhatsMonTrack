@@ -52,7 +52,7 @@ Quick access to every document in this repository.
 - **Forgot password** with an emailed code.
 - **WhatsApp number linking after login** with a QR code ([how it works](#how-number-linking-works)). Change or unlink any time.
 - JWT sessions (7 days), bcrypt password hashing, rate-limited auth endpoints (5 requests per minute, login 10), OTP valid 15 minutes with 5 attempts, request validation on every endpoint, and every query scoped to the logged-in user.
-- **Admin role** (`ADMIN_EMAILS`): only admins can see the bot's QR code and reset the bot session.
+- **Admin role** (`ADMIN_EMAILS`): only admins can see the bot's QR code and number, link the bot, **change the bot number** or **unlink it** (the bot logs out of WhatsApp and stays off until it is linked again).
 
 ### Web dashboard
 - **Ringkasan (overview):** total balance (can be hidden), income, expense, difference, cash-flow chart, daily spending chart with the daily budget line, spending or income per category, accounts and budget progress.
@@ -139,7 +139,9 @@ All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-passwo
 | `PUT /api/transactions/:id`, `DELETE /api/transactions/:id` | Edit or delete (balances are corrected) |
 | `PUT /api/transactions/:id/confirm` | Confirm a draft from the review inbox |
 | `GET /api/phone`, `POST /api/phone/link`, `DELETE /api/phone` | WhatsApp number status, create a linking code, unlink |
-| `GET /api/whatsapp/status`, `POST /api/whatsapp/reset` | Bot status (QR for admins only), reset the bot session (admin) |
+| `GET /api/whatsapp/status` | Bot status: `state` (`connecting`, `waiting_qr`, `connected`, `stopped`); QR code and bot number for admins only |
+| `POST /api/whatsapp/reset` | Change the bot number: log the current number out, show a new QR (admin) |
+| `POST /api/whatsapp/stop`, `POST /api/whatsapp/start` | Unlink the bot number and keep the bot off, also after restarts / turn it back on (admin) |
 | `GET /api/health` | Liveness check for health checks and uptime monitors |
 | `POST /parse` | Parse a text without saving it (testing) |
 
@@ -196,7 +198,9 @@ The bot is one shared WhatsApp number that all users chat with.
 1. Register and log in with an email listed in `ADMIN_EMAILS`.
 2. Open **Bot WhatsApp** in the sidebar (on a phone: the account icon at the top right). A red dot means offline, green means online.
 3. On the bot's phone open WhatsApp → **Perangkat tertaut** (Linked devices) → **Tautkan perangkat** and scan the QR. The QR refreshes automatically about every 20 seconds.
-4. The status changes to **Online**.
+4. The status changes to **Online** and the dialog shows the bot's number.
+
+The bot number should be a dedicated number (not your personal one). The phone only needs to be online now and then: open WhatsApp on it at least once a week (Wi-Fi is enough), otherwise WhatsApp unlinks the bot after about 14 days of phone inactivity. Keep a prepaid SIM active (top up before it expires), or the number can be recycled to someone else.
 
 The QR is also printed in the API logs: `docker logs whatsmon-api -f`.
 
@@ -333,8 +337,17 @@ Messages the bot was not sure about (confidence below 85%) appear here, with a c
 - **Keluar**: log out.
 
 ### 12. Troubleshooting the bot (admin)
-- **Bot offline / QR does not appear / want to change the bot number:** open **Bot WhatsApp** → **Reset sesi** → **Putuskan & reset**. The session is wiped and a new QR is generated. The bot does not receive messages until the QR is scanned again.
-- If the bot's session is logged out from the phone, the API resets it automatically and shows a new QR.
+Everything below is in the **Bot WhatsApp** dialog (sidebar; on a phone: the account icon). What it offers depends on the bot's state:
+
+| Bot state | Sidebar | Actions |
+|---|---|---|
+| Linked | Online (green) | **Ganti nomor bot** (change number): logs the bot out of this number and shows a new QR for another number. **Cabut nomor bot** (unlink): logs out and turns the bot off |
+| Waiting for a scan | Offline (red) | Scan the QR. **Reset sesi** if the QR doesn't appear; **Matikan bot** to turn the bot off instead |
+| Unlinked | Dicabut (red) | **Hubungkan bot** (link the bot) turns it back on and shows a QR |
+
+- **Unlinking** removes the bot from *Linked devices* on the bot's phone and keeps it off, also after server restarts and releases. While it is off, users cannot record anything through WhatsApp; no data is deleted.
+- **Changing the number** also logs the old number out, so the bot disappears from that phone's *Linked devices*.
+- If the bot is removed from *Linked devices* on the bot's phone, the API notices, clears the session and shows a new QR.
 - **If the dashboard itself is not reachable**, delete the stored session (it lives in the `WhatsAppAuth` table) and restart the API:
   - Development, **Windows (cmd):** `reset_whatsapp.bat` · **PowerShell:** `./reset_whatsapp.ps1`
   - Production (on the VPS): `dc exec -T postgres psql -U whatsmon -d whatsmon -c 'DELETE FROM "WhatsAppAuth";' && dc restart api`, then scan the QR from `dc logs -f api`
@@ -442,3 +455,4 @@ docker compose exec api npx prisma migrate dev --name <name>
 - Production stack (`docker-compose.prod.yml`): one PostgreSQL, production builds of API and web, Caddy with automatic HTTPS.
 - Deployed to an Ubuntu VPS: setup script (updates, swap, Docker, firewall, fail2ban, daily backups, DNS safety net), images built on a laptop and shipped with `release.sh`, live at [bit.ly/WhatsMonTrack](https://bit.ly/WhatsMonTrack).
 - Step-by-step learning guide: [deploy/vps/README.md](deploy/vps/README.md).
+- Admins can change or unlink the bot number from the web; unlinking logs the bot out of WhatsApp and keeps it off across restarts.
