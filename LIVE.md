@@ -64,6 +64,7 @@ Messages the bot isn't sure about go to **Perlu ditinjau** (review) on the dashb
 | Status / logs | `dc ps` · `dc logs -f api` (alias from the deploy guide) |
 | Release an update | `deploy/vps/release.sh` on the laptop (below) |
 | Backups | `/opt/whatsmontrack/backups` (daily, 14 days) · restore steps in the deploy guide |
+| Server DNS issues | [deploy guide, DNS problems](deploy/vps/README.md#dns-problems-lessons-from-the-first-deployment) (a `fix-dns.service` safety net runs on every boot) |
 
 ### Releasing an update (build on the laptop)
 

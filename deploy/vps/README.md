@@ -90,6 +90,7 @@ What `setup.sh` does (5–10 minutes):
 | **Docker** | Runs all the containers |
 | Docker log limits (10 MB × 3) | The disk is only 20 GB; unlimited logs can fill it up |
 | Docker DNS `1.1.1.1` / `8.8.8.8` | Containers only have IPv4; without this they may inherit IPv6 DNS servers they cannot reach, and lookups fail now and then |
+| **DNS safety net** (`fix-dns.service`) | Some VPS panels rewrite `/etc/resolv.conf` with their own (possibly dead) DNS servers and disable `systemd-resolved` when the server is restarted from the panel. This small unit undoes that on every boot (see section 7) |
 | **Firewall (ufw)**: only ports 22, 80, 443 | Every other port is closed to the internet |
 | **fail2ban** | Blocks IPs that keep failing SSH logins (password-guessing bots are everywhere) |
 | `git clone` into `/opt/whatsmontrack` | Fetches the code of the `deploy/vps` branch |
@@ -183,6 +184,8 @@ deploy/vps/release.sh
 
 The first build on the laptop takes a few minutes; later ones are faster thanks to Docker's cache. The upload time depends on your internet upload speed.
 
+Without an SSH key, `release.sh` asks for the root password twice (once for `scp`, once for `ssh`). Set up a key (section 1) to skip that.
+
 - `-d` (*detached*, used by `dc up`): containers run in the background, so you can close the terminal.
 - On start, **the api applies the database migrations** automatically.
 
@@ -237,6 +240,8 @@ For the Android app later, the API address is `https://80-43-0-155.sslip.io/api`
 | **Update the app** after new commits | Commit and push, then **on the laptop**: `deploy/vps/release.sh` |
 | Back up now | `/opt/whatsmontrack/deploy/vps/backup.sh` |
 | List backups | `ls -lh /opt/whatsmontrack/backups` |
+| Reset the bot session (if the dashboard is unreachable) | `dc exec -T postgres psql -U whatsmon -d whatsmon -c 'DELETE FROM "WhatsAppAuth";' && dc restart api`, then scan the QR from `dc logs -f api` |
+| DNS check | `systemctl is-active systemd-resolved fix-dns` · `time getent hosts github.com` |
 
 `release.sh` (laptop) builds and uploads the images, then runs `update.sh` on the server: `git pull` → **backup first** → `docker load` → restart what changed (`--no-build`) → health check → delete the upload and old images so the disk doesn't fill up.
 
@@ -273,7 +278,33 @@ dc start api web
 | No OTP email | `dc logs api \| grep -i mail`. Check the Gmail App Password / Brevo sender. Look in the spam folder |
 | The bot asks for a QR again | The bot was removed from *Linked devices* on the bot's phone. Scan again via **Bot WhatsApp** |
 | Disk full | `docker system df`, then `docker image prune -f` and `docker builder prune -f` |
+| `Could not resolve host` on the server (e.g. `git pull`, `curl`) | DNS problem on the server, see *DNS problems* below |
+| `DNS: transient error` while building or inside containers | `/etc/docker/daemon.json` must contain `"dns": ["1.1.1.1", "8.8.8.8"]`; then `systemctl restart docker` |
 | Forgot a command | Every `dc` command = `docker compose -f docker-compose.prod.yml --env-file .env.prod` |
+
+### DNS problems (lessons from the first deployment)
+
+*DNS* turns names like `github.com` into IP addresses. On the Rumahweb VPS it failed in three different ways; the diagnosis steps are useful on any server.
+
+1. **The provider's DNS servers didn't answer.** Test each server directly:
+   ```bash
+   for s in 103.253.213.134 203.175.8.227 1.1.1.1 8.8.8.8; do echo "== $s"; dig +short +time=3 +tries=1 github.com @"$s" | head -1; done
+   ```
+   Empty output = that server is dead. Fix: use working servers in the netplan file (`/etc/netplan/*.yaml`, `nameservers: addresses: [1.1.1.1, 8.8.8.8, …]`) and apply with **`netplan try`**, which rolls back automatically after 120 s if you lose SSH.
+2. **Containers inherited IPv6 DNS servers** they cannot reach (Docker's default network is IPv4-only) → lookups failed *sometimes*. Fix: `"dns"` in `/etc/docker/daemon.json` (done by `setup.sh`).
+3. **The VPS panel overwrote the configuration while the server was off**: `/etc/resolv.conf` became a plain file listing the dead servers first, and `systemd-resolved` was disabled. Programs try servers in order and wait for each timeout, so DNS was slow or failed. Signs:
+   ```bash
+   systemctl is-enabled systemd-resolved   # "disabled" = overwritten
+   ls -l /etc/resolv.conf                  # should be a symlink to ../run/systemd/resolve/stub-resolv.conf
+   ```
+   Fix (also what `fix-dns.service` does on every boot):
+   ```bash
+   systemctl enable --now systemd-resolved
+   ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+   resolvectl dns eth0 1.1.1.1 8.8.8.8
+   ```
+
+Useful tools: `resolvectl status` (which servers are used), `resolvectl query <name>` (asks systemd-resolved directly), `getent hosts <name>` (the same path `git`/`curl` use), `journalctl -b -u systemd-resolved` (its log since boot).
 
 ## 8. Security in short
 - Only Caddy (80/443) and SSH (22) are open; the database and the API cannot be reached directly from the internet.

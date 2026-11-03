@@ -30,7 +30,7 @@ Every user has their own login, bank/e-wallet accounts, budgets and transactions
 - **Loose account matching.** `Go-Pay` = `GO PAY` = `gopay`, `cash` = `tunai` = `uang tunai`, case and punctuation are ignored.
 - **`/rekap` or `/recap`.** Monthly summary straight in WhatsApp without using AI credits.
 - **Casual chat.** "Halo" or "cara pakainya gimana?" gets a friendly answer instead of an error.
-- **Never double-counted.** Each WhatsApp message is recorded at most once (message id + database unique constraint), also when WhatsApp re-delivers messages after a reconnect. Messages sent while the bot was offline (less than 12 hours old) are still processed.
+- **Never double-counted.** Each WhatsApp message is recorded at most once (message id + database unique constraint), also when WhatsApp re-delivers messages after a reconnect. Messages sent while the bot was offline are still processed when it comes back (up to `WA_OFFLINE_MAX_AGE_HOURS`, default 72 hours).
 - **Private.** Only numbers linked to a verified account are served. Groups, status updates and the bot's own replies are ignored. Unknown numbers get linking instructions at most once per 10 minutes.
 
 ### Accounts and security
@@ -57,12 +57,22 @@ Every user has their own login, bank/e-wallet accounts, budgets and transactions
 
 ## Architecture
 
-The project is fully dockerized and uses a **modular monolith**: one NestJS app split into feature modules.
+The project is fully dockerized and uses a **modular monolith**: one NestJS app split into feature modules. There are two Docker Compose setups:
+
+| | Development (`docker-compose.yml`) | Production (`docker-compose.prod.yml`) |
+|---|---|---|
+| Database | PostgreSQL master + replica behind Pgpool-II | One PostgreSQL + daily backups |
+| API / web | Dev servers with source mounted | Production builds, built on a laptop and shipped (`deploy/vps/release.sh`) |
+| Entry point | Nginx on `http://localhost` | Caddy with automatic HTTPS (Let's Encrypt) |
+| Guide | [Installation and setup](#installation-and-setup) | [deploy/vps/README.md](deploy/vps/README.md) · live: [LIVE.md](LIVE.md) |
+
+The diagram below shows the development setup.
 
 - **API (`/backend/api`)**: a single NestJS application that
   - connects to WhatsApp over WebSockets (`@whiskeysockets/baileys`),
   - parses natural-language messages with Gemini (regex fallback),
-  - sends OTP emails over SMTP,
+  - sends OTP emails over SMTP or Brevo's HTTPS API,
+  - stores the WhatsApp session in PostgreSQL, so the bot survives restarts and is included in backups,
   - exposes the REST API used by the web dashboard (and later the mobile app).
 - **Frontend dashboard (`/frontend`)**: Next.js (App Router) single-page app with JWT auth.
 - **Database**: PostgreSQL (master/replica streaming replication) behind Pgpool-II, accessed via Prisma.
@@ -90,9 +100,10 @@ graph TD
 | `budgets/` | Monthly budget per category |
 | `transactions/` | Transactions, monthly summary, `ledger.ts` (the only place that changes balances) |
 | `parser/` | Gemini parsing with regex fallback |
-| `whatsapp/` | `WhatsAppService` (Baileys socket), `BotService` (conversation logic, `/rekap`), `PhoneLinkService` (number linking) |
+| `whatsapp/` | `WhatsAppService` (Baileys socket), `BotService` (conversation logic, `/rekap`), `PhoneLinkService` (number linking), session store in PostgreSQL (`db-auth-state.ts`) |
 | `common/` | Auth/admin guards, `@CurrentUser()`, config, phone normalisation, time zone helpers, BigInt JSON serialisation |
 | `database/` | `PrismaService` |
+| `health.controller.ts` | `GET /api/health` liveness check (no auth, no database) |
 
 Every user-scoped query filters by the `userId` from the JWT, so users can never read or modify each other's data.
 
@@ -115,6 +126,7 @@ All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-passwo
 | `PUT /api/transactions/:id/confirm` | Confirm a draft from the review inbox |
 | `GET /api/phone`, `POST /api/phone/link`, `DELETE /api/phone` | WhatsApp number status, create a linking code, unlink |
 | `GET /api/whatsapp/status`, `POST /api/whatsapp/reset` | Bot status (QR for admins only), reset the bot session (admin) |
+| `GET /api/health` | Liveness check for health checks and uptime monitors |
 | `POST /parse` | Parse a text without saving it (testing) |
 
 ### Tech stack
@@ -123,7 +135,7 @@ All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-passwo
 
 **Backend:** NestJS 11, Prisma 7 (`@prisma/adapter-pg`), `@whiskeysockets/baileys`, Google Gemini (`@google/generative-ai`), class-validator, `@nestjs/throttler`, Nodemailer, bcryptjs
 
-**Infrastructure:** PostgreSQL (master/replica), Pgpool-II, Docker Compose, Nginx
+**Infrastructure:** PostgreSQL, Docker Compose; development: replica + Pgpool-II + Nginx; production: Caddy (automatic HTTPS) on an Ubuntu VPS
 
 ---
 
@@ -148,6 +160,10 @@ Create a `.env` file in the project root based on `.env.example`:
 | `ADMIN_EMAILS` | Comma-separated emails that may see the bot QR and reset the bot |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Email server for OTPs |
 | `SMTP_SECURE` | `true` for TLS. Port 465 always uses TLS regardless of this value |
+| `BREVO_API_KEY`, `MAIL_FROM` (optional) | Send OTP emails over Brevo's HTTPS API instead of SMTP (for hosts that block SMTP ports) |
+| `WA_OFFLINE_MAX_AGE_HOURS` (optional) | Process WhatsApp messages sent while the bot was down, up to this many hours old (default `72`) |
+| `FRONTEND_ORIGIN` (optional) | Frontend URL(s) on another domain allowed to call the API (CORS) |
+| `TRUST_PROXY_HOPS` (optional) | Number of reverse proxies in front of the API (default `1`) |
 | `API_HOST_PORT` (optional) | Local debug port of the API, default `3001` |
 
 ### 2. Start the app
@@ -305,10 +321,10 @@ Messages the bot was not sure about (confidence below 85%) appear here, with a c
 ### 12. Troubleshooting the bot (admin)
 - **Bot offline / QR does not appear / want to change the bot number:** open **Bot WhatsApp** → **Reset sesi** → **Putuskan & reset**. The session is wiped and a new QR is generated. The bot does not receive messages until the QR is scanned again.
 - If the bot's session is logged out from the phone, the API resets it automatically and shows a new QR.
-- **If the dashboard itself is not reachable**, use the reset scripts:
-  - **Windows (cmd):** `reset_whatsapp.bat`
-  - **PowerShell:** `./reset_whatsapp.ps1`
-- **OTP email not arriving:** check the `SMTP_*` values and the API logs (`docker logs whatsmon-api`). Port 465 needs TLS, port 587 uses STARTTLS.
+- **If the dashboard itself is not reachable**, delete the stored session (it lives in the `WhatsAppAuth` table) and restart the API:
+  - Development, **Windows (cmd):** `reset_whatsapp.bat` · **PowerShell:** `./reset_whatsapp.ps1`
+  - Production (on the VPS): `dc exec -T postgres psql -U whatsmon -d whatsmon -c 'DELETE FROM "WhatsAppAuth";' && dc restart api`, then scan the QR from `dc logs -f api`
+- **OTP email not arriving:** check the `SMTP_*` (or `BREVO_API_KEY` / `MAIL_FROM`) values and the API logs (`docker logs whatsmon-api`). Port 465 needs TLS, port 587 uses STARTTLS.
 
 ---
 
@@ -320,6 +336,7 @@ docker logs whatsmon-api -f           # API logs + WhatsApp QR code
 docker compose stop                   # stop (data is kept)
 
 cd backend/api && npm test            # unit tests
+cd backend/api && npm run test:auth-state   # WhatsApp session store (real Baileys, no database)
 cd frontend && npm run lint && npm run build
 ```
 
@@ -404,3 +421,10 @@ docker compose exec api npx prisma migrate dev --name <name>
 - Bot replies detected by message id instead of text prefixes, so messages like "Tolong catat ..." are processed.
 - Unknown account names are reported back instead of creating accounts; loose account name matching.
 - Unused tables and columns removed.
+
+### Phase 10: Production deployment
+- WhatsApp session stored in PostgreSQL instead of a folder, so the bot survives restarts and is part of the backups.
+- OTP email over Brevo's HTTPS API as an alternative to SMTP; `/api/health`; configurable CORS, proxy hops and offline-message age.
+- Production stack (`docker-compose.prod.yml`): one PostgreSQL, production builds of API and web, Caddy with automatic HTTPS.
+- Deployed to an Ubuntu VPS: setup script (updates, swap, Docker, firewall, fail2ban, daily backups, DNS safety net), images built on a laptop and shipped with `release.sh`, live at [bit.ly/WhatsMonTrack](https://bit.ly/WhatsMonTrack).
+- Step-by-step learning guide: [deploy/vps/README.md](deploy/vps/README.md).
