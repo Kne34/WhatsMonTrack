@@ -1,9 +1,19 @@
 import axios from 'axios';
+import { trackRequest } from './server-wake';
 
-// Since we setup rewrites in next.config.ts, we can just call /api/... directly
+/**
+ * Where the API lives. Empty (Docker Compose / local dev): same origin, via nginx or the dev rewrite
+ * in next.config.ts. On Vercel: the Render URL, e.g. https://whatsmontrack-api.onrender.com
+ * (inlined at build time, so set it before building).
+ */
+const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: `${API_ORIGIN}/api`,
 });
+
+// Notices requests that take long because a free server is waking up
+trackRequest(api);
 
 // Add a request interceptor to attach JWT token
 api.interceptors.request.use((config) => {
