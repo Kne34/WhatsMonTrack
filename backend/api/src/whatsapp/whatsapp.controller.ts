@@ -35,18 +35,42 @@ export class WhatsAppController {
     private readonly phoneLink: PhoneLinkService,
   ) {}
 
-  /** Bot connection status. Only admins get the QR code needed to (re)connect the shared bot. */
+  /**
+   * Bot connection status. `state`: connecting | waiting_qr | connected | stopped.
+   * Only admins get the QR code and the bot's number.
+   */
   @Get('api/whatsapp/status')
   status(@CurrentUser() user: JwtUser) {
-    const { connected, qr } = this.whatsapp.getConnectionStatus();
+    const { connected, qr, state } = this.whatsapp.getConnectionStatus();
     const canManage = isAdmin(user.email);
-    return { connected, qr: canManage ? qr : '', canManage };
+    return {
+      connected,
+      state,
+      qr: canManage ? qr : '',
+      botPhone: canManage ? this.whatsapp.botPhoneNumber() : null,
+      canManage,
+    };
   }
 
+  /** Change the bot number: log the current one out and show a new QR code. */
   @UseGuards(AdminGuard)
   @Post('api/whatsapp/reset')
   reset() {
     return this.whatsapp.resetSession();
+  }
+
+  /** Unlink the bot number and keep the bot off (also after restarts) until started again. */
+  @UseGuards(AdminGuard)
+  @Post('api/whatsapp/stop')
+  stop() {
+    return this.whatsapp.stop();
+  }
+
+  /** Turn the bot back on after it was unlinked: a QR code appears to link a number. */
+  @UseGuards(AdminGuard)
+  @Post('api/whatsapp/start')
+  start() {
+    return this.whatsapp.start();
   }
 
   /** The user's linked WhatsApp number and any pending link code. */

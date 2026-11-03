@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { useDatabaseAuthState, clearDatabaseAuthState } = require('../dist/whatsapp/db-auth-state');
+const { useDatabaseAuthState, clearDatabaseAuthState, isBotStopped, setBotStopped } = require('../dist/whatsapp/db-auth-state');
 const { proto } = await import('@whiskeysockets/baileys');
 
 function fakeStore() {
@@ -75,5 +75,20 @@ describe('useDatabaseAuthState', () => {
     assert.equal(rows.size, 0);
     const next = await useDatabaseAuthState(store);
     assert.notEqual(next.state.creds.registrationId, first.state.creds.registrationId);
+  });
+
+  test('a stopped bot is remembered without touching the session keys', async () => {
+    const { store, rows } = fakeStore();
+    const { state, saveCreds } = await useDatabaseAuthState(store);
+    await saveCreds();
+    await state.keys.set({ 'pre-key': { 1: { public: Buffer.from([1]), private: Buffer.from([2]) } } });
+
+    await setBotStopped(store, true);
+    assert.equal(await isBotStopped(store), true);
+    assert.ok(rows.has('creds') && rows.has('pre-key-1'));
+
+    await setBotStopped(store, false);
+    assert.equal(await isBotStopped(store), false);
+    assert.ok(rows.has('creds'));
   });
 });

@@ -66,7 +66,23 @@ export async function useDatabaseAuthState(db: AuthStore): Promise<{ state: Auth
   };
 }
 
-/** Logs the bot out locally: the next connection shows a new QR code. */
+/** Logs the bot out locally: the next connection shows a new QR code. Also clears the "stopped" mark. */
 export async function clearDatabaseAuthState(db: AuthStore) {
   await db.whatsAppAuth.deleteMany({});
+}
+
+/** Row marking that an admin unlinked the bot on purpose: it stays off, also across restarts. */
+const BOT_STOPPED_ID = 'bot-stopped';
+
+export async function isBotStopped(db: AuthStore) {
+  return (await db.whatsAppAuth.findUnique({ where: { id: BOT_STOPPED_ID } })) !== null;
+}
+
+export async function setBotStopped(db: AuthStore, stopped: boolean) {
+  if (stopped) {
+    const data = JSON.stringify({ since: new Date().toISOString() });
+    await db.whatsAppAuth.upsert({ where: { id: BOT_STOPPED_ID }, create: { id: BOT_STOPPED_ID, data }, update: { data } });
+  } else {
+    await db.whatsAppAuth.deleteMany({ where: { id: { in: [BOT_STOPPED_ID] } } });
+  }
 }

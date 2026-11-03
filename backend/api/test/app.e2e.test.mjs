@@ -27,18 +27,22 @@ const { MailService } = require('../dist/auth/mail.service');
 const { BotService } = require('../dist/whatsapp/bot.service');
 const { ParserService } = require('../dist/parser/parser.service');
 const { PrismaService } = require('../dist/database/prisma.service');
-const { useDatabaseAuthState, clearDatabaseAuthState } = require('../dist/whatsapp/db-auth-state');
+const { useDatabaseAuthState, clearDatabaseAuthState, isBotStopped, setBotStopped } = require('../dist/whatsapp/db-auth-state');
 
 // ---- fakes ----
 const BOT_PHONE = '6280000000000';
 const fakeWhatsApp = {
   connected: true,
   resets: 0,
+  stops: 0,
+  starts: 0,
   onModuleInit: async () => {},
   isConnected() { return this.connected; },
   botPhoneNumber() { return this.connected ? BOT_PHONE : null; },
-  getConnectionStatus: () => ({ connected: true, qr: 'SECRET-QR' }),
+  getConnectionStatus: () => ({ connected: true, qr: 'SECRET-QR', state: 'connected' }),
   async resetSession() { this.resets++; return { success: true }; },
+  async stop() { this.stops++; return { success: true, state: 'stopped' }; },
+  async start() { this.starts++; return { success: true, state: 'connecting' }; },
 };
 const mailOutbox = [];
 const fakeMail = { async sendOtp(to, code) { mailOutbox.push({ to, code }); } };
@@ -240,6 +244,27 @@ describe('ownership & validation', () => {
     await http().post('/api/whatsapp/reset').set(auth(bob)).expect(201);
     assert.equal(fakeWhatsApp.resets, 1);
   });
+
+  test('the bot state is reported, and only admins see the bot number', async () => {
+    const asUser = await http().get('/api/whatsapp/status').set(auth(alice)).expect(200);
+    assert.equal(asUser.body.state, 'connected');
+    assert.equal(asUser.body.botPhone, null);
+    const asAdmin = await http().get('/api/whatsapp/status').set(auth(bob)).expect(200);
+    assert.equal(asAdmin.body.botPhone, BOT_PHONE);
+  });
+
+  test('only admins can unlink (stop) and start the bot', async () => {
+    await http().post('/api/whatsapp/stop').expect(401);
+    await http().post('/api/whatsapp/stop').set(auth(alice)).expect(403);
+    await http().post('/api/whatsapp/start').set(auth(alice)).expect(403);
+    assert.equal(fakeWhatsApp.stops, 0);
+
+    const stopped = await http().post('/api/whatsapp/stop').set(auth(bob)).expect(201);
+    assert.equal(stopped.body.state, 'stopped');
+    await http().post('/api/whatsapp/start').set(auth(bob)).expect(201);
+    assert.equal(fakeWhatsApp.stops, 1);
+    assert.equal(fakeWhatsApp.starts, 1);
+  });
 });
 
 describe('money, time zones and the WhatsApp bot (real database)', () => {
@@ -330,5 +355,18 @@ describe('WhatsApp session stored in PostgreSQL', () => {
 
     await clearDatabaseAuthState(prisma);
     assert.equal(await prisma.whatsAppAuth.count(), 0);
+  });
+
+  test('the "stopped" mark survives a restart and is cleared by start or a reset', async () => {
+    assert.equal(await isBotStopped(prisma), false);
+    await setBotStopped(prisma, true);
+    await setBotStopped(prisma, true); // idempotent
+    assert.equal(await isBotStopped(prisma), true);
+    await setBotStopped(prisma, false);
+    assert.equal(await isBotStopped(prisma), false);
+
+    await setBotStopped(prisma, true);
+    await clearDatabaseAuthState(prisma);
+    assert.equal(await isBotStopped(prisma), false);
   });
 });
