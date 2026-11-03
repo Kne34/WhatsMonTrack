@@ -1,0 +1,87 @@
+# Production stack for a single small server (e.g. a 1 GB VPS). See deploy/vps/README.md.
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# Differences from docker-compose.yml (development):
+# - one PostgreSQL instead of master + replica + pgpool (same safety on one machine, far less RAM)
+# - API and web run from production builds, not dev servers
+# - Caddy terminates HTTPS with an automatic Let's Encrypt certificate
+# - only Caddy is reachable from outside (ports 80 and 443)
+name: whatsmontrack-prod
+
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: whatsmon
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_DB: whatsmon
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U whatsmon -d whatsmon"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Modest settings for a 1 GB server
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=30"]
+    mem_limit: 256m
+
+  api:
+    build:
+      context: ./backend/api
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgresql://whatsmon:${POSTGRES_PASSWORD}@postgres:5432/whatsmon?schema=public
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env.prod}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # Email: Brevo's HTTPS API when BREVO_API_KEY is set, otherwise SMTP
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      WA_OFFLINE_MAX_AGE_HOURS: ${WA_OFFLINE_MAX_AGE_HOURS:-72}
+      # Caddy is the one proxy in front of the API
+      TRUST_PROXY_HOPS: "1"
+    mem_limit: 400m
+
+  web:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    mem_limit: 200m
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env.prod}
+    volumes:
+      - ./deploy/vps/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    mem_limit: 100m
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
