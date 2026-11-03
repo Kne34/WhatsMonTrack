@@ -1,51 +1,311 @@
 # WhatsMonTrack - WhatsApp Expense Tracker Bot
 
-An LLM-powered WhatsApp bot and Multi-Tenant SaaS platform that allows multiple users to log expenses in natural Indonesian chat shorthand (e.g., *"50k makan siang bca"*) and receive structured tracking, corrections, and monthly summaries from their private dashboards.
+An LLM-powered WhatsApp bot and multi-tenant SaaS platform that lets multiple users log expenses in natural Indonesian chat shorthand (e.g. *"50k makan siang bca"*) and get structured tracking, corrections and monthly summaries on their own private dashboard.
+
+Every user has their own login, bank/e-wallet accounts, budgets and transactions. The REST API is shared by the web dashboard and (later) a Kotlin mobile app.
+
+---
+
+## Table of contents
+
+1. [Features](#features)
+2. [Architecture](#architecture)
+3. [Installation and setup](#installation-and-setup)
+4. [User guide](#user-guide)
+5. [Development](#development)
+6. [Project history](#project-history)
+
+---
+
+## Features
+
+### WhatsApp bot
+- **Natural Indonesian input.** *"bayar gojek 20k pake ovo"*, *"gajian 5jt masuk ke bca"*, *"transfer 100rb dari bca ke gopay"*. Slang is understood (`k`/`rb` = ribu, `jt` = juta, `ceban` = 10.000, `goceng` = 5.000).
+- **Expense, income and transfer.** The reply shows the remaining balance and the time it was recorded, in your own time zone.
+- **AI with a safety net.** Google Gemini (structured JSON output) parses the message, with up to 2 attempts; if Gemini is unavailable a regex parser takes over. Your own account names are given to the model so it picks real accounts.
+- **Unsure? Ask, don't guess.** When the AI is less than 85% confident, the transaction is saved as a draft in **Perlu ditinjau** (review inbox) and balances are not touched until you confirm it. Account names the bot cannot find are never created automatically; the bot replies with your list of accounts.
+- **Loose account matching.** `Go-Pay` = `GO PAY` = `gopay`, `cash` = `tunai` = `uang tunai`, case and punctuation are ignored.
+- **`/rekap` or `/recap`.** Monthly summary straight in WhatsApp without using AI credits.
+- **Casual chat.** "Halo" or "cara pakainya gimana?" gets a friendly answer instead of an error.
+- **Never double-counted.** Each WhatsApp message is recorded at most once (message id + database unique constraint), also when WhatsApp re-delivers messages after a reconnect. Messages sent while the bot was offline (less than 12 hours old) are still processed.
+- **Private.** Only numbers linked to a verified account are served. Groups, status updates and the bot's own replies are ignored. Unknown numbers get linking instructions at most once per 10 minutes.
+
+### Accounts and security
+- **Register with email only.** Email + password (minimum 8 characters), verified with a 6-digit OTP sent as an HTML email (light and dark mode).
+- **Forgot password** with an emailed code.
+- **WhatsApp number linking after login** with a QR code ([how it works](#how-number-linking-works)). Change or unlink any time.
+- JWT sessions (7 days), bcrypt password hashing, rate-limited auth endpoints (5 requests per minute, login 10), OTP valid 15 minutes with 5 attempts, request validation on every endpoint, and every query scoped to the logged-in user.
+- **Admin role** (`ADMIN_EMAILS`): only admins can see the bot's QR code and reset the bot session.
+
+### Web dashboard
+- **Ringkasan (overview):** total balance (can be hidden), income, expense, difference, cash-flow chart, daily spending chart with the daily budget line, spending or income per category, accounts and budget progress.
+- **Transaksi (ledger):** calendar day filter, paginated list (10/15/50/100 per page), add, edit and delete.
+- **Perlu ditinjau (review inbox):** confirm, edit or delete uncertain bot results, or delete them all.
+- **Month switcher**, **Tambah** (add) menu for transactions, accounts and budgets, onboarding checklist for new users.
+- **Light, dark or system theme**, without a flash on page load.
+- Responsive: sidebar on desktop, bottom tabs on mobile. Refreshes automatically every 15 seconds and when you return to the tab.
+
+### Data correctness
+- **Money is stored as whole rupiah (`BIGINT`)**: no floating-point rounding errors and no ~Rp 2.1 billion `INT` limit. Fractional amounts are rejected by the API; amounts from the AI are rounded to whole rupiah.
+- **Per-user time zone.** Timestamps are stored in UTC. The browser's time zone (e.g. `Asia/Jakarta`, `Asia/Makassar`, `Asia/Jayapura`) is saved on register and login, and "today" and "this month" are calculated in that zone. A transaction at 06:30 WIB on 1 November belongs to November.
+- **One place changes balances** (`transactions/ledger.ts`), always inside a database transaction. Editing or deleting a transaction restores the old balance first.
+
+---
 
 ## Architecture
 
 The project is fully dockerized and uses a **modular monolith**: one NestJS app split into feature modules.
 
 - **API (`/backend/api`)**: a single NestJS application that
-  - connects to WhatsApp via WebSockets (`@whiskeysockets/baileys`),
+  - connects to WhatsApp over WebSockets (`@whiskeysockets/baileys`),
   - parses natural-language messages with Gemini (regex fallback),
+  - sends OTP emails over SMTP,
   - exposes the REST API used by the web dashboard (and later the mobile app).
-- **Frontend Dashboard (`/frontend`)**: Next.js (App Router) SPA with JWT auth (Login/Register/OTP).
-- **Database**: PostgreSQL (Master/Slave replication) behind Pgpool-II, accessed via Prisma.
-- **Reverse Proxy**: NGINX (`/` → frontend, `/api` → API).
+- **Frontend dashboard (`/frontend`)**: Next.js (App Router) single-page app with JWT auth.
+- **Database**: PostgreSQL (master/replica streaming replication) behind Pgpool-II, accessed via Prisma.
+- **Reverse proxy**: Nginx (`/` → frontend, `/api` → API).
+
+```mermaid
+graph TD
+    WA[WhatsApp servers] <-->|WebSocket, Baileys| API(NestJS API - modular monolith)
+    Browser[Browser] -->|HTTP :80| Nginx(Nginx reverse proxy)
+    Nginx -->|/| Frontend(Next.js)
+    Nginx -->|/api| API
+    API -.->|HTTPS| Gemini(Google Gemini API)
+    API -.->|SMTP| Mail(Email server)
+    API -->|Prisma adapter-pg| PgPool(Pgpool-II)
+    PgPool -->|write| Master(PostgreSQL master)
+    PgPool -->|read| Slave(PostgreSQL replica)
+```
 
 ### Backend modules (`backend/api/src`)
 
 | Module | Responsibility |
 |---|---|
-| `auth/` | Register, email OTP, login, JWT |
-| `accounts/` | Bank/e-wallet accounts (CRUD, ownership checks) |
+| `auth/` | Register, email OTP, login, forgot/reset password, JWT, HTML OTP email |
+| `accounts/` | Bank/e-wallet accounts (CRUD, ownership checks, loose name matching) |
 | `budgets/` | Monthly budget per category |
-| `transactions/` | Transactions + `ledger.ts` (the only place that changes balances) |
+| `transactions/` | Transactions, monthly summary, `ledger.ts` (the only place that changes balances) |
 | `parser/` | Gemini parsing with regex fallback |
-| `whatsapp/` | `WhatsAppService` (Baileys socket) + `BotService` (conversation logic, `/rekap`) |
-| `common/` | Auth/admin guards, `@CurrentUser()`, config |
+| `whatsapp/` | `WhatsAppService` (Baileys socket), `BotService` (conversation logic, `/rekap`), `PhoneLinkService` (number linking) |
+| `common/` | Auth/admin guards, `@CurrentUser()`, config, phone normalisation, time zone helpers, BigInt JSON serialisation |
 | `database/` | `PrismaService` |
 
 Every user-scoped query filters by the `userId` from the JWT, so users can never read or modify each other's data.
 
-## Tech Stack
-**Frontend:** Next.js 15, Tailwind CSS, Shadcn UI, Recharts
+### REST API
 
-**Backend:** NestJS, Prisma (`@prisma/adapter-pg`), `@whiskeysockets/baileys`, Google Gemini (`@google/generative-ai`), class-validator, `@nestjs/throttler`
+All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-password` and `reset-password` need `Authorization: Bearer <token>`. Money is sent and returned as whole rupiah (JSON numbers).
 
-**Infrastructure:** PostgreSQL (master/slave), Pgpool-II, Docker Compose, Nginx
+| Method and path | Purpose |
+|---|---|
+| `POST /api/auth/register` | Create account (or resend the OTP for an unverified one); optional `timeZone` |
+| `POST /api/auth/verify-otp` | Verify the email OTP, returns a JWT |
+| `POST /api/auth/login` | Login, returns a JWT; optional `timeZone` |
+| `POST /api/auth/forgot-password`, `POST /api/auth/reset-password` | Password reset with an emailed code |
+| `GET /api/auth/me` | Current user |
+| `GET /api/accounts`, `POST /api/accounts`, `PUT /api/accounts/:id`, `DELETE /api/accounts/:id` | Accounts |
+| `GET /api/budgets`, `POST /api/budgets`, `DELETE /api/budgets/:id` | Budgets (POST creates or updates per category) |
+| `GET /api/transactions?month&year&day&page&limit` | List transactions; month/day boundaries use the user's time zone |
+| `POST /api/transactions/manual` | Add a transaction manually |
+| `PUT /api/transactions/:id`, `DELETE /api/transactions/:id` | Edit or delete (balances are corrected) |
+| `PUT /api/transactions/:id/confirm` | Confirm a draft from the review inbox |
+| `GET /api/phone`, `POST /api/phone/link`, `DELETE /api/phone` | WhatsApp number status, create a linking code, unlink |
+| `GET /api/whatsapp/status`, `POST /api/whatsapp/reset` | Bot status (QR for admins only), reset the bot session (admin) |
+| `POST /parse` | Parse a text without saving it (testing) |
 
-```mermaid
-graph TD
-    WA[WhatsApp Servers] <-->|WebSockets| API(NestJS API - modular monolith)
-    Frontend[Next.js UI] -->|HTTP REST| Nginx(Reverse Proxy)
-    Nginx -->|HTTP 3000| API
-    API -.->|HTTP| Gemini(Google Gemini API)
-    API -->|Prisma adapter-pg| PgPool(PgPool)
-    PgPool -->|Write| Master(PostgreSQL Master)
-    PgPool -->|Read| Slave(PostgreSQL Slave)
+### Tech stack
+
+**Frontend:** Next.js 16 (App Router), React 19, Tailwind CSS, shadcn/ui, Recharts, qrcode.react
+
+**Backend:** NestJS 11, Prisma 7 (`@prisma/adapter-pg`), `@whiskeysockets/baileys`, Google Gemini (`@google/generative-ai`), class-validator, `@nestjs/throttler`, Nodemailer, bcryptjs
+
+**Infrastructure:** PostgreSQL (master/replica), Pgpool-II, Docker Compose, Nginx
+
+---
+
+## Installation and setup
+
+### Requirements
+- Docker Desktop (or Docker Engine + Compose)
+- A Google Gemini API key
+- An SMTP account for sending OTP emails (e.g. Gmail with an app password, or [Ethereal](https://ethereal.email) for testing)
+- A WhatsApp number for the bot (preferably a separate number, not your personal one)
+
+### 1. Environment
+Create a `.env` file in the project root based on `.env.example`:
+
+| Variable | What it is |
+|---|---|
+| `POSTGRES_USER`, `POSTGRES_PASSWORD` | Database user |
+| `POSTGRES_REPL_USER`, `POSTGRES_REPL_PASSWORD` | Replication user (master → replica) |
+| `PGPOOL_ADMIN_USER`, `PGPOOL_ADMIN_PASSWORD` | Pgpool admin |
+| `GEMINI_API_KEY` | Google Gemini key for parsing messages |
+| `JWT_SECRET` | Long random string. The API refuses to start without it |
+| `ADMIN_EMAILS` | Comma-separated emails that may see the bot QR and reset the bot |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | Email server for OTPs |
+| `SMTP_SECURE` | `true` for TLS. Port 465 always uses TLS regardless of this value |
+| `API_HOST_PORT` (optional) | Local debug port of the API, default `3001` |
+
+### 2. Start the app
+To avoid startup race conditions, startup scripts are provided. They start the databases first, then the API and frontend, then Nginx.
+- **Windows (cmd):** double-click or run `start_app.bat`
+- **PowerShell:** `./start_app.ps1`
+- **Manual / Linux / macOS:** `docker compose up --build -d`
+
+Open `http://localhost`. Database migrations run automatically when the API container starts.
+
+To stop: `docker compose stop` (data is kept). To start again: `docker compose up -d`.
+
+### 3. Connect the bot (admin, once)
+The bot is one shared WhatsApp number that all users chat with.
+
+1. Register and log in with an email listed in `ADMIN_EMAILS`.
+2. Open **Bot WhatsApp** in the sidebar (on a phone: the account icon at the top right). A red dot means offline, green means online.
+3. On the bot's phone open WhatsApp → **Perangkat tertaut** (Linked devices) → **Tautkan perangkat** and scan the QR. The QR refreshes automatically about every 20 seconds.
+4. The status changes to **Online**.
+
+The QR is also printed in the API logs: `docker logs whatsmon-api -f`.
+
+---
+
+## User guide
+
+### 1. Create an account
+1. Open `http://localhost` and choose **Buat akun**.
+2. Enter your email and a password (minimum 8 characters).
+3. Enter the 6-digit code sent to your email. The code is valid for 15 minutes; after 5 wrong attempts request a new one. **Kirim ulang kode** becomes available after 60 seconds. Check the spam folder if it does not arrive.
+
+If you log in with an account that is not verified yet, you are taken to the verification step again.
+
+**Forgot your password?** On the login page choose **Lupa password?**, enter your email, then enter the emailed code together with a new password.
+
+You stay logged in for 7 days. Your browser's time zone is saved on every login, so dates follow where you are.
+
+### 2. First steps (onboarding)
+On the **Ringkasan** page a checklist shows what is left to do:
+1. **Tambah rekening** (add an account)
+2. **Hubungkan WhatsApp** (link your number)
+3. **Catat transaksi pertama** (record your first transaction)
+
+It disappears once you have an account and a linked number.
+
+### 3. Accounts (rekening)
+An account is anywhere you keep money: a bank (BCA, Mandiri), an e-wallet (GoPay, OVO, DANA) or cash (Tunai).
+
+- **Add:** **Tambah** → **Rekening**, enter a name and the starting balance (may be 0, or negative for e.g. a credit card).
+- **Edit:** click the account in the **Rekening** card. Changing the balance here sets it directly and does not create a transaction.
+- **Delete:** in the same dialog. An account that still has transactions cannot be deleted; delete or move its transactions first.
+
+Use the names you would type in chat. The bot matches them loosely (`Go-Pay`, `gopay` and `GO PAY` are the same account; `cash` also matches `Tunai`).
+
+### 4. Link your WhatsApp number
+1. Click **Hubungkan WhatsApp** (sidebar, account menu on phones, or the onboarding checklist).
+2. Optionally enter your number (`0812...`, `62812...` or `+62 812...` all work). If you do, only that number can use the code.
+3. Press **Buat QR**.
+4. Scan the QR with your phone camera. WhatsApp opens a chat with the bot with `VERIFIKASI <code>` already typed. Press **Kirim** (Send).
+   - On a phone you can press **Buka WhatsApp** instead of scanning.
+   - You can also type the message shown under the QR to the bot's number yourself.
+5. The dialog shows **Berhasil** as soon as the bot receives the message, and the bot replies in WhatsApp.
+
+The code is valid for 10 minutes. Later you can open the same menu to **Ganti nomor** (change number) or **Putuskan** (unlink).
+
+If the dialog says the bot is offline, ask the admin to connect the bot first.
+
+#### How number linking works
+It works like an OTP, but in the other direction: instead of the server sending you a code, **you send the code to the bot**. WhatsApp tells the bot the real sender number, which cannot be faked, so sending the code proves you own that number.
+
+- The code is 6 random characters from a secure random generator (~1 billion combinations). Easily confused characters (0/O, 1/I) are not used.
+- It is valid for 10 minutes and can be used once.
+- A number that sends 5 wrong codes is blocked for 10 minutes.
+- One number can belong to only one account.
+- The bot never has to message an unknown number first, which avoids WhatsApp spam blocks and SMS costs.
+
+Numbers are stored as `62xxxxxxxxxx`.
+
+### 5. Budgets (anggaran)
+A budget is a monthly spending limit for one category.
+
+- **Add:** **Tambah** → **Anggaran**, choose a category and the limit per month. Setting a budget for a category that already has one updates it.
+- **Edit or delete:** click the budget in the **Anggaran** card. Deleting a budget does not delete transactions.
+- Progress bars show spent / limit for the selected month: **Hampir habis** (almost used up) from 80%, **Melebihi** (over) from 100%.
+
+Categories: Makanan (`FOOD`), Transportasi (`TRANSPORT`), Belanja (`SHOPPING`), Tagihan (`BILLS`), Kesehatan (`HEALTH`), Hiburan (`ENTERTAINMENT`), Lainnya (`OTHER`), and Pemasukan (`INCOME`) for income.
+
+### 6. Record transactions via WhatsApp
+From your linked number, send a message to the bot. Just type naturally and mention the amount and the account:
+
+| You send | Recorded as |
+|---|---|
+| *50k makan siang bca* | Expense Rp 50.000, Makanan, from BCA |
+| *bayar gojek 20k pake ovo* | Expense Rp 20.000, Transportasi, from OVO |
+| *beli bensin goceng cash* | Expense Rp 5.000 from Tunai |
+| *gajian 5jt masuk ke bca* | Income Rp 5.000.000 to BCA |
+| *transfer 100rb dari bca ke gopay* | Transfer Rp 100.000, BCA → GoPay |
+
+The bot replies, for example:
+
 ```
+Berhasil! Rp 50.000 untuk Makan siang telah dicatat dari rekening BCA.
+Sisa saldo BCA: Rp 950.000
+(Tercatat pada: 02 Nov 2026, 12.30)
+```
+
+Other replies you may get:
+
+| Reply | Meaning and what to do |
+|---|---|
+| *Tercatat sebagai DRAFT ... ⚠️* | The bot was not sure. Check it in **Perlu ditinjau** on the web; the balance changes only after you confirm |
+| *Rekening "X" tidak ditemukan. Rekening Anda: ...* | That account does not exist. Send again with one of the listed names, or add the account on the web |
+| *Anda belum punya rekening ...* | Add at least one account on the web first |
+| *Tolong sebutkan sumber dana / rekening tujuan / nominal ...* | Something is missing; send again with the account or amount |
+| *Tolong sebutkan rekening sumber dan tujuan untuk transfer ini* | A transfer needs both accounts: *transfer 50k dari BCA ke OVO* |
+| *Halo! Nomor ini belum terhubung ...* | This number is not linked to an account yet; see step 4 |
+
+Sending the same message twice by accident is fine to retry: a single WhatsApp message is never recorded twice.
+
+### 7. WhatsApp recap
+Send `/rekap` or `/recap` to the bot to get this month's summary (in your time zone) without opening the dashboard and without using AI credits:
+- Total income and total expenses
+- Net cash flow
+- Current balance of every account
+- Every budget with spent / limit and status (Aman ✅ / Over ⚠️)
+
+### 8. Dashboard: Ringkasan (overview)
+- **Month switcher** at the top: go back to earlier months, **Bulan ini** jumps back to the current month. Future months are disabled.
+- **Saldo total**: the sum of all accounts. The eye icon hides all balances (remembered in this browser), handy in public.
+- **Pemasukan / Pengeluaran / Selisih**: income, expenses and their difference for the month.
+- **Arus kas**: running total of income minus expenses through the month.
+- **Pengeluaran harian**: spending per day. If you have budgets, a dashed line shows the average daily budget.
+- **Per kategori**: top 5 categories plus "Lainnya", switchable between expenses and income, with amounts and percentages.
+- **Rekening** and **Anggaran** cards: click an item to edit it.
+
+Only confirmed transactions are counted; drafts waiting for review are not.
+
+### 9. Dashboard: Transaksi (ledger)
+- **Pilih tanggal**: a calendar of the selected month. Dots mark days with expenses (dark) and income (green). Click a day to show only that day; click again or **Semua tanggal** to show the whole month.
+- **Daftar transaksi**: date and time, description, category, account and amount (income in green with +, expenses with −). Choose 10, 15, 50 or 100 per page.
+- **Add manually:** **Tambah** → **Transaksi**. Choose Pengeluaran / Pemasukan / Transfer, amount, category, an optional description, account(s), and date & time (also for past dates).
+- **Edit** (pencil) or **delete** (trash) a transaction. Balances are corrected automatically, e.g. deleting an expense gives the money back to the account.
+
+### 10. Dashboard: Perlu ditinjau (review inbox)
+Messages the bot was not sure about (confidence below 85%) appear here, with a counter on the menu. Each item shows the original WhatsApp message, the amount, the bot's confidence, the type, category and account.
+
+- **Konfirmasi**: record it and update the balance.
+- **Ubah**: correct it first (amount, category, accounts, date).
+- **Hapus**: discard it, or **Hapus semua** to clear the whole list. Drafts never affected any balance.
+
+### 11. Theme and account menu
+- **Tema**: Sistem (follow the device), Terang (light) or Gelap (dark). In the sidebar on desktop, in the account menu on phones.
+- **Keluar**: log out.
+
+### 12. Troubleshooting the bot (admin)
+- **Bot offline / QR does not appear / want to change the bot number:** open **Bot WhatsApp** → **Reset sesi** → **Putuskan & reset**. The session is wiped and a new QR is generated. The bot does not receive messages until the QR is scanned again.
+- If the bot's session is logged out from the phone, the API resets it automatically and shows a new QR.
+- **If the dashboard itself is not reachable**, use the reset scripts:
+  - **Windows (cmd):** `reset_whatsapp.bat`
+  - **PowerShell:** `./reset_whatsapp.ps1`
+- **OTP email not arriving:** check the `SMTP_*` values and the API logs (`docker logs whatsmon-api`). Port 465 needs TLS, port 587 uses STARTTLS.
 
 ---
 
@@ -54,18 +314,23 @@ graph TD
 ```bash
 docker compose up --build -d          # start everything
 docker logs whatsmon-api -f           # API logs + WhatsApp QR code
-cd backend/api && npm test            # unit tests
+docker compose stop                   # stop (data is kept)
 
-# end-to-end tests (real HTTP + PostgreSQL; WhatsApp & email are faked).
-# Uses a SEPARATE database — all tables are wiped. Example with a throwaway container:
+cd backend/api && npm test            # unit tests
+cd frontend && npm run lint && npm run build
+```
+
+The API is reachable directly on `http://127.0.0.1:3001` for debugging (`API_HOST_PORT`; 3000 is often taken by other tools such as Grafana). Normal traffic goes through Nginx on port 80. The API container has no hot reload; rebuild or restart it after backend changes.
+
+**End-to-end tests** use real HTTP and a real PostgreSQL; WhatsApp, email and Gemini are faked. They wipe all tables, so always use a **separate** database:
+
+```bash
 docker run -d --name whatsmon-testdb -e POSTGRES_PASSWORD=test -p 54329:5432 postgres:17
 DATABASE_URL=postgresql://postgres:test@localhost:54329/postgres npx prisma migrate deploy
 TEST_DATABASE_URL=postgresql://postgres:test@localhost:54329/postgres npm run test:e2e
 ```
 
-**Accounts and WhatsApp numbers.** Registration only needs an email and password (verified with an emailed OTP), so it never depends on the bot being online. After logging in, a user links their WhatsApp number from the dashboard: the web shows a QR code for a `wa.me` link that opens a chat with the shared bot pre-filled with `VERIFIKASI <code>`; sending it proves the user owns that number (`src/whatsapp/phone-link.service.ts`). Entering the number on the web first is optional. The number can be changed or unlinked at any time. Numbers are stored in canonical `62xxxxxxxxxx` form (`src/common/phone.ts`).
-
-Database migrations live in `backend/api/prisma/migrations` and are applied automatically (`prisma migrate deploy`, directly on `postgres-master`) when the API container starts; the Prisma client is regenerated on start too. To create a new migration after editing `schema.prisma`:
+**Migrations** live in `backend/api/prisma/migrations` and are applied automatically (`prisma migrate deploy`) when the API container starts, directly on `postgres-master` (`MIGRATE_DATABASE_URL`) because Prisma Migrate does not work through Pgpool. The Prisma client is regenerated on start too. To create a new migration after editing `schema.prisma`:
 
 ```bash
 docker compose exec api npx prisma migrate dev --name <name>
@@ -75,123 +340,64 @@ docker compose exec api npx prisma migrate dev --name <name>
 
 ---
 
-## Getting Started: End-User Guide (How to Use)
+## Project history
 
-If you are a user looking to use the app to track your finances to the fullest, follow this flow:
+### Phase 2: Category intelligence
+- Regex fast path for strict templates (e.g. `50k makan siang bca`).
+- `@google/generative-ai` with Gemini **structured output (JSON schema)** to turn messy slang into transaction data. Model: `gemini-3.6-flash`.
+- **Context-aware prompting:** the user's own account names (e.g. BCA, OVO) are injected into the prompt so the model matches real accounts.
+- **Retry:** a failed Gemini call (e.g. `fetch failed`) is retried once after 1 second, then the regex parser takes over.
+- **Conversational fallback:** casual chat or help requests ("Halo", "cara pakai") get a friendly reply instead of a parsing error.
+- **Anti-loop:** the bot never answers its own messages. Ids of sent messages are remembered, and every reply also ends with an invisible zero-width space (`​`) marker as a fallback.
+- **Access control:** messages are processed only for numbers linked to a verified account; groups, status broadcasts and strangers are ignored.
+- The WhatsApp connection survives forced resets without crashing the server (no more 502 Bad Gateway), and the QR dialog polls every 2 seconds for a near-instant QR.
 
-### 1. Environment Setup
-Create a `.env` in the project root based on `.env.example` (and `frontend/.env.example` if present).
-Crucially, set `GEMINI_API_KEY`, a long random `JWT_SECRET` (the API refuses to start without it), `ADMIN_EMAILS` (who may see the WhatsApp QR / reset the bot), and the `SMTP` variables (Ethereal email for sending OTPs).
+### Phase 3: Transaction service
+- Prisma schema for users, accounts and transactions, with ACID balance updates.
+- Prisma 7 with the `@prisma/adapter-pg` driver.
+- *(Originally a separate `transaction-service`; merged into the modular monolith in phase 7.)*
 
-### 2. Start the App & Link WhatsApp
-To avoid startup race conditions, we have provided automated startup scripts.
-- **Windows (cmd):** Double-click or run `start_app.bat`
-- **PowerShell:** Run `./start_app.ps1`
-- **Manual/Linux:** You can run `docker compose up -d` but ensure databases are initialized first.
+### Phase 4: WhatsApp integration
+- `@whiskeysockets/baileys` turns the server into a WhatsApp Web client, without Meta Cloud API or Twilio.
+- QR login from the dashboard and the Docker logs.
+- Support for WhatsApp's Local Identifier (`@lid`) sender addresses.
 
-### 3. Register, Connect the Bot and Link Your Number
-Open your browser and navigate to `http://localhost`.
-1. **Register** with your email and password, then enter the OTP sent to your email (check your Ethereal Mail console or configured SMTP service).
-2. **Connect the bot (admin, once):** if your email is in `ADMIN_EMAILS`, click the **Bot offline** badge in the header and scan the QR code with the bot's WhatsApp (Linked Devices). The QR code is also printed in `docker logs whatsmon-api -f`.
-3. **Link your number:** click **Hubungkan WhatsApp**, optionally enter your number, press **Buat QR**, scan it with your phone camera and press **Send** in WhatsApp.
+### Phase 5: Next.js dashboard and inbox
+- Mobile-first UI with Next.js App Router, Tailwind CSS, shadcn/ui and Recharts.
+- `confidenceScore` and `TransactionStatus`: AI results with confidence below 0.85 become `NEEDS_REVIEW`.
+- **Review inbox** with confirm, edit, delete and delete all; confirming applies the balance change atomically.
+- **Analytics:** cash flow, daily spending with the daily budget line, category breakdown and budget progress.
+- **Privacy mode:** hide all balances with one click.
+- **Budget** model per user and category with CRUD API.
+- **Calendar filter** in the ledger, backed by separate monthly and paginated queries.
+- **Full manual CRUD** with balance safety (deleting an expense restores the balance), including date and time for backdating.
+- **Add menu** for transactions, accounts and budgets.
+- Uppercase category codes everywhere so AI categories and budgets always match.
+- Split into `HomeView`, `LedgerView`, `InboxView`, navigation and dialogs; tabs kept in the URL (`/?tab=transactions`).
+- Live refresh so WhatsApp transactions appear without reloading.
 
-Then set up your baseline data:
-- Click the **+** button (Floating Action Menu) on the bottom right.
-- **Add Accounts**: Create the accounts you frequently use (e.g., BCA, OVO, Cash) and their current balances.
-- **Set Budgets**: Define monthly limits for your categories (e.g., `FOOD`, `TRANSPORT`, `SHOPPING`).
+### Phase 6: Dockerization and reverse proxy
+- Multi-stage `Dockerfile` using Next.js `standalone` output.
+- Nginx on port 80 routes `/api/` to the API and `/` to the frontend.
 
-### 4. Log Expenses via WhatsApp
-From your linked number, send a message to the bot. Just type naturally:
-- *"50k makan siang bca"*
-- *"bayar gojek 20k pake ovo"*
-- *"gajian 5jt masuk ke bca"*
+### Phase 7: Modular monolith and security hardening
+- `gateway`, `parser-service` and `transaction-service` merged into one NestJS app (`backend/api`) organised by feature modules; internal TCP transport removed.
+- Ownership checks on every account, budget and transaction change (fixes cross-user access by id).
+- `/api/whatsapp/status` requires login (QR only for admins); reset and `/parse` require auth.
+- DTO validation (`class-validator`), rate limits on auth endpoints, secure random OTPs with an attempt limit, no hardcoded JWT secret.
+- Balance logic consolidated in `transactions/ledger.ts` with unit tests; migrations run automatically on startup; end-to-end tests against a real database.
 
-The AI (Gemini) will instantly parse your slang, deduct the balance from the correct account, and record the transaction!
+### Phase 8: Accounts, number linking and UI redesign
+- Registration with email only; forgot/reset password.
+- WhatsApp numbers linked after login with a `wa.me` QR code and `VERIFIKASI <code>`; numbers normalised to `62...`.
+- Redesigned minimalist black-and-white UI: sidebar and bottom tabs, onboarding, empty states, accessible dialogs.
+- HTML OTP email matching the web UI, with dark mode.
+- Light, dark and system theme with accessible contrast.
 
-### 5. Monitor and Review
-Open the `http://localhost` dashboard to see your financial health update in real-time. 
-- **Analytics**: Watch your daily cash flow, cumulative net flow, and budget progress bars.
-- **Inbox**: If you type something ambiguous and the AI isn't confident, the transaction will be routed to the **Inbox** tab as `NEEDS_REVIEW`. You can manually correct and confirm it there!
-
-### 6. WhatsApp Recap Feature
-You don't need to open the web dashboard to check your budget! Just send `/recap` or `/rekap` to the bot on WhatsApp. 
-The gateway will intercept this command instantly (without using LLM credits) and reply with a complete summary of your month:
-- Total Income and Expenses
-- Net Cash Flow
-- Current Balances for all accounts
-- Status of all Budgets (Safe/Over)
-
-### 7. Linking and Troubleshooting WhatsApp
-The easiest way to link WhatsApp or fix connection issues is directly through the Web Dashboard!
-
-1. Open the dashboard (`http://localhost`).
-2. Click the WhatsApp connection badge in the top-left corner (under the app title).
-3. If it says **Disconnected**, a QR Code will appear. Scan it using the **Linked Devices** feature in your WhatsApp app.
-4. **Stuck or Invalid Session?** If you accidentally log out from your phone or the bot gets stuck, open the same modal and click the red **"Force Disconnect & Reset"** button. This will wipe the backend authentication state automatically and generate a fresh QR Code.
-
-*(Fallback for Terminal users)*: You can also use the automated reset utility if the frontend is completely inaccessible:
-- **Windows (cmd):** Double-click or run `reset_whatsapp.bat`
-- **PowerShell:** Run `./reset_whatsapp.ps1`
-
----
-
-## Phase 2: Category Intelligence (Completed)
-- Configured NestJS `ClientsModule` for fast TCP communication between the Gateway and Parser Service.
-- Implemented a Regex "Fast-Path" for strict standard templates (e.g. `50k makan siang bca`).
-- Integrated the `@google/generative-ai` SDK using Gemini's **Structured Outputs (JSON Schema)** to seamlessly parse messy natural language slang into actionable transaction data.
-- Upgraded the AI model to `gemini-3.6-flash` for optimal parsing speed and instruction following.
-- **Resilient AI Parsing Service**:
-  - Implemented an intelligent **Context-Aware RAG (Retrieval-Augmented Generation)** pattern: User's existing account names (e.g., 'BCA', 'OVO') are dynamically fetched and injected directly into the Gemini AI system prompt, eliminating false positives and enforcing 100% strict matching with the actual PostgreSQL database.
-  - Hardened with a **Recursive Retry System**: If Gemini throws a temporary network failure (e.g. `fetch failed`), the parser service will automatically intercept the error, sleep, and gracefully retry the request up to 2 times before falling back, drastically improving reliability.
-- **Conversational AI Fallback**: Upgraded the Gemini schema to natively detect casual chat or help requests (e.g., "Halo", "/rekap"), falling back to a friendly conversational assistant instead of throwing a parsing error.
-- **Anti-Loop Zero-Width Space Architecture**: To absolutely guarantee the bot never replies to its own messages (which causes catastrophic infinite loops), a Zero-Width Space (`\u200B`) is injected as an invisible cryptographic marker at the end of every bot reply. The parser aborts instantly if this marker is detected.
-- **Bulletproof WhatsApp SaaS Security**:
-  - The Gateway performs a real-time `checkUser` via the Transaction Service before processing any message. It strictly ignores strangers and enforces that users must first register and verify their emails on the Web Dashboard before the bot will serve them. All messages from unregistered numbers, groups, or spoofed `@lid` JIDs are immediately dropped with an elegant rejection message.
-  - The WhatsApp connection lifecycle handles forced manual resets gracefully using localized socket termination, preventing unhandled `Connection Closed` Baileys exceptions from crashing the Gateway container (fixing 502 Bad Gateway errors).
-  - Implemented aggressive UI polling (1.5s interval) during WhatsApp linking, providing a near-instant, seamless QR code rendering experience.
-
-## Phase 3: Transaction microservice (Completed)
-- Separated database functionality from the Gateway into a dedicated `transaction-service`.
-- Created Prisma schemas for User, Account, and Transaction.
-- Achieved ACID-compliant transaction balance deductions.
-- Migrated Prisma to use `@prisma/adapter-pg` driver for Prisma 7 support.
-
-## Phase 4: WhatsApp Integration (Completed)
-- Integrated `@whiskeysockets/baileys` to turn the Gateway into a WhatsApp Web client.
-- Bypassed Meta Cloud API and Twilio restrictions using the unofficial socket approach.
-- Handled QR Code generation inside the Docker logs.
-- Prevented infinite loops during self-replies and accommodated WhatsApp's Local Identifier (`@lid`) for "Message Yourself" chats.
-
-## Phase 5: Next.js Frontend Dashboard & Inbox (Completed)
-- Designed a mobile-first UI using Next.js App Router, Tailwind CSS, Shadcn UI, and Recharts.
-- Expanded the Prisma schema with `confidenceScore` and `TransactionStatus`. Ambiguous AI parsing (confidence < 0.85) defaults to `NEEDS_REVIEW`.
-- Implemented an interactive **Inbox** where users can manually confirm transactions with a single click, triggering atomic balance updates.
-- **Advanced Inbox Management**: The Inbox now includes inline Edit and Delete controls, allowing users to rapidly correct or dismiss inaccurate AI parsings before they hit the general ledger.
-- **Advanced Dashboard Analytics**: Upgraded the dashboard with 5 professional Recharts visualizations: 
-  1. **Cumulative Net Flow** (Area Chart) showing intra-month balance growth.
-  2. **Daily Cash Flow** (Grouped Bar Chart) comparing Income vs Expense per day.
-  3. **Spending Velocity** (Bar Chart) with an automatic Daily Average Budget threshold line.
-  4. **Expense Breakdown** (Donut Chart) with exact percentage and decimal calculations (preventing aggressive rounding errors on totals).
-  5. **Budget vs Actual** (Progress Bars) measuring category expenses against defined limits.
-- **Privacy Mode (Shutter)**: Added a dynamic, global privacy toggle (Eye/Shutter icon) to censor sensitive financial data (Total Net Worth and Individual Account Balances) with a single click. Accounts can also be individually revealed in privacy mode.
-- **Batch Inbox Management**: Added a one-click "Delete All" function in the Dashboard Inbox to rapidly clear the entire "Needs Review" queue.
-- **Backend Budget Infrastructure**: Added a `Budget` Prisma model linked to users and categories, exposing robust CRUD and TCP/REST APIs to power the budget analytics.
-- Implemented an **Interactive Calendar Filter**: Users can click specific days on the Ledger calendar to instantly filter the transaction table down to that date, backed by separated un-paginated and paginated API data streams.
-- **Full Manual CRUD**: Empowered the dashboard with complete native control—users can Add, Edit, and Delete transactions manually with absolute atomic safety (e.g. deleting an expense securely restores the account balance).
-- **Precision Date/Time Controls**: Users can now precisely backdate or schedule transactions by manually specifying Date & Time in the Add and Edit Transaction Modals.
-- **Floating Action Menu (FAB)**: Centralized "Add" operations (Transactions, Accounts, Budgets) into a single sleek, animated pop-up menu for a cleaner UI.
-- **Strict Data Consistency**: Fortified the Gemini LLM schema and frontend forms to strictly enforce `UPPERCASE` category parsing, ensuring flawless data alignment between AI-predicted categories and manual budgets.
-- **Frontend Architecture Refactoring**: Splitted the monolithic `Dashboard.tsx` into modular components (`HomeView`, `LedgerView`, `InboxView`, `DashboardHeader`, `BottomNav`, Modals) for extreme maintainability.
-- **SPA Routing**: Used Next.js `useRouter` and query parameters (`/?tab=ledger`) to maintain proper browser history and URL paths, avoiding expensive component unmounts and preserving React state.
-- **Live Polling**: The frontend utilizes a seamless `setInterval` hook fetching data every 5 seconds, keeping the dashboard strictly in sync with incoming WhatsApp transactions without requiring a page refresh.
-
-## Phase 6: Frontend Dockerization & Reverse Proxy (Completed)
-- Built a multi-stage `Dockerfile` leveraging Next.js `standalone` output for minimal image size.
-- Configured Nginx as the primary Reverse Proxy on Port 80, intelligently routing `/api/` traffic to the Gateway and `/` traffic to the Frontend container.
-
-## Phase 7: Modular Monolith & Security Hardening (Completed)
-- Merged `gateway`, `parser-service` and `transaction-service` into a single NestJS app (`backend/api`) organised by feature modules; removed the internal TCP transport.
-- Ownership checks on every account/budget/transaction mutation (fixes cross-user access by ID).
-- `/api/whatsapp/status` requires login (QR only for admins), `/api/whatsapp/reset` and `/parse` require auth.
-- Request validation via DTOs (`class-validator`), rate limiting on auth endpoints, CSPRNG OTP with a 5-attempt limit, no hardcoded JWT secret fallback.
-- Balance logic consolidated into `transactions/ledger.ts` with unit tests; migrations run automatically on API startup.
+### Phase 9: Correctness
+- Money stored as `BIGINT` whole rupiah; fractional amounts rejected.
+- Per-user time zones for day and month boundaries, the `/rekap` month and reply times.
+- Each WhatsApp message recorded at most once, including the offline queue.
+- Bot replies detected by message id instead of text prefixes, so messages like "Tolong catat ..." are processed.
+- Unknown account names are reported back instead of creating accounts; loose account name matching.
+- Unused tables and columns removed.
