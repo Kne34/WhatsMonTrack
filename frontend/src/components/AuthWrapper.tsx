@@ -1,9 +1,12 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { forgotPassword, getProfile, login, register, resetPassword, verifyOtp } from '@/lib/api';
 import Dashboard from './Dashboard';
-import { Alert, Button, PasswordField, Skeleton, TextField } from './common/ui';
+import { Alert, Button, PasswordField, TextField } from './common/ui';
+import { AppShellSkeleton } from './dashboard/skeletons';
+import { NAV_ITEMS, type Tab } from './dashboard/shared/Navigation';
 import { ThemeSwitcher } from './theme';
 
 export interface SessionUser {
@@ -45,6 +48,10 @@ const COPY: Record<Mode, { title: string; subtitle: string }> = {
 export default function AuthWrapper() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
+  // True while a saved session is being restored: only then is the dashboard frame shown as a placeholder
+  const [restoring, setRestoring] = useState(false);
+  const tabParam = useSearchParams().get('tab');
+  const tab: Tab = NAV_ITEMS.find((n) => n.id === tabParam)?.id ?? 'dashboard';
   const [mode, setMode] = useState<Mode>('LOGIN');
 
   const [email, setEmail] = useState('');
@@ -59,11 +66,15 @@ export default function AuthWrapper() {
 
   const checkAuth = useCallback(async () => {
     try {
-      if (localStorage.getItem('token')) setUser(await getProfile());
+      if (localStorage.getItem('token')) {
+        setRestoring(true);
+        setUser(await getProfile());
+      }
     } catch {
       localStorage.removeItem('token');
     } finally {
       setLoading(false);
+      setRestoring(false);
     }
   }, []);
 
@@ -194,11 +205,8 @@ export default function AuthWrapper() {
   };
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background" aria-busy="true" aria-label="Memuat">
-        <Skeleton className="h-8 w-40" />
-      </div>
-    );
+    // Without a saved session the login form follows immediately, so don't flash a dashboard frame
+    return restoring ? <AppShellSkeleton tab={tab} /> : <div className="min-h-screen bg-background" aria-busy="true" />;
   }
 
   if (user) {

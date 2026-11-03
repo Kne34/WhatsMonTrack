@@ -257,7 +257,7 @@ export function EmptyState({ icon, title, description, action, className }: {
 }
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn("animate-pulse rounded-xl bg-muted", className)} aria-hidden />;
+  return <div className={cn("rounded-xl bg-muted motion-safe:animate-pulse", className)} aria-hidden />;
 }
 
 // ---------- Choice controls ----------

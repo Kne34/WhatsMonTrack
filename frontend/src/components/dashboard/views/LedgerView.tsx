@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Pencil, ReceiptText, Trash2, X } from "lucid
 import { cn } from "@/lib/utils";
 import { categoryLabel, formatDayMonth, formatMonth, formatRupiah, formatTime, TX_TYPE_LABEL, type TxType } from "@/lib/format";
 import { Button, Card, EmptyState, IconButton, focusRing } from "../../common/ui";
+import { LedgerRowsSkeleton } from "../skeletons";
 
 export interface LedgerTx {
   id: string;
@@ -22,6 +23,8 @@ interface LedgerViewProps {
   year: number;
   monthlyTxs: LedgerTx[];
   pageTxs: LedgerTx[];
+  /** The list is being fetched for a new day, page or page size */
+  listLoading?: boolean;
   selectedDay: number | null;
   onSelectDay: (day: number | null) => void;
   page: number;
@@ -58,7 +61,7 @@ function Meta({ tx }: { tx: LedgerTx }) {
 }
 
 export default function LedgerView({
-  month, year, monthlyTxs, pageTxs, selectedDay, onSelectDay,
+  month, year, monthlyTxs, pageTxs, listLoading = false, selectedDay, onSelectDay,
   page, totalPages, limit, onPageChange, onLimitChange, onAdd, onEdit, onDelete,
 }: LedgerViewProps) {
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -149,7 +152,9 @@ export default function LedgerView({
           </label>
         </div>
 
-        {pageTxs.length === 0 ? (
+        {listLoading ? (
+          <LedgerRowsSkeleton rows={Math.min(limit, 8)} />
+        ) : pageTxs.length === 0 ? (
           <EmptyState
             className="py-12"
             icon={<ReceiptText className="size-5" />}

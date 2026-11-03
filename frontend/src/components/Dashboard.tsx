@@ -9,7 +9,7 @@ import {
 } from "@/lib/api";
 import { categoryLabel, formatRupiah } from "@/lib/format";
 import type { SessionUser } from "./AuthWrapper";
-import { Skeleton } from "./common/ui";
+import { PageSkeleton } from "./dashboard/skeletons";
 import { AddMenu, BottomTabs, MobileAccountMenu, MonthSwitcher, NAV_ITEMS, Sidebar, type Tab } from "./dashboard/shared/Navigation";
 import HomeView from "./dashboard/views/HomeView";
 import LedgerView, { type LedgerTx } from "./dashboard/views/LedgerView";
@@ -59,6 +59,10 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   const [phoneStatus, setPhoneStatus] = useState<PhoneStatus | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  // Filters the data on screen belongs to. While they differ from the selected filters,
+  // the affected part shows a skeleton instead of the previous month's/page's data.
+  const [shown, setShown] = useState<{ month: number; year: number; day: number | null; page: number; limit: number } | null>(null);
+  const latestRequest = useRef("");
 
   const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
   const closeDialog = () => setDialog({ kind: "none" });
@@ -72,6 +76,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   }, []);
 
   const loadData = useCallback(async () => {
+    const key = `${month}/${year}/${selectedDay}/${page}/${limit}`;
     try {
       const [monthly, table, accs, budgs, wa, phone] = await Promise.all([
         fetchTransactions({ month, year, page: 1, limit: 1000 }),
@@ -81,6 +86,9 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
         fetchWhatsAppStatus().catch(() => null),
         fetchPhoneStatus().catch(() => null),
       ]);
+      // A slower response for filters the user already left must not overwrite newer data
+      if (key !== latestRequest.current) return;
+      setShown({ month, year, day: selectedDay, page, limit });
       setMonthlyTxs(monthly.data ?? monthly);
       setPageTxs((table.data ?? table).filter((t: ApiTx) => t.status === "CONFIRMED"));
       setTotalPages(table.totalPages || 1);
@@ -98,6 +106,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   }, [month, year, selectedDay, page, limit]);
 
   useEffect(() => {
+    latestRequest.current = `${month}/${year}/${selectedDay}/${page}/${limit}`;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount/filter change, then poll
     loadData();
     const interval = setInterval(loadData, REFRESH_MS);
@@ -107,7 +116,11 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [loadData]);
+  }, [loadData, month, year, selectedDay, page, limit]);
+
+  // Month/year changed: every page shows other data. Day/page/size changed: only the ledger list.
+  const monthPending = !shown || shown.month !== month || shown.year !== year;
+  const listPending = monthPending || shown.day !== selectedDay || shown.page !== page || shown.limit !== limit;
 
   const changeMonth = (m: number, y: number) => {
     setMonth(m);
@@ -253,13 +266,8 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
             </div>
           )}
 
-          {!loaded ? (
-            <div className="space-y-6" aria-busy="true" aria-label="Memuat data">
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}
-              </div>
-              <Skeleton className="h-72" />
-            </div>
+          {!loaded || monthPending ? (
+            <PageSkeleton tab={activeTab} />
           ) : activeTab === "dashboard" ? (
             <HomeView
               monthlyTxs={monthlyTxs}
@@ -279,6 +287,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
               year={year}
               monthlyTxs={confirmedMonthly as LedgerTx[]}
               pageTxs={pageTxs as LedgerTx[]}
+              listLoading={listPending}
               selectedDay={selectedDay}
               onSelectDay={(d) => { setSelectedDay(d); setPage(1); }}
               page={page}
