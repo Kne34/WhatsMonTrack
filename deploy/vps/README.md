@@ -86,9 +86,10 @@ What `setup.sh` does (5–10 minutes):
 |---|---|
 | `apt upgrade` + *unattended-upgrades* | Patches security holes now, and installs security updates automatically from then on |
 | Time zone Asia/Jakarta | Log timestamps and the backup schedule use WIB |
-| **2 GB swap** | "Spare RAM" on disk. Building the app briefly needs more than 1 GB of RAM; without swap the build can be killed for running out of memory |
+| **2 GB swap** | "Spare RAM" on disk: a safety margin so a short memory spike doesn't get a process killed on a 1 GB server |
 | **Docker** | Runs all the containers |
 | Docker log limits (10 MB × 3) | The disk is only 20 GB; unlimited logs can fill it up |
+| Docker DNS `1.1.1.1` / `8.8.8.8` | Containers only have IPv4; without this they may inherit IPv6 DNS servers they cannot reach, and lookups fail now and then |
 | **Firewall (ufw)**: only ports 22, 80, 443 | Every other port is closed to the internet |
 | **fail2ban** | Blocks IPs that keep failing SSH logins (password-guessing bots are everywhere) |
 | `git clone` into `/opt/whatsmontrack` | Fetches the code of the `deploy/vps` branch |
@@ -133,7 +134,27 @@ chmod 600 .env.prod
 
 ---
 
-## 4. Start it
+## 4. Build on the laptop, run on the server
+
+**Why not build on the server?** Building the images (`npm ci`, `next build`) needs a lot of CPU and RAM. On 1 vCPU / 1 GB it takes ages and can freeze the server (we saw a load average of ~40). So the work is split, as is common in production:
+
+```
+Laptop:  code ──docker build──► images ──docker save──► whatsmontrack-images.tar.gz
+                                                              │ scp (upload over SSH)
+Server:              containers ◄── dc up --no-build ◄── docker load
+```
+
+| Command | What it does |
+|---|---|
+| `docker build` | Turns the code into an image (the heavy part, done on the laptop) |
+| `docker save` + `gzip` | Packs the images into one compressed file |
+| `scp` | Copies the file to the server over SSH |
+| `docker load` | Unpacks the images into Docker on the server |
+| `dc up -d --no-build` | Starts containers from those images; never builds on the server |
+
+The laptop and the server are both x86_64 (`linux/amd64`), so images built on one run on the other. The image names (`whatsmontrack-prod-api`, `whatsmontrack-prod-web`) are fixed in `docker-compose.prod.yml`, so the server finds them.
+
+### 4a. On the server: a short alias (once)
 
 To keep commands short, create an *alias* once:
 
@@ -142,18 +163,49 @@ echo "alias dc='docker compose -f /opt/whatsmontrack/docker-compose.prod.yml --e
 source ~/.bashrc
 ```
 
-Then:
+### 4b. On the laptop: build and deploy with one command
+
+Open **Git Bash** (not PowerShell: PowerShell can corrupt binary data piped through `|`), start Docker Desktop, then:
 
 ```bash
-cd /opt/whatsmontrack
-dc up -d --build
+cd "/d/Tugas Keane Kuliah/KO26-1/PROJECT PRIBADI/WhatsMonTrack"   # your project folder
+git switch deploy/vps
+git pull
+deploy/vps/release.sh
 ```
 
-- `--build`: builds the images from the code (5–15 minutes the first time on a 1 GB VPS; slow is normal).
-- `-d` (*detached*): runs in the background, so you can close the terminal.
+`release.sh` does, in order:
+1. Checks your branch matches GitHub (the server pulls the same code, so they must agree).
+2. `docker build` both images for `linux/amd64`.
+3. `docker save | gzip` into `whatsmontrack-images.tar.gz` (~250 MB).
+4. `scp` it to the server.
+5. Runs `update.sh` **on the server** over SSH: `git pull` → backup (if the database already runs) → `docker load` → `dc up -d --no-build` → waits until the API answers its health check → removes the file and old images.
+
+The first build on the laptop takes a few minutes; later ones are faster thanks to Docker's cache. The upload time depends on your internet upload speed.
+
+- `-d` (*detached*, used by `dc up`): containers run in the background, so you can close the terminal.
 - On start, **the api applies the database migrations** automatically.
 
-Check:
+<details>
+<summary>The same steps by hand (to see what <code>release.sh</code> does)</summary>
+
+On the laptop (Git Bash):
+```bash
+docker build --platform linux/amd64 -t whatsmontrack-prod-api:latest -f backend/api/Dockerfile.prod backend/api
+docker build --platform linux/amd64 -t whatsmontrack-prod-web:latest frontend
+docker save whatsmontrack-prod-api:latest whatsmontrack-prod-web:latest | gzip > whatsmontrack-images.tar.gz
+scp whatsmontrack-images.tar.gz root@80.43.0.155:/root/
+```
+On the server:
+```bash
+cd /opt/whatsmontrack
+gunzip -c /root/whatsmontrack-images.tar.gz | docker load
+dc up -d --no-build
+rm /root/whatsmontrack-images.tar.gz
+```
+</details>
+
+### 4c. Check
 ```bash
 dc ps                       # every service "Up", postgres "(healthy)"
 dc logs -f api              # API logs (Ctrl+C stops watching; the app keeps running)
@@ -182,11 +234,11 @@ For the Android app later, the API address is `https://80-43-0-155.sslip.io/api`
 | Restart one service | `dc restart api` |
 | RAM/CPU usage | `docker stats` |
 | Free disk / RAM | `df -h` · `free -h` |
-| **Update the app** after new commits | `/opt/whatsmontrack/deploy/vps/update.sh` |
+| **Update the app** after new commits | Commit and push, then **on the laptop**: `deploy/vps/release.sh` |
 | Back up now | `/opt/whatsmontrack/deploy/vps/backup.sh` |
 | List backups | `ls -lh /opt/whatsmontrack/backups` |
 
-`update.sh` does: `git pull` → **backup first** → rebuild what changed → delete old images so the disk doesn't fill up.
+`release.sh` (laptop) builds and uploads the images, then runs `update.sh` on the server: `git pull` → **backup first** → `docker load` → restart what changed (`--no-build`) → health check → delete the upload and old images so the disk doesn't fill up.
 
 ### Backups
 Every day at 03:30 the database (including the WhatsApp session) is saved to `/opt/whatsmontrack/backups`; the last 14 days are kept.
@@ -211,7 +263,10 @@ dc start api web
 
 | Symptom | Check / fix |
 |---|---|
-| The build stops with `Killed` / `exit code 137` | Out of memory: make sure swap is on (`free -h`), then run `dc up -d --build` again |
+| `release.sh`: *"Branch … differs from GitHub"* / *"uncommitted changes"* | Commit and `git push` first, so the server pulls the same code the images were built from |
+| `release.sh`: `docker build` fails | Is Docker Desktop running? Run it from Git Bash in the project folder |
+| `update.sh`: *"API did not become healthy"* | `dc logs api`: usually a wrong or empty variable in `.env.prod`, or a failed migration (restore the backup taken just before, see section 6) |
+| Server froze while building | Never build on the server (`dc up --build`); use `release.sh`. If it froze: reboot from the panel, then `docker builder prune -af` |
 | Browser: invalid certificate / site doesn't open | `dc logs caddy`. Make sure ports 80 and 443 are open (`ufw status`) and `SITE_ADDRESS` is right. Let's Encrypt needs port 80 to verify the server |
 | `502 Bad Gateway` | The api/web isn't ready or crashed: `dc ps`, `dc logs api` |
 | The api keeps restarting | `dc logs api`: usually a wrong or empty variable in `.env.prod` |
@@ -224,4 +279,4 @@ dc start api web
 - Only Caddy (80/443) and SSH (22) are open; the database and the API cannot be reached directly from the internet.
 - Secrets live only in `.env.prod` (chmod 600), never in Git.
 - Use an SSH key, and never share the root password or the contents of `.env.prod` (screenshots included).
-- Ubuntu security updates install automatically; update the app with `update.sh`.
+- Ubuntu security updates install automatically; update the app with `release.sh` from the laptop.

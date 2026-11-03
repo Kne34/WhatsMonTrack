@@ -1,5 +1,6 @@
 # Production stack for a single small server (e.g. a 1 GB VPS). See deploy/vps/README.md.
-#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#   images are built on a laptop and shipped: deploy/vps/release.sh
+#   on the server: docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --no-build
 #
 # Differences from docker-compose.yml (development):
 # - one PostgreSQL instead of master + replica + pgpool (same safety on one machine, far less RAM)
@@ -28,6 +29,8 @@ services:
     mem_limit: 256m
 
   api:
+    # Built on the laptop (deploy/vps/release.sh) and loaded on the server; the server never builds
+    image: whatsmontrack-prod-api:latest
     build:
       context: ./backend/api
       dockerfile: Dockerfile.prod
@@ -56,6 +59,7 @@ services:
     mem_limit: 400m
 
   web:
+    image: whatsmontrack-prod-web:latest
     build:
       context: ./frontend
     restart: unless-stopped

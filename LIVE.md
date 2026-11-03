@@ -62,29 +62,18 @@ Messages the bot isn't sure about go to **Perlu ditinjau** (review) on the dashb
 |---|---|
 | First-time server setup | [deploy/vps/README.md](deploy/vps/README.md) |
 | Status / logs | `dc ps` · `dc logs -f api` (alias from the deploy guide) |
+| Release an update | `deploy/vps/release.sh` on the laptop (below) |
 | Backups | `/opt/whatsmontrack/backups` (daily, 14 days) · restore steps in the deploy guide |
 
 ### Releasing an update (build on the laptop)
 
-The 1 vCPU server is too slow to build the images, so they are built locally and shipped:
+The 1 vCPU server is too slow to build the images, so they are built on the laptop and shipped. Commit and push, then in **Git Bash** on the laptop (Docker Desktop running):
 
 ```bash
-# On the laptop (Git Bash, Docker Desktop running), branch deploy/vps
-docker build --platform linux/amd64 -t whatsmontrack-prod-api:latest -f backend/api/Dockerfile.prod backend/api
-docker build --platform linux/amd64 -t whatsmontrack-prod-web:latest frontend
-docker save whatsmontrack-prod-api:latest whatsmontrack-prod-web:latest | gzip > whatsmontrack-images.tar.gz
-scp whatsmontrack-images.tar.gz root@80.43.0.155:/root/
-
-# On the server
-cd /opt/whatsmontrack && git pull
-./deploy/vps/backup.sh                                   # backup before migrations run
-gunzip -c /root/whatsmontrack-images.tar.gz | docker load
-dc up -d --no-build                                      # api applies database migrations on start
-rm /root/whatsmontrack-images.tar.gz
-docker image prune -f
+deploy/vps/release.sh
 ```
 
-Then check `https://80-43-0-155.sslip.io/api/health` and `dc logs api | tail`.
+It builds both images, uploads them, and runs `deploy/vps/update.sh` on the server (pull → backup → load → restart → health check). Details and the manual steps: [deploy guide, section 4](deploy/vps/README.md#4-build-on-the-laptop-run-on-the-server).
 
 ### Moving to a custom domain
 Point an `A` record (and optionally `AAAA`) at the server, set `SITE_ADDRESS=yourdomain, 80-43-0-155.sslip.io` in `.env.prod`, run `dc up -d --no-build`, then update the bit.ly link to the new domain.

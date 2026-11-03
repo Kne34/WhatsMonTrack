@@ -10,6 +10,8 @@ APP_DIR="/opt/whatsmontrack"
 
 [ "$(id -u)" -eq 0 ] || { echo "Run as root (sudo -i)"; exit 1; }
 step() { echo; echo "==> $*"; }
+# Retries a command a few times: DNS on fresh servers can fail now and then
+retry() { for i in 1 2 3 4 5; do "$@" && return 0; echo "  retry $i/5 in 5 s..."; sleep 5; done; return 1; }
 
 step "System updates and base packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -20,7 +22,7 @@ apt-get -y -q install ca-certificates curl git ufw fail2ban unattended-upgrades
 dpkg-reconfigure -f noninteractive unattended-upgrades
 timedatectl set-timezone Asia/Jakarta || true
 
-step "Swap (2 GB) so building the images fits in 1 GB of RAM"
+step "Swap (2 GB): safety margin for 1 GB of RAM"
 if ! swapon --show | grep -q .; then
   fallocate -l 2G /swapfile
   chmod 600 /swapfile
@@ -29,17 +31,25 @@ if ! swapon --show | grep -q .; then
   grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 echo 'vm.swappiness=10' > /etc/sysctl.d/99-whatsmontrack.conf
-sysctl -q --system
+sysctl -q -p /etc/sysctl.d/99-whatsmontrack.conf
 
 step "Docker"
 if ! command -v docker >/dev/null; then
-  curl -fsSL https://get.docker.com | sh
+  retry curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+  sh /tmp/get-docker.sh
+  rm -f /tmp/get-docker.sh
 fi
-# Keep container logs small (the disk is only 20 GB)
+# - small container logs (the disk is only 20 GB)
+# - fixed IPv4 DNS for containers: Docker's default network has no IPv6, so IPv6 DNS servers
+#   copied from the host make lookups inside containers fail intermittently
 mkdir -p /etc/docker
 if [ ! -f /etc/docker/daemon.json ]; then
   cat > /etc/docker/daemon.json <<'JSON'
-{ "log-driver": "json-file", "log-opts": { "max-size": "10m", "max-file": "3" } }
+{
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "3" },
+  "dns": ["1.1.1.1", "8.8.8.8"]
+}
 JSON
 fi
 systemctl enable --now docker
@@ -55,11 +65,12 @@ systemctl enable --now fail2ban
 
 step "Application code in $APP_DIR (branch $BRANCH)"
 if [ -d "$APP_DIR/.git" ]; then
-  git -C "$APP_DIR" fetch -q origin "$BRANCH"
+  retry git -C "$APP_DIR" fetch -q origin "$BRANCH"
   git -C "$APP_DIR" checkout -q "$BRANCH"
   git -C "$APP_DIR" pull -q --ff-only origin "$BRANCH"
 else
-  git clone -q --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+  # A failed attempt can leave a partial folder behind; start clean on every try
+  retry sh -c "rm -rf '$APP_DIR' && git clone -q --branch '$BRANCH' '$REPO_URL' '$APP_DIR'"
 fi
 chmod +x "$APP_DIR"/deploy/vps/*.sh
 
@@ -72,4 +83,4 @@ chmod 644 /etc/cron.d/whatsmontrack-backup
 echo
 echo "Done. Next:"
 echo "  1. cd $APP_DIR && cp .env.prod.example .env.prod && nano .env.prod"
-echo "  2. docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build"
+echo "  2. On your laptop: deploy/vps/release.sh   (builds the images and deploys them here)"
