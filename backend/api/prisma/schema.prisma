@@ -89,3 +89,11 @@ model Budget {
   user         User   @relation(fields: [userId], references: [id])
   @@unique([userId, categoryName])
 }
+
+/// WhatsApp (Baileys) session: credentials and signal keys, one row per key.
+/// Kept in the database so the bot survives restarts on hosts without a persistent disk.
+model WhatsAppAuth {
+  id        String   @id
+  data      String
+  updatedAt DateTime @updatedAt
+}

@@ -27,6 +27,7 @@ const { MailService } = require('../dist/auth/mail.service');
 const { BotService } = require('../dist/whatsapp/bot.service');
 const { ParserService } = require('../dist/parser/parser.service');
 const { PrismaService } = require('../dist/database/prisma.service');
+const { useDatabaseAuthState, clearDatabaseAuthState } = require('../dist/whatsapp/db-auth-state');
 
 // ---- fakes ----
 const BOT_PHONE = '6280000000000';
@@ -68,7 +69,7 @@ before(async () => {
   await app.init();
   http = () => request(app.getHttpServer());
   prisma = app.get(PrismaService);
-  await prisma.$executeRawUnsafe('TRUNCATE "Transaction", "Account", "Budget", "User" CASCADE');
+  await prisma.$executeRawUnsafe('TRUNCATE "Transaction", "Account", "Budget", "User", "WhatsAppAuth" CASCADE');
 });
 
 after(async () => {
@@ -312,5 +313,22 @@ describe('money, time zones and the WhatsApp bot (real database)', () => {
     assert.match(reply, /Rekening "mandiri" tidak ditemukan/);
     assert.equal(await prisma.account.count({ where: { userId: user.id } }), before);
     assert.equal(await prisma.transaction.count({ where: { sourceMessageId: 'WAMSG-2' } }), 0);
+  });
+});
+
+describe('WhatsApp session stored in PostgreSQL', () => {
+  test('credentials and keys survive a restart and are wiped by a reset', async () => {
+    const first = await useDatabaseAuthState(prisma);
+    await first.saveCreds();
+    await first.state.keys.set({ 'pre-key': { 1: { public: Buffer.from([1]), private: Buffer.from([2]) } } });
+
+    const restarted = await useDatabaseAuthState(prisma);
+    assert.equal(restarted.state.creds.registrationId, first.state.creds.registrationId);
+    assert.deepEqual(restarted.state.creds.noiseKey.private, first.state.creds.noiseKey.private);
+    const keys = await restarted.state.keys.get('pre-key', ['1']);
+    assert.deepEqual(keys['1'].private, Buffer.from([2]));
+
+    await clearDatabaseAuthState(prisma);
+    assert.equal(await prisma.whatsAppAuth.count(), 0);
   });
 });

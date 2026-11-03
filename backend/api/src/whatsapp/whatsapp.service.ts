@@ -1,14 +1,14 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
-import { makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } from '@whiskeysockets/baileys';
+import { makeWASocket, makeCacheableSignalKeyStore, DisconnectReason, Browsers } from '@whiskeysockets/baileys';
 import * as qrcode from 'qrcode-terminal';
 import { BotService } from './bot.service';
 import { phoneFromJid } from '../common/phone';
 import { Boom } from '@hapi/boom';
-import * as path from 'path';
-import * as fs from 'fs';
+import { PrismaService } from '../database/prisma.service';
+import { clearDatabaseAuthState, useDatabaseAuthState } from './db-auth-state';
+import { appendMaxAgeMs } from './offline-queue';
 
-/** Messages delivered as 'append' (offline queue / history) older than this are not processed. */
-const APPEND_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+const APPEND_MAX_AGE_MS = appendMaxAgeMs();
 const MAX_REMEMBERED_IDS = 2000;
 
 function remember(set: Set<string>, id: string) {
@@ -36,7 +36,10 @@ export class WhatsAppService implements OnModuleInit {
   private readonly sentIds = new Set<string>();
   private readonly seenIds = new Set<string>();
 
-  constructor(private readonly bot: BotService) {}
+  constructor(
+    private readonly bot: BotService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   async onModuleInit() {
     this.logger.log('Initializing WhatsApp Service...');
@@ -44,11 +47,12 @@ export class WhatsAppService implements OnModuleInit {
   }
 
   async connectToWhatsApp() {
-    const authPath = path.join(process.cwd(), 'auth_info_baileys');
-    const { state, saveCreds } = await useMultiFileAuthState(authPath);
+    // Session lives in the database, so it survives restarts on hosts without a persistent disk
+    const { state, saveCreds } = await useDatabaseAuthState(this.prisma);
 
     this.sock = makeWASocket({
-      auth: state,
+      // In-memory cache in front of the database for the many signal-key reads per message
+      auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys) },
       printQRInTerminal: false, // We will print it manually to ensure it looks good
       browser: Browsers.macOS('Desktop'),
       syncFullHistory: false,
@@ -181,17 +185,14 @@ export class WhatsAppService implements OnModuleInit {
       }
     }
     
-    const authPath = path.join(process.cwd(), 'auth_info_baileys');
-    if (fs.existsSync(authPath)) {
-      try {
-        fs.rmSync(authPath, { recursive: true, force: true });
-        this.logger.log('Deleted auth_info_baileys folder.');
-      } catch (err) {
-        this.logger.error('Failed to delete auth_info_baileys:', err);
-      }
+    try {
+      await clearDatabaseAuthState(this.prisma);
+      this.logger.log('Deleted the stored WhatsApp session.');
+    } catch (err) {
+      this.logger.error('Failed to delete the stored WhatsApp session:', err);
     }
 
-    // Delay briefly to ensure files are released
+    // Give the old socket a moment to close before reconnecting
     await new Promise((resolve) => setTimeout(resolve, 2000));
     
     // Restart connection
