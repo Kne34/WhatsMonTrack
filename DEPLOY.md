@@ -46,7 +46,8 @@ Tip: emails from a Gmail address sent through Brevo may land in spam; mark the f
 
 1. Push the branch to GitHub: `git push -u origin deploy/render-neon-vercel`.
 2. Render dashboard → **New → Blueprint** → choose the repository. Render reads `render.yaml` from the `deploy/render-neon-vercel` branch and creates the `whatsmontrack-api` service on the free plan.
-3. Fill in the values Render asks for:
+3. Fill in the values Render asks for. Quickest: copy `backend/api/.env.render.example` to `backend/api/.env.render` (git-ignored), fill it in, and paste it via **Environment → Add from .env**. Without a Blueprint (no card), create a **Web Service** instead with Language **Node**, Root Directory `backend/api`, Build Command `npm ci --include=dev && npm run build:render`, Start Command `npm run start:render`, Health Check Path `/api/health`, and the same variables.
+
 
    | Variable | Value |
    |---|---|

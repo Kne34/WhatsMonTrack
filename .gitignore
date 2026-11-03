@@ -1,6 +1,10 @@
 # Project Files
 PLAN*.md
 *.env
+# Env files with real values (e.g. .env.render); only the *.example templates are committed
+.env.*
+!.env.example
+!.env.*.example
 
 # Docker Volumes
 postgres_master_data/
