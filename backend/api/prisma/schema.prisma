@@ -33,6 +33,7 @@ model User {
   accounts           Account[]
   transactions       Transaction[]
   budgets            Budget[]
+  chatMessages       ChatMessage[]
 }
 
 enum TransactionType {
@@ -96,4 +97,16 @@ model WhatsAppAuth {
   id        String   @id
   data      String
   updatedAt DateTime @updatedAt
+}
+
+/// Web chat with the bot (same conversation logic as WhatsApp, for users without a bot number).
+model ChatMessage {
+  id        String   @id @default(uuid())
+  userId    String
+  fromBot   Boolean  @default(false)
+  text      String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
 }

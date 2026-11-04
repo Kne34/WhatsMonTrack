@@ -12,5 +12,6 @@ import { WhatsAppService } from './whatsapp.service';
   imports: [AccountsModule, BudgetsModule, TransactionsModule, ParserModule],
   controllers: [WhatsAppController],
   providers: [WhatsAppService, BotService, PhoneLinkService],
+  exports: [BotService],
 })
 export class WhatsAppModule {}

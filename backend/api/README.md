@@ -17,6 +17,7 @@ src/
   parser/        Gemini parsing with a regex fallback
   whatsapp/      Baileys socket (link / change / unlink the bot), bot conversation logic,
                  number linking, session store in PostgreSQL
+  chat/          web chat with the bot (same BotService as WhatsApp), history in ChatMessage
   common/        guards, config, phone/time-zone helpers, BigInt JSON serialisation
   database/      PrismaService (pg driver adapter)
   health.controller.ts   GET /api/health

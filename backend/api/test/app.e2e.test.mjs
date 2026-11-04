@@ -73,7 +73,7 @@ before(async () => {
   await app.init();
   http = () => request(app.getHttpServer());
   prisma = app.get(PrismaService);
-  await prisma.$executeRawUnsafe('TRUNCATE "Transaction", "Account", "Budget", "User", "WhatsAppAuth" CASCADE');
+  await prisma.$executeRawUnsafe('TRUNCATE "ChatMessage", "Transaction", "Account", "Budget", "User", "WhatsAppAuth" CASCADE');
 });
 
 after(async () => {
@@ -368,5 +368,69 @@ describe('WhatsApp session stored in PostgreSQL', () => {
     await setBotStopped(prisma, true);
     await clearDatabaseAuthState(prisma);
     assert.equal(await isBotStopped(prisma), false);
+  });
+});
+
+describe('web chat with the bot (no bot number needed)', () => {
+  let token, other, account;
+  before(async () => {
+    // Existing users (sign-up is rate limited): carol has no accounts yet
+    const login = async (email) => (await http().post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.token;
+    token = await login('carol@test.com');
+    other = await login('alice@test.com');
+    account = (await http().post('/api/accounts').set(auth(token)).send({ name: 'BCA', initialBalance: 100000 }).expect(201)).body;
+  });
+
+  test('works while the WhatsApp bot is offline and without a linked phone', async () => {
+    fakeWhatsApp.connected = false;
+    try {
+      const res = await http().post('/api/chat').set(auth(token)).send({ text: '  kopi 25000 bca  ' }).expect(201);
+      assert.equal(res.body.message.text, 'kopi 25000 bca');
+      assert.equal(res.body.message.fromBot, false);
+      assert.equal(res.body.reply.fromBot, true);
+      assert.match(res.body.reply.text, /^Berhasil!/);
+    } finally {
+      fakeWhatsApp.connected = true;
+    }
+    const acc = (await http().get('/api/accounts').set(auth(token)).expect(200)).body.find((a) => a.id === account.id);
+    assert.equal(Number(acc.balance), 75000);
+    const txs = (await http().get('/api/transactions').set(auth(token)).expect(200)).body.data;
+    assert.equal(txs.length, 1);
+    assert.equal(txs[0].rawText, 'kopi 25000 bca');
+  });
+
+  test('commands work too, and the history is kept in order', async () => {
+    const res = await http().post('/api/chat').set(auth(token)).send({ text: '/rekap' }).expect(201);
+    assert.match(res.body.reply.text, /Rekap Bulan Ini/);
+    const history = (await http().get('/api/chat').set(auth(token)).expect(200)).body;
+    assert.deepEqual(history.map((m) => m.fromBot), [false, true, false, true]);
+    assert.equal(history[2].text, '/rekap');
+  });
+
+  test('a failing parser still gets a reply and records nothing', async () => {
+    const original = fakeParser.parse;
+    fakeParser.parse = async () => { throw new Error('AI down'); };
+    try {
+      const res = await http().post('/api/chat').set(auth(token)).send({ text: 'teh 5000 bca' }).expect(201);
+      assert.match(res.body.reply.text, /gagal diproses/);
+    } finally {
+      fakeParser.parse = original;
+    }
+    assert.equal((await http().get('/api/transactions').set(auth(token)).expect(200)).body.data.length, 1);
+  });
+
+  test('history is private, validated, and can be cleared', async () => {
+    assert.deepEqual((await http().get('/api/chat').set(auth(other)).expect(200)).body, []);
+    await http().post('/api/chat').set(auth(token)).send({ text: '   ' }).expect(400);
+    await http().post('/api/chat').set(auth(token)).send({ text: 'x'.repeat(501) }).expect(400);
+    await http().get('/api/chat').expect(401);
+
+    await http().delete('/api/chat').set(auth(other)).expect(200);
+    assert.equal((await http().get('/api/chat').set(auth(token)).expect(200)).body.length, 6);
+    const cleared = await http().delete('/api/chat').set(auth(token)).expect(200);
+    assert.equal(cleared.body.deleted, 6);
+    assert.deepEqual((await http().get('/api/chat').set(auth(token)).expect(200)).body, []);
+    // Clearing the chat keeps the recorded transactions
+    assert.equal((await http().get('/api/transactions').set(auth(token)).expect(200)).body.data.length, 1);
   });
 });
