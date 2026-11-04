@@ -14,6 +14,7 @@ import { AddMenu, BottomTabs, MobileAccountMenu, MonthSwitcher, NAV_ITEMS, Sideb
 import HomeView from "./dashboard/views/HomeView";
 import LedgerView, { type LedgerTx } from "./dashboard/views/LedgerView";
 import InboxView, { type ReviewTx } from "./dashboard/views/InboxView";
+import ChatView from "./dashboard/views/ChatView";
 import {
   AccountDialog, BudgetDialog, ConfirmDialog, TransactionDialog, categoryOptions,
   type AccountLike, type BudgetLike, type TransactionInput, type TransactionLike,
@@ -33,7 +34,7 @@ type DialogState =
   | { kind: "link" }
   | { kind: "bot" };
 
-const PAGE_TITLES: Record<Tab, string> = { dashboard: "Ringkasan", transactions: "Transaksi", inbox: "Perlu ditinjau" };
+const PAGE_TITLES: Record<Tab, string> = { dashboard: "Ringkasan", transactions: "Transaksi", chat: "Chat", inbox: "Perlu ditinjau" };
 const REFRESH_MS = 15_000;
 
 export default function Dashboard({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
@@ -255,7 +256,8 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
           <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <h1 className="font-heading text-2xl font-semibold tracking-tight">{PAGE_TITLES[activeTab]}</h1>
             <div className="flex flex-wrap items-center gap-2">
-              <MonthSwitcher month={month} year={year} onChange={changeMonth} />
+              {/* The chat is not tied to a month */}
+              {activeTab !== "chat" && <MonthSwitcher month={month} year={year} onChange={changeMonth} />}
               <AddMenu {...addActions} />
             </div>
           </header>
@@ -266,7 +268,23 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
             </div>
           )}
 
-          {!loaded || monthPending ? (
+          {activeTab === "chat" ? (
+            // Loads its own history; recording refreshes balances and the review badge
+            <ChatView
+              onRecorded={loadData}
+              onAskClear={(clear) =>
+                setDialog({
+                  kind: "confirm",
+                  title: "Hapus riwayat chat?",
+                  description: "Semua pesan di chat ini dihapus. Transaksi yang sudah tercatat tetap ada.",
+                  confirmLabel: "Hapus riwayat",
+                  action: async () => {
+                    await clear();
+                    notify("Riwayat chat dihapus");
+                  },
+                })}
+            />
+          ) : !loaded || monthPending ? (
             <PageSkeleton tab={activeTab} />
           ) : activeTab === "dashboard" ? (
             <HomeView

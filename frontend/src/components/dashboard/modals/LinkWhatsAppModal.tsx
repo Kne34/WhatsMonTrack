@@ -123,7 +123,7 @@ export default function LinkWhatsAppModal({ isOpen, onClose, status, onChanged }
         {showForm && status && !status.botConnected && (
           <>
             <Alert tone="info">
-              Bot WhatsApp sedang offline, jadi nomor belum bisa dihubungkan. Hubungi admin untuk menghubungkan bot terlebih dahulu.
+              Bot WhatsApp sedang offline, jadi nomor belum bisa dihubungkan. Hubungi admin untuk menghubungkan bot terlebih dahulu. Sementara itu, catat transaksi lewat tab Chat di web.
             </Alert>
             <Button variant="secondary" className="w-full" onClick={onClose}>Tutup</Button>
           </>

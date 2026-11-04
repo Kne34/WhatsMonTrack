@@ -193,6 +193,31 @@ export const unlinkPhone = async () => {
   return data;
 };
 
+// --- Web chat with the bot (same logic as WhatsApp; no bot number needed) ---
+export interface ChatMessage {
+  id: string;
+  fromBot: boolean;
+  text: string;
+  createdAt: string;
+}
+
+export const fetchChat = async (): Promise<ChatMessage[]> => {
+  const { data } = await api.get('/chat');
+  return data;
+};
+
+/** Sends a message to the bot; resolves with the saved message and the bot's reply. */
+export const sendChat = async (text: string): Promise<{ message: ChatMessage; reply: ChatMessage }> => {
+  const { data } = await api.post('/chat', { text });
+  return data;
+};
+
+/** Clears the chat history; recorded transactions stay. */
+export const clearChat = async () => {
+  const { data } = await api.delete('/chat');
+  return data;
+};
+
 // Helper to create a transaction manually
 export const createTransaction = async (txData: any) => {
   const { data } = await api.post('/transactions/manual', { data: txData });

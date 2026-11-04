@@ -1,17 +1,18 @@
 "use client";
 
 import React from "react";
-import { ChevronLeft, ChevronRight, Inbox, LayoutGrid, LogOut, MessageCircle, Plus, ReceiptText, Smartphone, Target, User, Wallet } from "lucide-react";
+import { ChevronLeft, ChevronRight, Inbox, LayoutGrid, LogOut, MessageCircle, MessagesSquare, Plus, ReceiptText, Smartphone, Target, User, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMonth, formatPhone } from "@/lib/format";
 import { Button, IconButton, Menu, focusRing, type MenuItem } from "../../common/ui";
 import { ThemeSwitcher } from "../../theme";
 
-export type Tab = "dashboard" | "transactions" | "inbox";
+export type Tab = "dashboard" | "transactions" | "chat" | "inbox";
 
 export const NAV_ITEMS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Ringkasan", icon: LayoutGrid },
   { id: "transactions", label: "Transaksi", icon: ReceiptText },
+  { id: "chat", label: "Chat", icon: MessagesSquare },
   { id: "inbox", label: "Perlu ditinjau", icon: Inbox },
 ];
 
@@ -162,12 +163,12 @@ export function MobileAccountMenu(status: StatusProps) {
   );
 }
 
-/** Bottom tab bar for phones: 3 equal destinations within thumb reach. */
+/** Bottom tab bar for phones: 4 equal destinations within thumb reach. */
 export function BottomTabs({ active, onNavigate, reviewCount }: { active: Tab; onNavigate: (tab: Tab) => void; reviewCount: number }) {
   return (
     <nav aria-label="Navigasi utama"
       className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-      <div className="grid grid-cols-3">
+      <div className="grid grid-cols-4">
         {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
           const current = active === id;
           return (

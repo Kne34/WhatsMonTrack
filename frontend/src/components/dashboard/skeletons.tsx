@@ -181,8 +181,29 @@ export function InboxSkeleton() {
   );
 }
 
+export function ChatSkeleton() {
+  return (
+    <Loading label="Memuat chat" className="flex h-[calc(100dvh-15rem)] min-h-[420px] flex-col rounded-2xl border border-border/70 bg-card shadow-sm md:h-[calc(100dvh-11rem)]">
+      <div className="space-y-2 border-b border-border/70 px-5 py-3.5">
+        <Skeleton className="h-4 w-32 rounded-md" />
+        <Skeleton className="h-3 w-72 max-w-full rounded-md" />
+      </div>
+      <div className="flex-1 space-y-3 px-5 py-4">
+        {[["ml-auto", "w-40"], ["", "w-64"], ["ml-auto", "w-32"], ["", "w-56"]].map(([side, width], i) => (
+          <Skeleton key={i} className={`h-12 max-w-[85%] rounded-2xl ${side} ${width}`} />
+        ))}
+      </div>
+      <div className="flex gap-2 border-t border-border/70 p-3">
+        <Skeleton className="h-10 flex-1 rounded-xl" />
+        <Skeleton className="size-10 rounded-xl" />
+      </div>
+    </Loading>
+  );
+}
+
 export function PageSkeleton({ tab }: { tab: Tab }) {
   if (tab === "transactions") return <LedgerSkeleton />;
+  if (tab === "chat") return <ChatSkeleton />;
   if (tab === "inbox") return <InboxSkeleton />;
   return <HomeSkeleton />;
 }
@@ -194,7 +215,7 @@ export function AppShellSkeleton({ tab }: { tab: Tab }) {
       <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-border/70 bg-card px-5 pt-6 md:flex" aria-hidden>
         <Skeleton className="h-6 w-36 rounded-md" />
         <div className="mt-10 space-y-3">
-          {[0, 1, 2].map((i) => <Skeleton key={i} className="h-8 rounded-lg" />)}
+          {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-8 rounded-lg" />)}
         </div>
       </aside>
       <div className="md:pl-60">

@@ -12,8 +12,9 @@ src/
   app/                      layout (theme script, fonts) and the single page
   components/
     AuthWrapper.tsx         login, register, email OTP, password reset, session restore
-    Dashboard.tsx           data loading, dialogs and the three views
-    dashboard/views/        Ringkasan (overview), Transaksi (ledger), Perlu ditinjau (review inbox)
+    Dashboard.tsx           data loading, dialogs and the four views
+    dashboard/views/        Ringkasan (overview), Transaksi (ledger), Chat (web chat with the bot),
+                            Perlu ditinjau (review inbox)
     dashboard/              dialogs, navigation, WhatsApp modals, loading skeletons
     common/ui.tsx           shared UI primitives
     theme.tsx               light / dark / system theme

@@ -81,7 +81,7 @@ function Onboarding({ hasAccount, phoneLinked, hasTransaction, onAddAccount, onL
 }) {
   const steps = [
     { done: hasAccount, title: "Tambah rekening", text: "Bank, e-wallet, atau tunai beserta saldonya.", action: "Tambah rekening", onClick: onAddAccount },
-    { done: phoneLinked, title: "Hubungkan WhatsApp", text: "Agar bisa mencatat cukup dengan chat ke bot.", action: "Hubungkan", onClick: onLinkPhone },
+    { done: phoneLinked, title: "Hubungkan WhatsApp", text: "Agar bisa mencatat lewat WhatsApp. Belum ada bot? Pakai tab Chat di web.", action: "Hubungkan", onClick: onLinkPhone },
     { done: hasTransaction, title: "Catat transaksi pertama", text: 'Kirim chat seperti "makan siang 25rb pakai BCA".', action: "Tambah manual", onClick: onAddTransaction },
   ];
   const done = steps.filter((s) => s.done).length;
