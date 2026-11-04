@@ -434,3 +434,57 @@ describe('web chat with the bot (no bot number needed)', () => {
     assert.equal((await http().get('/api/transactions').set(auth(token)).expect(200)).body.data.length, 1);
   });
 });
+
+describe('deleting an account together with its transactions', () => {
+  let bob, alice, bca, gopay, cash;
+  const balanceOf = async (id) => Number((await prisma.account.findUnique({ where: { id } })).balance);
+  const book = (data) => http().post('/api/transactions/manual').set(auth(bob)).send({ data }).expect(201);
+
+  before(async () => {
+    const login = async (email) => (await http().post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.token;
+    bob = await login('admin@test.com');
+    alice = await login('alice@test.com');
+    const create = async (name, initialBalance) =>
+      (await http().post('/api/accounts').set(auth(bob)).send({ name, initialBalance }).expect(201)).body;
+    bca = await create('BCA', 1000000);
+    gopay = await create('GoPay', 100000);
+    cash = await create('Tunai', 50000);
+    await book({ type: 'EXPENSE', amount: 50000, category: 'FOOD', fromAccountId: bca.id });
+    await book({ type: 'INCOME', amount: 200000, category: 'INCOME', toAccountId: bca.id });
+    await book({ type: 'TRANSFER', amount: 300000, category: 'OTHER', fromAccountId: bca.id, toAccountId: gopay.id });
+    await book({ type: 'EXPENSE', amount: 20000, category: 'FOOD', fromAccountId: gopay.id });
+  });
+
+  test('the account list says how many transactions use each account', async () => {
+    const list = (await http().get('/api/accounts').set(auth(bob)).expect(200)).body;
+    const count = Object.fromEntries(list.map((a) => [a.name, a.transactionCount]));
+    assert.deepEqual(count, { BCA: 3, GOPAY: 2, TUNAI: 0 });
+  });
+
+  test('an account in use is not deleted without asking (409 with the count)', async () => {
+    const res = await http().delete(`/api/accounts/${bca.id}`).set(auth(bob)).expect(409);
+    assert.equal(res.body.transactionCount, 3);
+    assert.match(res.body.message, /3 transaksi/);
+    assert.ok(await prisma.account.findUnique({ where: { id: bca.id } }));
+  });
+
+  test('other users cannot delete it, not even with transactions', async () => {
+    await http().delete(`/api/accounts/${bca.id}?withTransactions=true`).set(auth(alice)).expect(404);
+    assert.ok(await prisma.account.findUnique({ where: { id: bca.id } }));
+  });
+
+  test('withTransactions deletes all of them and gives transfers back to the other account', async () => {
+    assert.equal(await balanceOf(gopay.id), 380000); // 100k + 300k transfer − 20k
+    const res = await http().delete(`/api/accounts/${bca.id}?withTransactions=true`).set(auth(bob)).expect(200);
+    assert.deepEqual(res.body, { success: true, deletedTransactions: 3 });
+    assert.equal(await prisma.account.findUnique({ where: { id: bca.id } }), null);
+    assert.equal(await balanceOf(gopay.id), 80000); // the transfer from BCA is undone; GoPay's own expense stays
+    const left = (await http().get('/api/transactions').set(auth(bob)).expect(200)).body.data;
+    assert.deepEqual(left.map((t) => [t.type, Number(t.amount)]), [['EXPENSE', 20000]]);
+  });
+
+  test('an unused account is deleted directly', async () => {
+    const res = await http().delete(`/api/accounts/${cash.id}`).set(auth(bob)).expect(200);
+    assert.deepEqual(res.body, { success: true, deletedTransactions: 0 });
+  });
+});

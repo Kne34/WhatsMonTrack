@@ -80,8 +80,12 @@ export const updateAccount = async (id: string, accountData: any) => {
 };
 
 // Helper to delete an account
-export const deleteAccount = async (id: string) => {
-  const { data } = await api.delete(`/accounts/${id}`);
+/**
+ * Deletes an account. One that transactions still use is refused (409 with `transactionCount`)
+ * unless `withTransactions` also deletes those transactions, correcting the other accounts' balances.
+ */
+export const deleteAccount = async (id: string, withTransactions = false) => {
+  const { data } = await api.delete(`/accounts/${id}`, { params: withTransactions ? { withTransactions: true } : undefined });
   return data;
 };
 

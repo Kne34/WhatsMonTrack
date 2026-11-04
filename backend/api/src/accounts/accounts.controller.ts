@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '../common/auth.guard';
 import type { JwtUser } from '../common/config';
 import { CurrentUser } from '../common/current-user.decorator';
@@ -10,9 +21,10 @@ import { AccountsService } from './accounts.service';
 export class AccountsController {
   constructor(private readonly accounts: AccountsService) {}
 
+  /** Accounts with `transactionCount`: how many transactions use each one. */
   @Get()
   list(@CurrentUser() user: JwtUser) {
-    return this.accounts.list(user.id);
+    return this.accounts.listWithUsage(user.id);
   }
 
   @Post()
@@ -21,12 +33,21 @@ export class AccountsController {
   }
 
   @Put(':id')
-  update(@CurrentUser() user: JwtUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: UpdateAccountDto) {
+  update(
+    @CurrentUser() user: JwtUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: UpdateAccountDto,
+  ) {
     return this.accounts.update(user.id, id, body);
   }
 
+  /** 409 while transactions use the account, unless `?withTransactions=true` deletes them too. */
   @Delete(':id')
-  remove(@CurrentUser() user: JwtUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.accounts.remove(user.id, id);
+  remove(
+    @CurrentUser() user: JwtUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('withTransactions') withTransactions?: string,
+  ) {
+    return this.accounts.remove(user.id, id, withTransactions === 'true');
   }
 }

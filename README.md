@@ -134,7 +134,8 @@ All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-passwo
 | `POST /api/auth/login` | Login, returns a JWT; optional `timeZone` |
 | `POST /api/auth/forgot-password`, `POST /api/auth/reset-password` | Password reset with an emailed code |
 | `GET /api/auth/me` | Current user |
-| `GET /api/accounts`, `POST /api/accounts`, `PUT /api/accounts/:id`, `DELETE /api/accounts/:id` | Accounts |
+| `GET /api/accounts`, `POST /api/accounts`, `PUT /api/accounts/:id` | Accounts; the list includes `transactionCount` (transactions that use each account) |
+| `DELETE /api/accounts/:id?withTransactions=true` | Delete an account. Without the flag an account still in use gets `409` with `transactionCount`; with it, its transactions are deleted too and other accounts' balances are corrected |
 | `GET /api/budgets`, `POST /api/budgets`, `DELETE /api/budgets/:id` | Budgets (POST creates or updates per category) |
 | `GET /api/transactions?month&year&day&page&limit` | List transactions; month/day boundaries use the user's time zone |
 | `POST /api/transactions/manual` | Add a transaction manually |
@@ -235,7 +236,7 @@ An account is anywhere you keep money: a bank (BCA, Mandiri), an e-wallet (GoPay
 
 - **Add:** **Tambah** → **Rekening**, enter a name and the starting balance (may be 0, or negative for e.g. a credit card).
 - **Edit:** click the account in the **Rekening** card. Changing the balance here sets it directly and does not create a transaction.
-- **Delete:** in the same dialog. An account that still has transactions cannot be deleted; delete or move its transactions first.
+- **Delete:** in the same dialog. An unused account is deleted after a confirmation. If transactions still use the account, the dialog says how many and offers **Hapus rekening & N transaksi**: the account and all of its transactions are deleted. Transfers to or from other accounts are undone, so those accounts get their balance back, exactly as if you had deleted each transaction yourself.
 
 Use the names you would type in chat. The bot matches them loosely (`Go-Pay`, `gopay` and `GO PAY` are the same account; `cash` also matches `Tunai`).
 
@@ -472,4 +473,5 @@ docker compose exec api npx prisma migrate dev --name <name>
 - Admins can change or unlink the bot number from the web; unlinking logs the bot out of WhatsApp and keeps it off across restarts.
 
 ### Phase 11: Web chat
+- Deleting an account can delete its transactions too (with the count shown first); transfers to other accounts are undone.
 - **Chat** tab: the same bot conversation on the web (`/api/chat`), so the app is fully usable without a bot number. Conversations are stored per user in the new `ChatMessage` table.

@@ -145,18 +145,44 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     notify(account ? "Rekening diperbarui" : "Rekening ditambahkan");
   };
 
-  const askDeleteAccount = (account: AccountLike) =>
+  /** Asks first; an account that transactions use can only go together with all of them. */
+  const askDeleteAccount = (account: AccountLike, transactionCount = account.transactionCount ?? 0) => {
+    if (transactionCount > 0) {
+      setDialog({
+        kind: "confirm",
+        title: `Hapus rekening ${account.name} beserta transaksinya?`,
+        description: `Rekening ini dipakai ${transactionCount} transaksi. Semuanya ikut dihapus. Untuk transfer dari atau ke rekening lain, saldo rekening tersebut ikut dikembalikan. Tindakan ini tidak bisa dibatalkan.`,
+        confirmLabel: `Hapus rekening & ${transactionCount} transaksi`,
+        action: async () => {
+          const res = await deleteAccount(account.id, true);
+          await loadData();
+          notify(`Rekening ${account.name} dan ${res.deletedTransactions} transaksi dihapus`);
+        },
+      });
+      return;
+    }
     setDialog({
       kind: "confirm",
       title: `Hapus rekening ${account.name}?`,
-      description: "Rekening yang masih memiliki transaksi tidak bisa dihapus. Hapus transaksinya terlebih dahulu.",
+      description: "Rekening ini belum dipakai transaksi apa pun.",
       confirmLabel: "Hapus rekening",
       action: async () => {
-        await deleteAccount(account.id);
+        try {
+          await deleteAccount(account.id);
+        } catch (err) {
+          // Transactions were added since the list was loaded: offer to delete them too
+          const count = (err as { response?: { status?: number; data?: { transactionCount?: number } } }).response;
+          if (count?.status === 409 && count.data?.transactionCount) {
+            askDeleteAccount(account, count.data.transactionCount);
+            await loadData();
+          }
+          throw err;
+        }
         await loadData();
         notify("Rekening dihapus");
       },
     });
+  };
 
   const saveTransaction = (tx: TransactionLike | null) => async (data: TransactionInput) => {
     if (tx) await updateTransaction(tx.id, data);
@@ -368,6 +394,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       )}
       {dialog.kind === "confirm" && (
         <ConfirmDialog
+          key={dialog.title + dialog.confirmLabel}
           open
           title={dialog.title}
           description={dialog.description}

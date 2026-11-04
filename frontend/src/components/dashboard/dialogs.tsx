@@ -124,7 +124,13 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, description, co
 
 // ---------- Account ----------
 
-export interface AccountLike { id: string; name: string; balance: number }
+export interface AccountLike {
+  id: string;
+  name: string;
+  balance: number;
+  /** Transactions that use this account (as source or destination) */
+  transactionCount?: number;
+}
 
 /** Create (account = null) or edit an account. Mount only while open so fields start fresh. */
 export function AccountDialog({ account, onClose, onSave, onDelete }: {
