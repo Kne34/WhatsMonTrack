@@ -101,6 +101,34 @@ describe('BotService.reply', () => {
     await bot.reply('6281111111111', 'Tolong catat makan 25rb pakai bca', 'MSG6');
     expect(parser.parse).toHaveBeenCalled();
   });
+
+  it('gives the parser the account names as a list', async () => {
+    const { bot, parser } = setup(expense('bca'));
+    await bot.reply('6281111111111', 'kopi 25rb bca', 'MSG7');
+    expect(parser.parse).toHaveBeenCalledWith('kopi 25rb bca', { accounts: ['BCA', 'TUNAI', 'GO PAY'] });
+  });
+
+  it('refuses amounts above Rp 1 triliun, like the manual form', async () => {
+    for (const amount of [1e12 + 1, 1e23]) {
+      const { bot, transactions } = setup(expense('bca', amount));
+      const reply = await bot.reply('6281111111111', `gaji ${amount} bca`, `BIG-${amount}`);
+      expect(transactions.create).not.toHaveBeenCalled();
+      expect(reply).toMatch(/^Nominal terlalu besar/);
+    }
+  });
+
+  it('refuses a transfer to the same account', async () => {
+    const { bot, transactions } = setup({ isTransaction: true, type: 'TRANSFER', amount: 50000, fromAccount: 'BCA', toAccount: 'bca', confidence: 0.95 });
+    const reply = await bot.reply('6281111111111', 'transfer 50rb bca ke bca', 'MSG8');
+    expect(transactions.create).not.toHaveBeenCalled();
+    expect(reply).toContain('Rekening sumber dan tujuan transfer sama (BCA)');
+  });
+
+  it('passes the parser\'s own message through when it cannot read the text', async () => {
+    const { bot, parser } = setup({});
+    parser.parse.mockResolvedValueOnce({ source: 'regex_fallback', status: 'error', message: 'Maaf, pesan ini belum bisa saya pahami.' } as any);
+    expect(await bot.reply('6281111111111', 'halo', 'MSG9')).toBe('Maaf, pesan ini belum bisa saya pahami.');
+  });
 });
 
 describe('normalizeAccountName', () => {

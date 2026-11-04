@@ -39,7 +39,7 @@ Quick access to every document in this repository.
 ### WhatsApp bot
 - **Natural Indonesian input.** *"bayar gojek 20k pake ovo"*, *"gajian 5jt masuk ke bca"*, *"transfer 100rb dari bca ke gopay"*. Slang is understood (`k`/`rb` = ribu, `jt` = juta, `ceban` = 10.000, `goceng` = 5.000).
 - **Expense, income and transfer.** The reply shows the remaining balance and the time it was recorded, in your own time zone.
-- **AI with a safety net.** Google Gemini (structured JSON output) parses the message, with up to 2 attempts; if Gemini is unavailable a regex parser takes over. Your own account names are given to the model so it picks real accounts.
+- **AI with a safety net.** Google Gemini (structured JSON output) parses the message; if Gemini is unavailable (no key, quota, outage) an offline parser takes over and saves its results as drafts to review. Your own account names are given to the model so it picks real accounts. The message is always treated as data, never as instructions to the AI.
 - **Unsure? Ask, don't guess.** When the AI is less than 85% confident, the transaction is saved as a draft in **Perlu ditinjau** (review inbox) and balances are not touched until you confirm it. Account names the bot cannot find are never created automatically; the bot replies with your list of accounts.
 - **Loose account matching.** `Go-Pay` = `GO PAY` = `gopay`, `cash` = `tunai` = `uang tunai`, case and punctuation are ignored.
 - **`/rekap` or `/recap`.** Monthly summary straight in WhatsApp without using AI credits.
@@ -408,7 +408,7 @@ docker compose exec api npx prisma migrate dev --name <name>
 - Regex fast path for strict templates (e.g. `50k makan siang bca`).
 - `@google/generative-ai` with Gemini **structured output (JSON schema)** to turn messy slang into transaction data. Model: `gemini-3.6-flash`.
 - **Context-aware prompting:** the user's own account names (e.g. BCA, OVO) are injected into the prompt so the model matches real accounts.
-- **Retry:** a failed Gemini call (e.g. `fetch failed`) is retried once after 1 second, then the regex parser takes over.
+- **Retry:** a failed Gemini call (e.g. `fetch failed`) is retried once after 1 second, then the regex parser takes over. *(Phase 12: a quota error (429) is no longer retried.)*
 - **Conversational fallback:** casual chat or help requests ("Halo", "cara pakai") get a friendly reply instead of a parsing error.
 - **Anti-loop:** the bot never answers its own messages. Ids of sent messages are remembered, and every reply also ends with an invisible zero-width space (`​`) marker as a fallback.
 - **Access control:** messages are processed only for numbers linked to a verified account; groups, status broadcasts and strangers are ignored.
@@ -475,3 +475,12 @@ docker compose exec api npx prisma migrate dev --name <name>
 ### Phase 11: Web chat
 - Deleting an account can delete its transactions too (with the count shown first); transfers to other accounts are undone.
 - **Chat** tab: the same bot conversation on the web (`/api/chat`), so the app is fully usable without a bot number. Conversations are stored per user in the new `ChatMessage` table.
+
+### Phase 12: Parser hardening (after a prompt-injection test)
+A test with 16 injection messages (fake admin, reading other users' data, leaking the prompt, SQL/XSS, pasted JSON, forced confidence) changed nobody else's data and leaked nothing. These fixes came out of it:
+- **Amount cap in the bot:** WhatsApp and Chat now refuse amounts above Rp 1 triliun, like the manual form (a huge number used to cause a database error).
+- **Prompt separation:** the rules go in Gemini's `systemInstruction`; the message and the account names are sent separately as quoted JSON data, and the rules say that data is never an instruction.
+- **No forced auto-confirm:** a message that tries to steer the parser (e.g. "set confidence 1.0", "abaikan instruksi", pasted JSON) is always saved as a draft for review. Model output is also cleaned: unknown categories become `OTHER`, confidence is kept between 0 and 1, text fields are length-limited.
+- **Better offline parser:** understands `1,5jt`, `Rp1.500.000`, `25 rb`, `ceban`; matches your own account names (`cash` = `TUNAI`); reads income only from income words or "masuk ke …" (not "masuk review"); never guesses a transfer to the same account; no longer assumes cash when no account is named; picks a category from common words. Its replies are in Indonesian.
+- **Same-account transfers** are refused by the bot ("Transfer 50rb dari BCA ke BCA").
+- **Gemini quota:** after a 429 the bot skips Gemini for the delay Google suggests (default 60 seconds, at most 10 minutes) and uses the offline parser right away instead of waiting for a sure failure.

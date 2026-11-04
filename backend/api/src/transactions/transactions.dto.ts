@@ -16,7 +16,8 @@ import {
 
 export const TX_TYPES = ['EXPENSE', 'INCOME', 'TRANSFER'] as const;
 export type TxType = (typeof TX_TYPES)[number];
-const MAX_AMOUNT = 1e12;
+/** Largest amount accepted anywhere (Rp 1 triliun); also keeps values within BIGINT and safe JS integers. */
+export const MAX_AMOUNT = 1e12;
 
 export class TransactionsQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(31)

@@ -3,7 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { BudgetsService } from '../budgets/budgets.service';
 import { TransactionsService } from '../transactions/transactions.service';
-import { TX_TYPES, TxType } from '../transactions/transactions.dto';
+import { MAX_AMOUNT, TX_TYPES, TxType } from '../transactions/transactions.dto';
 import { ParserService } from '../parser/parser.service';
 import { formatIDR } from '../common/format';
 import { normalizePhone } from '../common/phone';
@@ -80,9 +80,9 @@ export class BotService {
     const accountNames = accounts.map((a) => a.name).join(', ');
 
     // 2. Parse
-    const result = await this.parser.parse(text, { accounts: accountNames });
+    const result = await this.parser.parse(text, { accounts: accounts.map((a) => a.name) });
     if (result.status === 'error') {
-      return `Gagal: ${result.message}`;
+      return result.message;
     }
     const parsed = result.data;
 
@@ -106,6 +106,9 @@ export class BotService {
     if (!(amount > 0)) {
       return 'Tolong sebutkan nominal transaksinya (contoh: Makan siang 25k pakai BCA).';
     }
+    if (amount > MAX_AMOUNT) {
+      return `Nominal terlalu besar. Maksimal ${formatIDR(MAX_AMOUNT)} per transaksi.`;
+    }
 
     // 4. Resolve accounts. Unknown names are reported back, never created from a guess.
     if (accounts.length === 0) {
@@ -118,6 +121,9 @@ export class BotService {
     const missing = [fromName && !from ? fromName : null, toName && !to ? toName : null].filter(Boolean);
     if (missing.length > 0) {
       return `Rekening ${missing.map((m) => `"${m}"`).join(' dan ')} tidak ditemukan.\nRekening Anda: ${accountNames}.\nKirim ulang dengan nama rekening yang benar, atau tambahkan rekening baru di web.`;
+    }
+    if (type === 'TRANSFER' && from && to && from.id === to.id) {
+      return `Rekening sumber dan tujuan transfer sama (${from.name}). Sebutkan dua rekening yang berbeda (contoh: Transfer 50k dari BCA ke OVO).`;
     }
 
     // 5. Save (low confidence => draft that must be confirmed on the dashboard)

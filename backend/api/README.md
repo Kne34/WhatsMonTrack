@@ -14,7 +14,7 @@ src/
   accounts/      bank / e-wallet / cash accounts
   budgets/       monthly budget per category
   transactions/  transactions, monthly summary, ledger.ts (the only code that changes balances)
-  parser/        Gemini parsing with a regex fallback
+  parser/        Gemini parsing (rules in systemInstruction) with an offline regex fallback
   whatsapp/      Baileys socket (link / change / unlink the bot), bot conversation logic,
                  number linking, session store in PostgreSQL
   chat/          web chat with the bot (same BotService as WhatsApp), history in ChatMessage
