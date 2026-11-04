@@ -16,7 +16,8 @@ WhatsMonTrack is a personal finance tracker you feed by chatting on WhatsApp. Se
 | **Web dashboard** | `https://80-43-0-155.sslip.io` |
 | **REST API** (web + upcoming Android app) | `https://80-43-0-155.sslip.io/api` |
 | **Health check** | `https://80-43-0-155.sslip.io/api/health` → `{"ok":true}` |
-| **WhatsApp bot** | Online 24/7; its number is shown in the app when you link your WhatsApp |
+| **WhatsApp bot** | Runs 24/7 once an admin links a bot number; the number is shown in the app when you link your WhatsApp |
+| **Web chat** | The **Chat** tab: the same bot on the web, always available, no WhatsApp number needed |
 | **Hosting** | VPS in Indonesia (Ubuntu 24.04, 1 vCPU, 1 GB RAM) |
 | **HTTPS** | Automatic Let's Encrypt certificate (Caddy) |
 | **Backups** | Database backed up daily, kept for 14 days |
@@ -30,7 +31,7 @@ Stack: Next.js (web) · NestJS (API + bot) · PostgreSQL · Caddy · Docker Comp
 1. **Create an account.** Open the link, choose **Buat akun**, enter your email and a password (at least 8 characters), then type the 6-digit code sent to your email. Check your spam folder if it doesn't arrive.
 2. **Link your WhatsApp number.** Click **Hubungkan WhatsApp**, press **Buat QR**, scan the QR with your phone camera, and press **Send** in WhatsApp. The prefilled message `VERIFIKASI <code>` proves the number is yours. The code is valid for 10 minutes.
 3. **Add your accounts.** **Tambah → Rekening**: your bank, e-wallet or cash (e.g. BCA, GoPay, Tunai) with their current balances. Optionally add monthly **budgets** per category.
-4. **Chat with the bot** from your linked number:
+4. **Chat with the bot** from your linked number, or in the **Chat** tab on the web (no WhatsApp number needed):
 
 | You send | Recorded as |
 |---|---|
@@ -48,7 +49,7 @@ Messages the bot isn't sure about go to **Perlu ditinjau** (review) on the dashb
 
 ## Limitations
 
-- **Unofficial WhatsApp connection.** The bot uses a WhatsApp Web client (Baileys), not Meta's official API. It can stop working if WhatsApp changes or blocks the bot number.
+- **Unofficial WhatsApp connection.** The bot uses a WhatsApp Web client (Baileys), not Meta's official API. It can stop working if WhatsApp changes or blocks the bot number. The **Chat** tab on the web keeps working either way.
 - **Small server.** 1 vCPU and 1 GB RAM; fine for personal use, not for heavy traffic.
 - **No uptime guarantee.** During maintenance or updates the app may be briefly unavailable. Messages sent to the bot while it is down are still recorded when it comes back (up to 3 days old).
 - **Temporary address.** The site currently uses a free `sslip.io` address tied to the server's IP. The short link `bit.ly/WhatsMonTrack` will keep working if this moves to a custom domain.

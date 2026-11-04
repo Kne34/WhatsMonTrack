@@ -57,6 +57,7 @@ Quick access to every document in this repository.
 ### Web dashboard
 - **Ringkasan (overview):** total balance (can be hidden), income, expense, difference, cash-flow chart, daily spending chart with the daily budget line, spending or income per category, accounts and budget progress.
 - **Transaksi (ledger):** calendar day filter, paginated list (10/15/50/100 per page), add, edit and delete.
+- **Chat:** chat with the bot right on the web, with the same results as on WhatsApp (record transactions, `/rekap`). Works without a bot number or a linked phone; the history is saved and can be cleared.
 - **Perlu ditinjau (review inbox):** confirm, edit or delete uncertain bot results, or delete them all.
 - **Month switcher**, **Tambah** (add) menu for transactions, accounts and budgets, onboarding checklist for new users.
 - **Light, dark or system theme**, without a flash on page load.
@@ -115,6 +116,7 @@ graph TD
 | `transactions/` | Transactions, monthly summary, `ledger.ts` (the only place that changes balances) |
 | `parser/` | Gemini parsing with regex fallback |
 | `whatsapp/` | `WhatsAppService` (Baileys socket), `BotService` (conversation logic, `/rekap`), `PhoneLinkService` (number linking), session store in PostgreSQL (`db-auth-state.ts`) |
+| `chat/` | Web chat with the bot: saves the conversation (`ChatMessage`) and runs each message through `BotService`, so it behaves exactly like WhatsApp |
 | `common/` | Auth/admin guards, `@CurrentUser()`, config, phone normalisation, time zone helpers, BigInt JSON serialisation |
 | `database/` | `PrismaService` |
 | `health.controller.ts` | `GET /api/health` liveness check (no auth, no database) |
@@ -142,6 +144,7 @@ All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-passwo
 | `GET /api/whatsapp/status` | Bot status: `state` (`connecting`, `waiting_qr`, `connected`, `stopped`); QR code and bot number for admins only |
 | `POST /api/whatsapp/reset` | Change the bot number: log the current number out, show a new QR (admin) |
 | `POST /api/whatsapp/stop`, `POST /api/whatsapp/start` | Unlink the bot number and keep the bot off, also after restarts / turn it back on (admin) |
+| `GET /api/chat`, `POST /api/chat`, `DELETE /api/chat` | Web chat: latest 100 messages, send a message (`{ text }`, max 500 characters, 20 per minute) and get the bot's reply, clear the history (transactions stay) |
 | `GET /api/health` | Liveness check for health checks and uptime monitors |
 | `POST /parse` | Parse a text without saving it (testing) |
 
@@ -222,7 +225,7 @@ You stay logged in for 7 days. Your browser's time zone is saved on every login,
 ### 2. First steps (onboarding)
 On the **Ringkasan** page a checklist shows what is left to do:
 1. **Tambah rekening** (add an account)
-2. **Hubungkan WhatsApp** (link your number)
+2. **Hubungkan WhatsApp** (link your number). No bot number yet? Use the **Chat** tab instead ([section 8](#8-chat-on-the-web-no-bot-number-needed)).
 3. **Catat transaksi pertama** (record your first transaction)
 
 It disappears once you have an account and a linked number.
@@ -308,7 +311,18 @@ Send `/rekap` or `/recap` to the bot to get this month's summary (in your time z
 - Current balance of every account
 - Every budget with spent / limit and status (Aman ✅ / Over ⚠️)
 
-### 8. Dashboard: Ringkasan (overview)
+### 8. Chat on the web (no bot number needed)
+The **Chat** tab (sidebar; on a phone: the bottom bar) talks to the same bot as WhatsApp, straight from the dashboard. Use it when the WhatsApp bot has no number yet, is offline, or when you are on a laptop anyway.
+
+- Type like on WhatsApp: *makan siang 25rb pakai BCA*, *gajian 5jt masuk ke bca*, *transfer 100rb dari bca ke gopay*, or `/rekap`. All examples and replies from [section 6](#6-record-transactions-via-whatsapp) and [section 7](#7-whatsapp-recap) apply.
+- An empty chat offers a few example messages; tap one to send it.
+- **Enter** sends, **Shift+Enter** starts a new line. Messages are up to 500 characters, 20 per minute.
+- Recorded transactions show up right away in **Ringkasan**, **Transaksi** and, when the bot was unsure, **Perlu ditinjau**.
+- You do not need to link a WhatsApp number; you are already logged in, so the bot knows it is you.
+- The conversation is saved (the latest 100 messages are shown). The trash icon clears it; recorded transactions stay.
+- If sending fails, your text goes back into the input so you can try again.
+
+### 9. Dashboard: Ringkasan (overview)
 - **Month switcher** at the top: go back to earlier months, **Bulan ini** jumps back to the current month. Future months are disabled.
 - **Saldo total**: the sum of all accounts. The eye icon hides all balances (remembered in this browser), handy in public.
 - **Pemasukan / Pengeluaran / Selisih**: income, expenses and their difference for the month.
@@ -319,24 +333,24 @@ Send `/rekap` or `/recap` to the bot to get this month's summary (in your time z
 
 Only confirmed transactions are counted; drafts waiting for review are not.
 
-### 9. Dashboard: Transaksi (ledger)
+### 10. Dashboard: Transaksi (ledger)
 - **Pilih tanggal**: a calendar of the selected month. Dots mark days with expenses (dark) and income (green). Click a day to show only that day; click again or **Semua tanggal** to show the whole month.
 - **Daftar transaksi**: date and time, description, category, account and amount (income in green with +, expenses with −). Choose 10, 15, 50 or 100 per page.
 - **Add manually:** **Tambah** → **Transaksi**. Choose Pengeluaran / Pemasukan / Transfer, amount, category, an optional description, account(s), and date & time (also for past dates).
 - **Edit** (pencil) or **delete** (trash) a transaction. Balances are corrected automatically, e.g. deleting an expense gives the money back to the account.
 
-### 10. Dashboard: Perlu ditinjau (review inbox)
+### 11. Dashboard: Perlu ditinjau (review inbox)
 Messages the bot was not sure about (confidence below 85%) appear here, with a counter on the menu. Each item shows the original WhatsApp message, the amount, the bot's confidence, the type, category and account.
 
 - **Konfirmasi**: record it and update the balance.
 - **Ubah**: correct it first (amount, category, accounts, date).
 - **Hapus**: discard it, or **Hapus semua** to clear the whole list. Drafts never affected any balance.
 
-### 11. Theme and account menu
+### 12. Theme and account menu
 - **Tema**: Sistem (follow the device), Terang (light) or Gelap (dark). In the sidebar on desktop, in the account menu on phones.
 - **Keluar**: log out.
 
-### 12. Troubleshooting the bot (admin)
+### 13. Troubleshooting the bot (admin)
 Everything below is in the **Bot WhatsApp** dialog (sidebar; on a phone: the account icon). What it offers depends on the bot's state:
 
 | Bot state | Sidebar | Actions |
@@ -456,3 +470,6 @@ docker compose exec api npx prisma migrate dev --name <name>
 - Deployed to an Ubuntu VPS: setup script (updates, swap, Docker, firewall, fail2ban, daily backups, DNS safety net), images built on a laptop and shipped with `release.sh`, live at [bit.ly/WhatsMonTrack](https://bit.ly/WhatsMonTrack).
 - Step-by-step learning guide: [deploy/vps/README.md](deploy/vps/README.md).
 - Admins can change or unlink the bot number from the web; unlinking logs the bot out of WhatsApp and keeps it off across restarts.
+
+### Phase 11: Web chat
+- **Chat** tab: the same bot conversation on the web (`/api/chat`), so the app is fully usable without a bot number. Conversations are stored per user in the new `ChatMessage` table.
