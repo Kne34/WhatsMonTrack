@@ -55,7 +55,7 @@ Quick access to every document in this repository.
 - **Admin role** (`ADMIN_EMAILS`): only admins can see the bot's QR code and number, link the bot, **change the bot number** or **unlink it** (the bot logs out of WhatsApp and stays off until it is linked again).
 
 ### Web dashboard
-- **Ringkasan (overview):** total balance (can be hidden), income, expense, difference, cash-flow chart, daily spending chart with the daily budget line, spending or income per category, accounts and budget progress.
+- **Ringkasan (overview):** total balance, income, expense and difference (each can be hidden with its eye icon), cash-flow chart, daily spending chart with the daily budget line, spending or income per category, accounts and budget progress.
 - **Transaksi (ledger):** calendar day filter, paginated list (10/15/50/100 per page), add, edit and delete.
 - **Chat:** chat with the bot right on the web, with the same results as on WhatsApp (record transactions, `/rekap`). Works without a bot number or a linked phone; the history is saved and can be cleared.
 - **Perlu ditinjau (review inbox):** confirm, edit or delete uncertain bot results, or delete them all.
@@ -326,7 +326,7 @@ The **Chat** tab (sidebar; on a phone: the bottom bar) talks to the same bot as 
 ### 9. Dashboard: Ringkasan (overview)
 - **Month switcher** at the top: go back to earlier months, **Bulan ini** jumps back to the current month. Future months are disabled.
 - **Saldo total**: the sum of all accounts. The eye icon hides all balances (remembered in this browser), handy in public.
-- **Pemasukan / Pengeluaran / Selisih**: income, expenses and their difference for the month.
+- **Pemasukan / Pengeluaran / Selisih**: income, expenses and their difference for the month. Each has its own eye icon to hide it, separate from the balance toggle and remembered in this browser.
 - **Arus kas**: running total of income minus expenses through the month.
 - **Pengeluaran harian**: spending per day. If you have budgets, a dashed line shows the average daily budget.
 - **Per kategori**: top 5 categories plus "Lainnya", switchable between expenses and income, with amounts and percentages.
@@ -429,7 +429,7 @@ docker compose exec api npx prisma migrate dev --name <name>
 - `confidenceScore` and `TransactionStatus`: AI results with confidence below 0.85 become `NEEDS_REVIEW`.
 - **Review inbox** with confirm, edit, delete and delete all; confirming applies the balance change atomically.
 - **Analytics:** cash flow, daily spending with the daily budget line, category breakdown and budget progress.
-- **Privacy mode:** hide all balances with one click.
+- **Privacy mode:** an eye icon on each key figure (total balance, income, expense, difference) hides it with one click; each choice is remembered in this browser.
 - **Budget** model per user and category with CRUD API.
 - **Calendar filter** in the ledger, backed by separate monthly and paginated queries.
 - **Full manual CRUD** with balance safety (deleting an expense restores the balance), including date and time for backdating.

@@ -33,8 +33,23 @@ interface HomeViewProps {
   onLinkPhone: () => void;
 }
 
-const HIDE_KEY = "wmt.hideBalances";
+/** Each key figure has its own eye toggle, remembered per browser (localStorage key). */
+const HIDE_KEYS = {
+  balance: "wmt.hideBalances",
+  income: "wmt.hideIncome",
+  expense: "wmt.hideExpense",
+  net: "wmt.hideNet",
+} as const;
+type HideKey = keyof typeof HIDE_KEYS;
 const MASK = "Rp ••••••";
+
+function EyeToggle({ hidden, what, onToggle }: { hidden: boolean; what: string; onToggle: () => void }) {
+  return (
+    <IconButton label={hidden ? `Tampilkan ${what}` : `Sembunyikan ${what}`} aria-pressed={hidden} onClick={onToggle} className="-my-2 -mr-2 size-8">
+      {hidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+    </IconButton>
+  );
+}
 
 // Chart chrome: recessive, solid hairlines; text in muted ink (dataviz guidelines)
 const axisTick = { fontSize: 11, fill: "var(--muted-foreground)" };
@@ -111,23 +126,23 @@ export default function HomeView({
   monthlyTxs, accounts, budgets, month, year, phoneLinked,
   onAddTransaction, onAddAccount, onEditAccount, onAddBudget, onEditBudget, onLinkPhone,
 }: HomeViewProps) {
-  const [hidden, setHidden] = useState(false);
+  const [hide, setHide] = useState<Record<HideKey, boolean>>({ balance: false, income: false, expense: false, net: false });
   const [breakdown, setBreakdown] = useState<"EXPENSE" | "INCOME">("EXPENSE");
 
-  // Remember the "hide balances" preference per browser
+  // Remember each "hide" preference per browser
   useEffect(() => {
     try {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reading a browser-only preference after mount
-      setHidden(localStorage.getItem(HIDE_KEY) === "1");
+      const read = (k: HideKey) => localStorage.getItem(HIDE_KEYS[k]) === "1";
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reading browser-only preferences after mount
+      setHide({ balance: read("balance"), income: read("income"), expense: read("expense"), net: read("net") });
     } catch { /* storage unavailable */ }
   }, []);
-  const toggleHidden = () => {
-    setHidden((h) => {
-      try { localStorage.setItem(HIDE_KEY, h ? "0" : "1"); } catch { /* ignore */ }
-      return !h;
-    });
+  const toggle = (k: HideKey) => {
+    const next = !hide[k];
+    setHide((h) => ({ ...h, [k]: next }));
+    try { localStorage.setItem(HIDE_KEYS[k], next ? "1" : "0"); } catch { /* ignore */ }
   };
-  const money = (v: number) => (hidden ? MASK : formatRupiah(v));
+  const money = (v: number) => (hide.balance ? MASK : formatRupiah(v));
 
   // Only the selected month: right after switching months the previous month's data is still loaded,
   // and e.g. a transaction on Oct 31 must not be placed on a non-existent "Nov 31".
@@ -215,15 +230,26 @@ export default function HomeView({
           label="Saldo total"
           value={money(totalBalance)}
           sub={`${accounts.length} rekening`}
-          action={
-            <IconButton label={hidden ? "Tampilkan saldo" : "Sembunyikan saldo"} aria-pressed={hidden} onClick={toggleHidden} className="-my-2 -mr-2 size-8">
-              {hidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            </IconButton>
-          }
+          action={<EyeToggle hidden={hide.balance} what="saldo" onToggle={() => toggle("balance")} />}
         />
-        <StatTile label="Pemasukan" value={formatRupiah(income)} sub={monthName} />
-        <StatTile label="Pengeluaran" value={formatRupiah(expense)} sub={monthName} />
-        <StatTile label="Selisih" value={`${net > 0 ? "+" : ""}${formatRupiah(net)}`} sub="Pemasukan dikurangi pengeluaran" />
+        <StatTile
+          label="Pemasukan"
+          value={hide.income ? MASK : formatRupiah(income)}
+          sub={monthName}
+          action={<EyeToggle hidden={hide.income} what="pemasukan" onToggle={() => toggle("income")} />}
+        />
+        <StatTile
+          label="Pengeluaran"
+          value={hide.expense ? MASK : formatRupiah(expense)}
+          sub={monthName}
+          action={<EyeToggle hidden={hide.expense} what="pengeluaran" onToggle={() => toggle("expense")} />}
+        />
+        <StatTile
+          label="Selisih"
+          value={hide.net ? MASK : `${net > 0 ? "+" : ""}${formatRupiah(net)}`}
+          sub="Pemasukan dikurangi pengeluaran"
+          action={<EyeToggle hidden={hide.net} what="selisih" onToggle={() => toggle("net")} />}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
