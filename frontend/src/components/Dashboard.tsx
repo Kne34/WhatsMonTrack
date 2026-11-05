@@ -265,7 +265,9 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    // Phones, Chat tab: exactly the visible screen (dvh, not 100vh which ignores the browser's address bar),
+    // so nothing behind the full-screen chat can scroll the top bar away
+    <div className={cn("min-h-screen bg-background text-foreground", activeTab === "chat" && "max-md:h-dvh max-md:min-h-0 max-md:overflow-hidden")}>
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:px-3 focus:py-2 focus:shadow">
         Lewati ke konten
       </a>
