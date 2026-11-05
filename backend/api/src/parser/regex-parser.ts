@@ -28,7 +28,7 @@ const FILLER = new Set(['pakai', 'pake', 'via', 'dari', 'ke', 'lewat', 'dengan',
 
 const CATEGORY_WORDS: [string, RegExp][] = [
   ['FOOD', /\b(makan|makanan|minum|kopi|jajan|sarapan|nasi|bakso|mie|ayam|snack|cemilan|gofood|grabfood|resto|warteg|kantin|teh|boba)\b/i],
-  ['TRANSPORT', /\b(ojek|ojol|gojek|grab|bensin|bbm|parkir|tol|kereta|krl|mrt|busway|bus|taksi|angkot|tiket pesawat)\b/i],
+  ['TRANSPORT', /\b(ojek|ojol|gojek|goride|gocar|grab|grabbike|grabcar|maxim|bensin|bbm|parkir|tol|kereta|krl|mrt|busway|bus|taksi|angkot|tiket pesawat)\b/i],
   ['BILLS', /\b(listrik|pln|pulsa|kuota|internet|wifi|pdam|air|sewa|kos|kost|cicilan|tagihan|bpjs|asuransi)\b/i],
   ['HEALTH', /\b(obat|dokter|apotek|klinik|rumah sakit|vitamin)\b/i],
   ['ENTERTAINMENT', /\b(nonton|bioskop|film|game|netflix|spotify|konser|liburan)\b/i],

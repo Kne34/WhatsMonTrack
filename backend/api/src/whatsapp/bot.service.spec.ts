@@ -38,7 +38,7 @@ function setup(parsed: Record<string, unknown>, opts: { recorded?: string[]; cre
     }),
     monthlySummary: jest.fn(),
   };
-  const parser = { parse: jest.fn(async () => ({ source: 'test', status: 'success', data: parsed })) };
+  const parser = { parse: jest.fn(async (_text: string, _ctx?: unknown) => ({ source: 'test', status: 'success', data: parsed })) };
   const phoneLink = { confirm: jest.fn(async () => 'linked') };
   const bot = new BotService(prisma as any, accounts as any, {} as any, transactions as any, parser as any, phoneLink as any);
   return { bot, transactions, parser, accounts };
@@ -122,6 +122,31 @@ describe('BotService.reply', () => {
     const reply = await bot.reply('6281111111111', 'transfer 50rb bca ke bca', 'MSG8');
     expect(transactions.create).not.toHaveBeenCalled();
     expect(reply).toContain('Rekening sumber dan tujuan transfer sama (BCA)');
+  });
+
+  it('reads a short answer to its question together with the earlier message', async () => {
+    const { bot, parser, transactions } = setup({});
+    // Like the parser: an account only when the text names one
+    parser.parse.mockImplementation(async (text: string) => ({
+      source: 'test', status: 'success',
+      data: { ...expense(/ovo/i.test(text) ? 'TUNAI' : ''), amount: 9000 } as Record<string, unknown>,
+    }));
+
+    expect(await bot.reply('6281111111111', '9rb grabbike', 'F1')).toMatch(/^Dibayar pakai rekening apa\?/);
+    await bot.reply('6281111111111', 'OVO', 'F2');
+    expect(parser.parse).toHaveBeenLastCalledWith('9rb grabbike OVO', expect.anything());
+    expect(transactions.create).toHaveBeenCalledWith('u1', expect.objectContaining({ amount: 9000, rawText: '9rb grabbike OVO', sourceMessageId: 'F2' }));
+
+    // The question is answered once; a later "OVO" is a new message
+    await bot.reply('6281111111111', 'OVO', 'F3');
+    expect(parser.parse).toHaveBeenLastCalledWith('OVO', expect.anything());
+  });
+
+  it('treats a long new message after a question as a new message', async () => {
+    const { bot, parser } = setup({ ...expense(''), amount: 9000 });
+    await bot.reply('6281111111111', '9rb grabbike', 'G1');
+    await bot.reply('6281111111111', 'makan siang 25rb pakai BCA tadi', 'G2');
+    expect(parser.parse).toHaveBeenLastCalledWith('makan siang 25rb pakai BCA tadi', expect.anything());
   });
 
   it('passes the parser\'s own message through when it cannot read the text', async () => {

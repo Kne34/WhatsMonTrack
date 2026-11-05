@@ -11,6 +11,11 @@ import { DEFAULT_TIMEZONE } from '../common/time';
 import { LINK_MESSAGE_REGEX, PhoneLinkService } from './phone-link.service';
 
 const NOT_LINKED_REPLY_INTERVAL_MS = 10 * 60 * 1000;
+/** How long a question from the bot ("which account?") waits for a short answer. */
+const FOLLOW_UP_WINDOW_MS = 10 * 60 * 1000;
+
+/** A short answer such as "OVO", "pakai BCA" or "25rb", not a new full message. */
+const isShortAnswer = (text: string) => text.length <= 40 && text.trim().split(/\s+/).length <= 4;
 
 /** Conversation logic of the WhatsApp bot: text in, reply text out. Transport-agnostic. */
 @Injectable()
@@ -28,6 +33,9 @@ export class BotService {
 
   /** Avoids spamming unknown numbers (and the WhatsApp ban risk that comes with it). */
   private readonly notLinkedRepliedAt = new Map<string, number>();
+
+  /** Messages the bot asked a follow-up about (missing account or amount), per user. In memory only. */
+  private readonly awaiting = new Map<string, { text: string; at: number }>();
 
   findUserByPhone(phoneNumber: string) {
     return this.prisma.user.findUnique({ where: { phoneNumber: normalizePhone(phoneNumber) } });
@@ -62,9 +70,22 @@ export class BotService {
   async handleMessage(userId: string, text: string, messageId?: string): Promise<string | null> {
     const command = text.toLowerCase().trim();
     if (command === '/rekap' || command === '/recap') {
+      this.awaiting.delete(userId);
       return this.recap(userId);
     }
+    // "9rb grabbike" -> "Tolong sebutkan sumber dana" -> "OVO": read the answer together with the question's message
+    const asked = this.awaiting.get(userId);
+    this.awaiting.delete(userId);
+    if (asked && Date.now() - asked.at < FOLLOW_UP_WINDOW_MS && isShortAnswer(text)) {
+      text = `${asked.text} ${text.trim()}`;
+    }
     return this.recordFromText(userId, text, messageId);
+  }
+
+  /** Replies with a question and remembers the message, so a short answer can complete it. */
+  private ask(userId: string, text: string, question: string) {
+    this.awaiting.set(userId, { text, at: Date.now() });
+    return question;
   }
 
   private async recordFromText(userId: string, text: string, messageId?: string): Promise<string | null> {
@@ -95,16 +116,16 @@ export class BotService {
     const amount = typeof parsed.amount === 'number' ? Math.round(parsed.amount) : NaN; // whole rupiah
 
     if (type === 'TRANSFER' && (!parsed.fromAccount || !parsed.toAccount)) {
-      return 'Tolong sebutkan rekening sumber dan tujuan untuk transfer ini (contoh: Transfer 50k dari BCA ke OVO).';
+      return this.ask(userId, text, 'Tolong sebutkan rekening sumber dan tujuan untuk transfer ini (contoh: dari BCA ke OVO).');
     }
     if (type === 'INCOME' && !parsed.toAccount && !parsed.account) {
-      return 'Tolong sebutkan rekening tujuan untuk pemasukan ini (contoh: BCA, OVO, Cash, dll).';
+      return this.ask(userId, text, 'Masuk ke rekening mana? Balas dengan nama rekeningnya (contoh: BCA, OVO, Cash).');
     }
     if (type === 'EXPENSE' && !parsed.fromAccount && !parsed.account) {
-      return 'Tolong sebutkan sumber dana untuk pengeluaran ini (contoh: BCA, OVO, Cash, dll).';
+      return this.ask(userId, text, 'Dibayar pakai rekening apa? Balas dengan nama rekeningnya (contoh: BCA, OVO, Cash).');
     }
     if (!(amount > 0)) {
-      return 'Tolong sebutkan nominal transaksinya (contoh: Makan siang 25k pakai BCA).';
+      return this.ask(userId, text, 'Berapa nominalnya? Balas dengan jumlahnya (contoh: 25rb).');
     }
     if (amount > MAX_AMOUNT) {
       return `Nominal terlalu besar. Maksimal ${formatIDR(MAX_AMOUNT)} per transaksi.`;

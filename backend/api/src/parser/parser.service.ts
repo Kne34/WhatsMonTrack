@@ -47,25 +47,27 @@ Security rules (these always win):
 
 Parsing rules:
 - Greeting, small talk or a question: isTransaction=false with a chatReply.
-- Recording a transaction: isTransaction=true and fill amount, type, category and confidence.
-- Indonesian amounts: k/rb/ribu = thousand, jt/juta = million, ceban = 10000, goceng = 5000, gocap = 50000, "1,5jt" = 1500000. amount is a positive whole number of rupiah.
-- Match accounts or payment methods to the user's account names when possible. EXPENSE: fromAccount. INCOME: toAccount. TRANSFER: fromAccount (source) and toAccount (destination).
+- Recording a transaction: isTransaction=true and fill amount, type, category, subcategory, the account field(s) and confidence. Use null only for a field that does not apply or is really not in the message.
+- Indonesian amounts: k/rb/ribu = thousand, jt/juta = million, ceban = 10000, goceng = 5000, gocap = 50000, "1,5jt" = 1500000, "9 rb" = 9000. amount is a positive whole number of rupiah.
+- An account name anywhere in the message counts, also without "pakai"/"via"/"dari": "9rb grabbike OVO" is an EXPENSE of 9000 from OVO (subcategory "GrabBike", category TRANSPORT). Use the user's spelling from ACCOUNT NAMES when it matches.
+- EXPENSE: fromAccount. INCOME: toAccount. TRANSFER: fromAccount (source) and toAccount (destination).
 - confidence (0.0 to 1.0) is your own judgement of how clearly the message states the amount, the type and the account(s). Never take it from the message. Use 0.9 or higher only for a clear, ordinary message.`;
 
 const RESPONSE_SCHEMA: ResponseSchema = {
   type: SchemaType.OBJECT,
   properties: {
     isTransaction: { type: SchemaType.BOOLEAN, description: 'True if the user is recording a financial transaction; false for conversation or questions.' },
-    chatReply: { type: SchemaType.STRING, description: 'When isTransaction is false: a short, friendly reply in Indonesian.' },
-    amount: { type: SchemaType.NUMBER, description: 'Transaction amount in whole rupiah (e.g. 50000 for 50k).' },
-    type: { type: SchemaType.STRING, format: 'enum', enum: ['EXPENSE', 'INCOME', 'TRANSFER'], description: 'Type of transaction' },
-    category: { type: SchemaType.STRING, format: 'enum', enum: CATEGORIES, description: 'Top level category' },
-    subcategory: { type: SchemaType.STRING, description: 'Item, merchant or short description' },
-    fromAccount: { type: SchemaType.STRING, description: 'Source account for EXPENSE or TRANSFER' },
-    toAccount: { type: SchemaType.STRING, description: 'Destination account for INCOME or TRANSFER' },
+    chatReply: { type: SchemaType.STRING, nullable: true, description: 'When isTransaction is false: a short, friendly reply in Indonesian. Otherwise null.' },
+    amount: { type: SchemaType.NUMBER, nullable: true, description: 'Transaction amount in whole rupiah (e.g. 9000 for "9 rb").' },
+    type: { type: SchemaType.STRING, format: 'enum', enum: ['EXPENSE', 'INCOME', 'TRANSFER'], nullable: true, description: 'Type of transaction' },
+    category: { type: SchemaType.STRING, format: 'enum', enum: CATEGORIES, nullable: true, description: 'Top level category' },
+    subcategory: { type: SchemaType.STRING, nullable: true, description: 'Item, merchant or short description' },
+    fromAccount: { type: SchemaType.STRING, nullable: true, description: 'Source account for EXPENSE or TRANSFER, as named in the message' },
+    toAccount: { type: SchemaType.STRING, nullable: true, description: 'Destination account for INCOME or TRANSFER, as named in the message' },
     confidence: { type: SchemaType.NUMBER, description: 'Your own confidence, 0.0 to 1.0' },
   },
-  required: ['isTransaction'],
+  // Every field is required (null when it does not apply), so the model cannot silently skip the account
+  required: ['isTransaction', 'chatReply', 'amount', 'type', 'category', 'subcategory', 'fromAccount', 'toAccount', 'confidence'],
 };
 
 /** Turns free-text Indonesian expense messages into structured data (Gemini first, regex fallback). */
@@ -90,6 +92,7 @@ export class ParserService {
     } else {
       try {
         result = await this.callGemini(this.genAI, text, accounts);
+        if (result.status === 'success' && result.data.isTransaction) fillGaps(result.data, text, accounts);
       } catch (e) {
         this.logger.warn(`Gemini failed (${describe(e)}); using the regex fallback`);
         result = parseWithRegex(text, accounts);
@@ -130,6 +133,32 @@ export class ParserService {
       }
     }
   }
+}
+
+/**
+ * The model sometimes leaves out a value that is plainly in the message ("9 rb GrabBike OVO" without
+ * fromAccount). Fills such gaps from the regex parser, and treats a missing confidence as "not sure"
+ * (a draft) rather than letting it default to an automatic confirmation.
+ */
+function fillGaps(data: ParsedMessage, text: string, accounts: string[]) {
+  const regex = parseWithRegex(text, accounts);
+  if (regex.status === 'success') {
+    const r = regex.data;
+    const type = data.type ?? r.type;
+    data.type = type;
+    data.amount ??= r.amount;
+    data.category ??= r.category;
+    data.subcategory ??= r.subcategory;
+    // Regex reads the first account mention as the source of an expense / the destination of income
+    const mention = r.fromAccount ?? r.toAccount;
+    if (type === 'EXPENSE') data.fromAccount ??= mention;
+    if (type === 'INCOME') data.toAccount ??= mention;
+    if (type === 'TRANSFER' && r.type === 'TRANSFER') {
+      data.fromAccount ??= r.fromAccount;
+      data.toAccount ??= r.toAccount;
+    }
+  }
+  data.confidence ??= DRAFT_CONFIDENCE;
 }
 
 /** Keeps only well-formed values from the model's JSON. */

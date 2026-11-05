@@ -8,6 +8,7 @@ import {
   updateAccount, updateTransaction, type PhoneStatus, type WhatsAppStatus,
 } from "@/lib/api";
 import { categoryLabel, formatRupiah } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type { SessionUser } from "./AuthWrapper";
 import { PageSkeleton } from "./dashboard/skeletons";
 import { AddMenu, BottomTabs, MobileAccountMenu, MonthSwitcher, NAV_ITEMS, Sidebar, type Tab } from "./dashboard/shared/Navigation";
@@ -273,13 +274,14 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
 
       <div className="md:pl-60">
         {/* Phone top bar */}
-        <div className="flex items-center justify-between border-b border-border/70 bg-card px-4 py-2 md:hidden">
+        <div className="flex h-12 items-center justify-between border-b border-border/70 bg-card px-4 md:hidden">
           <span className="font-heading text-base font-semibold tracking-tight">WhatsMonTrack</span>
           <MobileAccountMenu {...statusProps} />
         </div>
 
         <main id="main" className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-8 md:pb-12">
-          <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          {/* On phones the chat fills the screen like a messaging app, without the page title */}
+          <header className={cn("mb-6 flex flex-wrap items-center justify-between gap-3", activeTab === "chat" && "max-md:hidden")}>
             <h1 className="font-heading text-2xl font-semibold tracking-tight">{PAGE_TITLES[activeTab]}</h1>
             <div className="flex flex-wrap items-center gap-2">
               {/* The chat is not tied to a month */}

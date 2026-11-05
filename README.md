@@ -299,8 +299,8 @@ Other replies you may get:
 | *Tercatat sebagai DRAFT ... ⚠️* | The bot was not sure. Check it in **Perlu ditinjau** on the web; the balance changes only after you confirm |
 | *Rekening "X" tidak ditemukan. Rekening Anda: ...* | That account does not exist. Send again with one of the listed names, or add the account on the web |
 | *Anda belum punya rekening ...* | Add at least one account on the web first |
-| *Tolong sebutkan sumber dana / rekening tujuan / nominal ...* | Something is missing; send again with the account or amount |
-| *Tolong sebutkan rekening sumber dan tujuan untuk transfer ini* | A transfer needs both accounts: *transfer 50k dari BCA ke OVO* |
+| *Dibayar pakai rekening apa? / Masuk ke rekening mana? / Berapa nominalnya?* | Something is missing. Just answer briefly (e.g. *OVO* or *25rb*) within 10 minutes; the bot reads it together with your previous message |
+| *Tolong sebutkan rekening sumber dan tujuan untuk transfer ini* | A transfer needs two different accounts; answer e.g. *dari BCA ke OVO* |
 | *Halo! Nomor ini belum terhubung ...* | This number is not linked to an account yet; see step 4 |
 
 Sending the same message twice by accident is fine to retry: a single WhatsApp message is never recorded twice.
@@ -322,6 +322,7 @@ The **Chat** tab (sidebar; on a phone: the bottom bar) talks to the same bot as 
 - You do not need to link a WhatsApp number; you are already logged in, so the bot knows it is you.
 - The conversation is saved (the latest 100 messages are shown). The trash icon clears it; recorded transactions stay.
 - If sending fails, your text goes back into the input so you can try again.
+- On a phone the chat fills the screen like a messaging app; while you type, the bottom bar hides so the input stays right above the keyboard.
 
 ### 9. Dashboard: Ringkasan (overview)
 - **Month switcher** at the top: go back to earlier months, **Bulan ini** jumps back to the current month. Future months are disabled.
@@ -484,3 +485,6 @@ A test with 16 injection messages (fake admin, reading other users' data, leakin
 - **Better offline parser:** understands `1,5jt`, `Rp1.500.000`, `25 rb`, `ceban`; matches your own account names (`cash` = `TUNAI`); reads income only from income words or "masuk ke …" (not "masuk review"); never guesses a transfer to the same account; no longer assumes cash when no account is named; picks a category from common words. Its replies are in Indonesian.
 - **Same-account transfers** are refused by the bot ("Transfer 50rb dari BCA ke BCA").
 - **Gemini quota:** after a 429 the bot skips Gemini for the delay Google suggests (default 60 seconds, at most 10 minutes) and uses the offline parser right away instead of waiting for a sure failure.
+- **Complete answers from Gemini:** every field of the response schema is now required (null when it does not apply). Before, Gemini sometimes left out an account that was plainly in the message ("9 rb GrabBike OVO" got no `fromAccount`), so the bot asked for it. Values the model still leaves out are filled in from the offline parser, and a missing confidence now means "draft", not "confirmed".
+- **Short answers to the bot's questions:** after "Dibayar pakai rekening apa?", a short reply such as *OVO* (up to 4 words, within 10 minutes) is read together with the previous message.
+- **Mobile chat:** full-screen layout between the top bar and the bottom tabs, tabs hidden while typing, `interactive-widget=resizes-content` so the keyboard shrinks the page instead of covering the input, 16px input text (no zoom on iOS).

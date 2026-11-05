@@ -167,13 +167,14 @@ export function MobileAccountMenu(status: StatusProps) {
 export function BottomTabs({ active, onNavigate, reviewCount }: { active: Tab; onNavigate: (tab: Tab) => void; reviewCount: number }) {
   return (
     <nav aria-label="Navigasi utama"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+      // Hidden while typing: the keyboard shrinks the page (interactive-widget=resizes-content), the tabs would sit on top of it
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden [body:has(:is(input,textarea,select):focus)_&]:hidden">
       <div className="grid grid-cols-4">
         {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
           const current = active === id;
           return (
             <button key={id} type="button" onClick={() => onNavigate(id)} aria-current={current ? "page" : undefined}
-              className={cn("flex flex-col items-center gap-1 py-2.5 text-xs transition-colors", focusRing,
+              className={cn("flex h-16 flex-col items-center justify-center gap-1 text-xs transition-colors", focusRing,
                 current ? "font-medium text-foreground" : "text-muted-foreground")}>
               <span className="relative">
                 <Icon className="size-5" aria-hidden strokeWidth={current ? 2.25 : 1.75} />

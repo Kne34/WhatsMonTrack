@@ -21,6 +21,8 @@ export const metadata: Metadata = {
 
 // Mobile browser chrome follows the system theme (matches --background in globals.css)
 export const viewport: Viewport = {
+  // The on-screen keyboard shrinks the page instead of covering it, so the chat input stays visible (Android Chrome)
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#F8FAFC" },
     { media: "(prefers-color-scheme: dark)", color: "#0A0A0A" },

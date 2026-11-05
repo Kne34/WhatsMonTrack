@@ -46,8 +46,24 @@ describe('ParserService', () => {
   it('keeps only valid values from the model', async () => {
     generateContent.mockResolvedValue(reply({ isTransaction: true, type: 'HACK', amount: 5000, category: 'HACKED_CATEGORY', confidence: 7, subcategory: 'x'.repeat(500) }));
     const result = await new ParserService().parse('beli kopi 5rb pakai BCA');
-    expect(result.status === 'success' && result.data).toMatchObject({ type: undefined, category: 'OTHER', confidence: 1 });
+    expect(result.status === 'success' && result.data).toMatchObject({ type: 'EXPENSE', category: 'OTHER', confidence: 1 }) // unknown type: taken from the regex reading;
     expect(result.status === 'success' && result.data.subcategory).toHaveLength(100);
+  });
+
+  it('fills values the model left out but the message plainly has, and never defaults to confirmed', async () => {
+    // Real Gemini output for "9 rb GrabBike OVO" before the schema required every field
+    generateContent.mockResolvedValue(reply({ isTransaction: true, type: 'EXPENSE' }));
+    const result = await new ParserService().parse('9 rb GrabBike OVO', { accounts: ['BCA', 'OVO'] });
+    expect(result.status === 'success' && result.data).toMatchObject({
+      type: 'EXPENSE', amount: 9000, fromAccount: 'OVO', category: 'TRANSPORT', subcategory: 'GrabBike', confidence: 0.5,
+    });
+  });
+
+  it('asks Gemini for every field (null when it does not apply)', async () => {
+    generateContent.mockResolvedValue(reply({ isTransaction: false, chatReply: 'Halo!', confidence: 0.9 }));
+    await new ParserService().parse('halo');
+    const { generationConfig } = getGenerativeModel.mock.calls[0][0] as unknown as { generationConfig: { responseSchema: { required: string[] } } };
+    expect(generationConfig.responseSchema.required).toEqual(expect.arrayContaining(['amount', 'fromAccount', 'toAccount', 'confidence']));
   });
 
   it('on a quota error falls back to regex at once, then skips Gemini for the suggested delay', async () => {

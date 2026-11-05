@@ -97,6 +97,19 @@ export default function ChatView({ onRecorded, onAskClear }: {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, pending]);
 
+  // ...also when the list gets shorter, e.g. the phone keyboard opens
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let lastHeight = el.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (el.clientHeight < lastHeight) el.scrollTop = el.scrollHeight;
+      lastHeight = el.clientHeight;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [messages === null]); // eslint-disable-line react-hooks/exhaustive-deps -- attach once the list exists
+
   // Grow the input with its content (up to about 5 lines)
   useEffect(() => {
     const el = inputRef.current;
@@ -139,11 +152,19 @@ export default function ChatView({ onRecorded, onAskClear }: {
   const tooLong = text.length > MAX_LENGTH;
 
   return (
-    <Card className="flex h-[calc(100dvh-15rem)] min-h-[420px] flex-col p-0 md:h-[calc(100dvh-11rem)]">
-      <div className="flex items-start justify-between gap-3 border-b border-border/70 px-5 py-3.5">
+    // Phones: full screen between the top bar (3rem) and the bottom tabs (4rem), like a messaging app;
+    // while typing the tabs hide and the chat reaches down to the keyboard.
+    <Card
+      className={cn(
+        "fixed inset-x-0 top-12 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 flex flex-col overflow-hidden rounded-none border-0 p-0 shadow-none",
+        "[body:has(:is(input,textarea,select):focus)_&]:bottom-0",
+        "md:static md:z-auto md:h-[calc(100dvh-11rem)] md:min-h-[420px] md:rounded-2xl md:border md:shadow-sm",
+      )}
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-2.5 md:items-start md:px-5 md:py-3.5">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-foreground">Chat dengan bot</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="mt-0.5 hidden text-xs text-muted-foreground sm:block">
             Sama seperti chat ke bot WhatsApp: catat transaksi, atau ketik <span className="font-medium text-foreground">/rekap</span>.
           </p>
         </div>
@@ -154,7 +175,7 @@ export default function ChatView({ onRecorded, onAskClear }: {
         )}
       </div>
 
-      <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-4 sm:px-5" aria-live="polite">
+      <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5" aria-live="polite">
         {loadError && <Alert>Gagal memuat riwayat chat. Muat ulang halaman untuk mencoba lagi.</Alert>}
         {empty && (
           <div className="flex h-full flex-col items-center justify-center px-2 text-center">
@@ -189,7 +210,7 @@ export default function ChatView({ onRecorded, onAskClear }: {
       </div>
 
       <form
-        className="border-t border-border/70 p-3"
+        className="border-t border-border/70 bg-card p-2.5 md:p-3"
         onSubmit={(e) => { e.preventDefault(); if (!tooLong) send(text); }}
       >
         {error && <Alert className="mb-2">{error}</Alert>}
@@ -212,7 +233,8 @@ export default function ChatView({ onRecorded, onAskClear }: {
             aria-invalid={tooLong || undefined}
             aria-describedby={tooLong ? "chat-too-long" : undefined}
             className={cn(
-              "min-h-10 flex-1 resize-none rounded-xl border border-border bg-background px-3.5 py-2 text-sm text-foreground placeholder:text-muted-foreground",
+              // 16px on phones: smaller text makes iOS zoom in on focus
+              "min-h-10 flex-1 resize-none rounded-xl border border-border bg-background px-3.5 py-2 text-base text-foreground placeholder:text-muted-foreground md:text-sm",
               focusRing,
               tooLong && "border-destructive",
             )}
@@ -221,6 +243,8 @@ export default function ChatView({ onRecorded, onAskClear }: {
             label="Kirim"
             type="submit"
             disabled={!text.trim() || !!pending || tooLong}
+            // Keep the focus (and the phone keyboard) in the input when tapping send
+            onPointerDown={(e) => e.preventDefault()}
             className="size-10 shrink-0 rounded-xl bg-foreground text-background hover:bg-foreground/90 disabled:opacity-40"
           >
             <SendHorizontal className="size-4" />
