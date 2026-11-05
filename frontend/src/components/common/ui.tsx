@@ -83,8 +83,9 @@ export function IconButton({ label, className, children, ...props }: React.Butto
 
 // ---------- Form fields ----------
 
+// min-w-0: date/time inputs have a wide built-in minimum width. text-base below sm: iOS zooms into fields under 16px.
 const inputBase =
-  "h-11 w-full rounded-xl border bg-card px-3.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors outline-none focus:border-foreground/40 focus:ring-2 focus:ring-foreground/5 disabled:opacity-60";
+  "h-11 w-full min-w-0 rounded-xl border bg-card px-3.5 text-base sm:text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors outline-none focus:border-foreground/40 focus:ring-2 focus:ring-foreground/5 disabled:opacity-60";
 
 interface FieldShellProps {
   id: string;
@@ -337,7 +338,7 @@ export function Menu({ trigger, items, align = "end", header, footer, className 
         <div
           role="menu"
           className={cn(
-            "absolute z-50 mt-2 min-w-56 overflow-hidden rounded-xl border border-border bg-card p-1 shadow-lg",
+            "absolute z-50 mt-2 w-max min-w-56 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card p-1 shadow-lg",
             align === "end" ? "right-0" : "left-0",
           )}
         >

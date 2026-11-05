@@ -153,11 +153,11 @@ export default function ChatView({ onRecorded, onAskClear }: {
 
   return (
     // Phones: full screen between the top bar (3rem) and the bottom tabs (4rem), like a messaging app;
-    // while typing the tabs hide and the chat reaches down to the keyboard.
+    // while the keyboard is open the tabs hide and the chat reaches down to the keyboard.
     <Card
       className={cn(
         "fixed inset-x-0 top-12 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 flex flex-col overflow-hidden rounded-none border-0 p-0 shadow-none",
-        "[body:has(:is(input,textarea,select):focus)_&]:bottom-0",
+        "[html[data-keyboard=open]_&]:bottom-0",
         "md:static md:z-auto md:h-[calc(100dvh-11rem)] md:min-h-[420px] md:rounded-2xl md:border md:shadow-sm",
       )}
     >

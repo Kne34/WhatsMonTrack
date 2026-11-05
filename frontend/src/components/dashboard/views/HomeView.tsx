@@ -74,13 +74,14 @@ function ChartTooltip({ active, payload, label, month, year }: {
 
 function StatTile({ label, value, sub, action }: { label: string; value: string; sub?: string; action?: React.ReactNode }) {
   return (
-    <Card className="p-4">
+    <Card className="@container p-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{label}</p>
         {action}
       </div>
-      {/* Proportional figures for standalone numbers */}
-      <p className="mt-2 break-words text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{value}</p>
+      {/* Proportional figures for standalone numbers. The size follows the tile's width (cqi), so
+          "Rp 1.234.567.890" fits a half-width tile on a small phone; very long values still wrap. */}
+      <p className="mt-2 break-words text-[clamp(1rem,10.5cqi,1.5rem)] leading-tight font-semibold tracking-tight text-foreground">{value}</p>
       {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
     </Card>
   );
@@ -103,7 +104,7 @@ function Onboarding({ hasAccount, phoneLinked, hasTransaction, onAddAccount, onL
   return (
     <Card>
       <CardHeader title="Mulai menggunakan WhatsMonTrack" description={`${done} dari ${steps.length} langkah selesai`} />
-      <ol className="grid gap-3 md:grid-cols-3">
+      <ol className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {steps.map((s, i) => (
           <li key={s.title} className="flex gap-3 rounded-xl border border-border/70 p-4">
             <span className={cn("flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium",
@@ -252,7 +253,7 @@ export default function HomeView({
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {hasTransactions ? (
             <>

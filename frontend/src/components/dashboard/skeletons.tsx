@@ -55,7 +55,7 @@ export function HomeSkeleton() {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {[0, 1].map((i) => (
             <Card key={i}>
@@ -111,12 +111,12 @@ export function LedgerRowsSkeleton({ rows }: { rows: number }) {
       <ul className="divide-y divide-border/70">
         {Array.from({ length: rows }, (_, i) => (
           <li key={i} className="flex items-center gap-4 px-5 py-3.5">
-            <Skeleton className="hidden h-4 w-20 rounded-md md:block" />
+            <Skeleton className="hidden h-4 w-20 rounded-md lg:block" />
             <div className="min-w-0 flex-1 space-y-2">
               <Skeleton className="h-4 w-36 max-w-full rounded-md" />
               <Skeleton className="h-3 w-24 rounded-md" />
             </div>
-            <Skeleton className="hidden h-4 w-16 rounded-md md:block" />
+            <Skeleton className="hidden h-4 w-16 rounded-md lg:block" />
             <Skeleton className="h-4 w-20 rounded-md" />
           </li>
         ))}
@@ -127,7 +127,7 @@ export function LedgerRowsSkeleton({ rows }: { rows: number }) {
 
 export function LedgerSkeleton() {
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
       <Card className="p-4" aria-hidden>
         <Skeleton className="mb-4 h-4 w-24 rounded-md" />
         <div className="grid grid-cols-7 gap-1">

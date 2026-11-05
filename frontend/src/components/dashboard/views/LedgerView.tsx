@@ -85,9 +85,9 @@ export default function LedgerView({
     : formatMonth(month, year);
 
   return (
-    <div className="grid items-start gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
       {/* Day filter */}
-      <Card className="p-4 lg:sticky lg:top-6">
+      <Card className="p-4 xl:sticky xl:top-6">
         <div className="mb-3 flex items-center justify-between gap-3">
           <p className="text-sm font-semibold text-foreground">Pilih tanggal</p>
           {selectedDay && (
@@ -145,7 +145,7 @@ export default function LedgerView({
             <select
               value={limit}
               onChange={(e) => onLimitChange(Number(e.target.value))}
-              className={cn("h-8 rounded-lg border border-border bg-card px-2 text-sm text-foreground", focusRing)}
+              className={cn("h-8 rounded-lg border border-border bg-card px-2 text-base text-foreground sm:text-sm", focusRing)}
             >
               {[10, 15, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
@@ -164,33 +164,34 @@ export default function LedgerView({
           />
         ) : (
           <>
-            {/* Desktop: table */}
-            <table className="hidden w-full text-sm md:table">
+            {/* Wide screens: table (scrolls inside its card if it still does not fit) */}
+            <div className="hidden overflow-x-auto lg:block">
+            <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border/70 text-left text-xs text-muted-foreground">
-                  <th scope="col" className="px-5 py-2.5 font-medium">Tanggal</th>
-                  <th scope="col" className="px-5 py-2.5 font-medium">Keterangan</th>
-                  <th scope="col" className="px-5 py-2.5 font-medium">Rekening</th>
-                  <th scope="col" className="px-5 py-2.5 text-right font-medium">Jumlah</th>
-                  <th scope="col" className="w-24 px-5 py-2.5"><span className="sr-only">Aksi</span></th>
+                  <th scope="col" className="px-4 py-2.5 font-medium">Tanggal</th>
+                  <th scope="col" className="px-4 py-2.5 font-medium">Keterangan</th>
+                  <th scope="col" className="px-4 py-2.5 font-medium">Rekening</th>
+                  <th scope="col" className="px-4 py-2.5 text-right font-medium">Jumlah</th>
+                  <th scope="col" className="w-24 px-4 py-2.5"><span className="sr-only">Aksi</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/70">
                 {pageTxs.map((tx) => (
                   <tr key={tx.id} className="hover:bg-muted/40">
-                    <td className="whitespace-nowrap px-5 py-3">
+                    <td className="whitespace-nowrap px-4 py-3">
                       <span className="text-foreground">{formatDayMonth(tx.createdAt)}</span>
                       <span className="ml-2 text-xs tabular-nums text-muted-foreground">{formatTime(tx.createdAt)}</span>
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-4 py-3">
                       <p className="text-foreground"><Title tx={tx} /></p>
                       <p className="text-xs text-muted-foreground">
                         {tx.type === "TRANSFER" ? "Transfer antar rekening" : tx.subcategory ? categoryLabel(tx.category) : TX_TYPE_LABEL[tx.type]}
                       </p>
                     </td>
-                    <td className="px-5 py-3 text-muted-foreground">{accountLabel(tx)}</td>
-                    <td className="whitespace-nowrap px-5 py-3 text-right"><Amount tx={tx} /></td>
-                    <td className="px-5 py-3">
+                    <td className="max-w-40 break-words px-4 py-3 text-muted-foreground">{accountLabel(tx)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right"><Amount tx={tx} /></td>
+                    <td className="px-4 py-3">
                       <div className="flex justify-end">
                         <IconButton label="Ubah transaksi" onClick={() => onEdit(tx)}><Pencil className="size-4" /></IconButton>
                         <IconButton label="Hapus transaksi" onClick={() => onDelete(tx)} className="hover:text-destructive"><Trash2 className="size-4" /></IconButton>
@@ -200,9 +201,10 @@ export default function LedgerView({
                 ))}
               </tbody>
             </table>
+            </div>
 
             {/* Phone: stacked list */}
-            <ul className="divide-y divide-border/70 md:hidden">
+            <ul className="divide-y divide-border/70 lg:hidden">
               {pageTxs.map((tx) => (
                 <li key={tx.id} className="flex items-center gap-2 py-3 pl-5 pr-2">
                   <div className="min-w-0 flex-1">
@@ -220,13 +222,14 @@ export default function LedgerView({
               ))}
             </ul>
 
-            <div className="flex items-center justify-between gap-3 border-t border-border/70 px-5 py-3">
-              <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
-                <ChevronLeft className="size-4" aria-hidden /> Sebelumnya
+            {/* Small phones: icon-only buttons so the row fits 320px */}
+            <div className="flex items-center justify-between gap-2 border-t border-border/70 px-3 py-3 sm:px-5">
+              <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)} aria-label="Halaman sebelumnya">
+                <ChevronLeft className="size-4" aria-hidden /> <span className="hidden sm:inline">Sebelumnya</span>
               </Button>
-              <span className="text-xs text-muted-foreground">Halaman {page} dari {Math.max(1, totalPages)}</span>
-              <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)}>
-                Berikutnya <ChevronRight className="size-4" aria-hidden />
+              <span className="text-xs text-muted-foreground tabular-nums">Halaman {page} dari {Math.max(1, totalPages)}</span>
+              <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} aria-label="Halaman berikutnya">
+                <span className="hidden sm:inline">Berikutnya</span> <ChevronRight className="size-4" aria-hidden />
               </Button>
             </div>
           </>

@@ -322,7 +322,7 @@ The **Chat** tab (sidebar; on a phone: the bottom bar) talks to the same bot as 
 - You do not need to link a WhatsApp number; you are already logged in, so the bot knows it is you.
 - The conversation is saved (the latest 100 messages are shown). The trash icon clears it; recorded transactions stay.
 - If sending fails, your text goes back into the input so you can try again.
-- On a phone the chat fills the screen like a messaging app; while you type, the bottom bar hides so the input stays right above the keyboard.
+- On a phone the chat fills the screen like a messaging app; while the keyboard is open, the bottom bar hides so the input stays right above the keyboard (it comes back when the keyboard closes).
 
 ### 9. Dashboard: Ringkasan (overview)
 - **Month switcher** at the top: go back to earlier months, **Bulan ini** jumps back to the current month. Future months are disabled.
@@ -488,3 +488,4 @@ A test with 16 injection messages (fake admin, reading other users' data, leakin
 - **Complete answers from Gemini:** every field of the response schema is now required (null when it does not apply). Before, Gemini sometimes left out an account that was plainly in the message ("9 rb GrabBike OVO" got no `fromAccount`), so the bot asked for it. Values the model still leaves out are filled in from the offline parser, and a missing confidence now means "draft", not "confirmed".
 - **Short answers to the bot's questions:** after "Dibayar pakai rekening apa?", a short reply such as *OVO* (up to 4 words, within 10 minutes) is read together with the previous message.
 - **Mobile chat:** full-screen layout between the top bar and the bottom tabs, tabs hidden while typing, `interactive-widget=resizes-content` so the keyboard shrinks the page instead of covering the input, 16px input text (no zoom on iOS); on the Chat tab the page is exactly the visible screen height (`dvh`), so the top bar cannot scroll away.
+- **Responsive audit:** every page and dialog checked at 320, 360, 390, 412, 768, 1024, 1280 and 1536 px wide with long names and large amounts. Fixed: pages that could be dragged sideways on phones (single-column grids now `grid-cols-1`), dialogs too wide on a 320 px phone, the add menu opening off-screen, the transaction table on tablets (list below 1024 px, calendar beside the table from 1280 px), pagination on small phones (icon buttons), stat figures that scale with their tile, 16 px form fields on phones (iOS no longer zooms in), and the bottom bar staying hidden after closing the keyboard with Android's back button.

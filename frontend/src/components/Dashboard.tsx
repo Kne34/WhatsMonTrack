@@ -9,6 +9,7 @@ import {
 } from "@/lib/api";
 import { categoryLabel, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useKeyboardOpen } from "@/lib/useKeyboardOpen";
 import type { SessionUser } from "./AuthWrapper";
 import { PageSkeleton } from "./dashboard/skeletons";
 import { AddMenu, BottomTabs, MobileAccountMenu, MonthSwitcher, NAV_ITEMS, Sidebar, type Tab } from "./dashboard/shared/Navigation";
@@ -41,6 +42,7 @@ const REFRESH_MS = 15_000;
 export default function Dashboard({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  useKeyboardOpen();
   const tabParam = searchParams.get("tab") as Tab | null;
   const activeTab: Tab = NAV_ITEMS.some((n) => n.id === tabParam) ? (tabParam as Tab) : "dashboard";
   const navigate = (tab: Tab) => router.push(`/?tab=${tab}`);
@@ -285,7 +287,8 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
           {/* On phones the chat fills the screen like a messaging app, without the page title */}
           <header className={cn("mb-6 flex flex-wrap items-center justify-between gap-3", activeTab === "chat" && "max-md:hidden")}>
             <h1 className="font-heading text-2xl font-semibold tracking-tight">{PAGE_TITLES[activeTab]}</h1>
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Phones: month switcher left, add button right (its menu opens leftwards and stays on screen) */}
+            <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
               {/* The chat is not tied to a month */}
               {activeTab !== "chat" && <MonthSwitcher month={month} year={year} onChange={changeMonth} />}
               <AddMenu {...addActions} />

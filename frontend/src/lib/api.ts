@@ -18,17 +18,17 @@ api.interceptors.request.use((config) => {
 
 // --- Auth Endpoints ---
 
-export const register = async (data: any) => {
+export const register = async (data: object) => {
   const res = await api.post('/auth/register', data);
   return res.data;
 };
 
-export const verifyOtp = async (data: any) => {
+export const verifyOtp = async (data: object) => {
   const res = await api.post('/auth/verify-otp', data);
   return res.data;
 };
 
-export const login = async (data: any) => {
+export const login = async (data: object) => {
   const res = await api.post('/auth/login', data);
   return res.data;
 };
@@ -74,7 +74,7 @@ export const createAccount = async (
 };
 
 // Helper to update an account
-export const updateAccount = async (id: string, accountData: any) => {
+export const updateAccount = async (id: string, accountData: object) => {
   const { data } = await api.put(`/accounts/${id}`, accountData);
   return data;
 };
@@ -115,7 +115,7 @@ export const confirmTransaction = async (id: string) => {
   return data;
 };
 
-export const updateTransaction = async (id: string, data: any) => {
+export const updateTransaction = async (id: string, data: object) => {
   const response = await api.put(`/transactions/${id}`, data);
   return response.data;
 };
@@ -223,7 +223,7 @@ export const clearChat = async () => {
 };
 
 // Helper to create a transaction manually
-export const createTransaction = async (txData: any) => {
+export const createTransaction = async (txData: object) => {
   const { data } = await api.post('/transactions/manual', { data: txData });
   return data;
 };

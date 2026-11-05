@@ -16,7 +16,7 @@ export function AppDialog({ open, onClose, title, description, children }: {
 }) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] gap-5 overflow-y-auto rounded-2xl bg-card p-6 sm:max-w-md">
+      <DialogContent className="max-h-[90dvh] grid-cols-1 gap-5 overflow-y-auto overflow-x-hidden rounded-2xl bg-card p-5 sm:max-w-md sm:p-6">
         <DialogHeader className="pr-8">
           <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}

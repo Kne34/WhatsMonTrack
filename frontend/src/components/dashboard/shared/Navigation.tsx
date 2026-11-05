@@ -167,8 +167,8 @@ export function MobileAccountMenu(status: StatusProps) {
 export function BottomTabs({ active, onNavigate, reviewCount }: { active: Tab; onNavigate: (tab: Tab) => void; reviewCount: number }) {
   return (
     <nav aria-label="Navigasi utama"
-      // Hidden while typing: the keyboard shrinks the page (interactive-widget=resizes-content), the tabs would sit on top of it
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden [body:has(:is(input,textarea,select):focus)_&]:hidden">
+      // Hidden while the keyboard is open (see useKeyboardOpen): it shrinks the page, the tabs would sit on top of it
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden [html[data-keyboard=open]_&]:hidden">
       <div className="grid grid-cols-4">
         {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
           const current = active === id;
