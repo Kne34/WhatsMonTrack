@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Alert, Button, PasswordField, SegmentedControl, SelectField, TextField } from "../common/ui";
-import { verifyPassword } from "@/lib/api";
+import { verifyPassword, type DebtDirection, type DebtNote, type DebtNoteInput } from "@/lib/api";
 import { CATEGORIES, DEBT_CATEGORY, categoryLabel, TX_TYPE_LABEL, type TxType } from "@/lib/format";
 
 // ---------- Shared shell ----------
@@ -278,6 +278,65 @@ export function BudgetDialog({ budget, categories, onClose, onSave, onDelete }: 
   );
 }
 
+// ---------- Utang-piutang note ----------
+
+export function DebtNoteDialog({ note, onClose, onSave, onDelete }: {
+  note: DebtNote | null;
+  onClose: () => void;
+  onSave: (input: DebtNoteInput) => Promise<void>;
+  onDelete?: () => void;
+}) {
+  const [direction, setDirection] = useState<DebtDirection>(note?.direction ?? "THEY_OWE");
+  const [person, setPerson] = useState(note?.person ?? "");
+  const [amount, setAmount] = useState(note ? String(Math.round(note.amount)) : "");
+  const [paid, setPaid] = useState(note?.paid ? String(Math.round(note.paid)) : "");
+  const [text, setText] = useState(note?.note ?? "");
+  const [errors, setErrors] = useState<{ person?: string; amount?: string; paid?: string }>({});
+  const { busy, error, submit } = useSubmit();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs: typeof errors = {};
+    if (!person.trim()) errs.person = "Isi nama orangnya.";
+    if (!Number(amount)) errs.amount = "Masukkan jumlah lebih dari 0.";
+    if (Number(paid) > Number(amount)) errs.paid = "Tidak boleh lebih dari jumlahnya.";
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+    const ok = await submit(() => onSave({ person: person.trim(), direction, amount: Number(amount), paid: Number(paid) || 0, note: text.trim() }));
+    if (ok) onClose();
+  };
+
+  return (
+    <AppDialog open onClose={onClose} title={note ? "Ubah catatan" : "Catat utang-piutang"}
+      description="Hanya catatan: saldo rekening tidak berubah.">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+        {error && <Alert>{error}</Alert>}
+        <SegmentedControl<DebtDirection>
+          label="Siapa utang ke siapa"
+          value={direction}
+          onChange={setDirection}
+          className="flex w-full"
+          options={[{ value: "THEY_OWE", label: "Dia utang ke aku" }, { value: "I_OWE", label: "Aku utang ke dia" }]}
+        />
+        <TextField label="Nama orang" value={person} onChange={(e) => setPerson(e.target.value)} maxLength={60}
+          placeholder="Budi" autoComplete="off" error={errors.person} />
+        <AmountField label="Jumlah" digits={amount} onChange={setAmount} error={errors.amount} />
+        <TextField label="Keterangan (opsional)" value={text} onChange={(e) => setText(e.target.value)} maxLength={200}
+          placeholder="Talangin bakmi acet" />
+        <AmountField label="Sudah dibayar (opsional)" digits={paid} onChange={setPaid} error={errors.paid}
+          hint="Isi kalau sudah dibayar sebagian. Kalau sudah lunas, cukup centang di daftar." />
+        <DialogActions>
+          {note && onDelete && (
+            <Button variant="danger" onClick={onDelete} className="sm:mr-auto" disabled={busy}>Hapus</Button>
+          )}
+          <Button variant="secondary" onClick={onClose} disabled={busy}>Batal</Button>
+          <Button type="submit" loading={busy}>Simpan</Button>
+        </DialogActions>
+      </form>
+    </AppDialog>
+  );
+}
+
 // ---------- Transaction ----------
 
 export interface TransactionInput {
@@ -422,7 +481,7 @@ export function TransactionDialog({ transaction, debt: debtPreset, accounts, cat
         {isDebtEntry && (
           <TextField label="Nama orang" value={person} onChange={(e) => setPerson(e.target.value)} maxLength={60}
             placeholder="Budi" autoComplete="off"
-            hint="Dipakai untuk menghitung sisa utang-piutang per orang di halaman Utang-piutang." />
+            hint="Teman yang kamu talangi, yang membayar balik, atau yang meminjamkan." />
         )}
         <TextField label="Keterangan (opsional)" value={description} onChange={(e) => setDescription(e.target.value)}
           placeholder={debt ? (type === "INCOME" ? "Budi bayar utang" : "Talangin makan Budi") : "Makan siang, bensin, gaji"} maxLength={100} />

@@ -8,6 +8,7 @@ import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { BudgetsModule } from './budgets/budgets.module';
+import { DebtsModule } from './debts/debts.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { ParserModule } from './parser/parser.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
@@ -30,6 +31,7 @@ import { HealthController } from './health.controller';
     AuthModule,
     AccountsModule,
     BudgetsModule,
+    DebtsModule,
     TransactionsModule,
     ParserModule,
     WhatsAppModule,

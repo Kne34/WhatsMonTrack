@@ -13,6 +13,7 @@ src/
   auth/          register, email OTP, login, password reset, JWT, OTP email (SMTP or Brevo)
   accounts/      bank / e-wallet / cash accounts
   budgets/       monthly budget per category
+  debts/         utang-piutang notes (who owes whom; never touches balances)
   transactions/  transactions, monthly summary, ledger.ts (the only code that changes balances)
   parser/        Gemini parsing (rules in systemInstruction) with an offline regex fallback
   whatsapp/      Baileys socket (link / change / unlink the bot), bot conversation logic,

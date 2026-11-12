@@ -17,7 +17,7 @@ export const PRIVACY_SECTIONS = {
   net: { key: "wmt.hideNet", label: "selisih" },
   debt: { key: "wmt.hideDebt", label: "utang-piutang bulan ini" },
   debtSummary: { key: "wmt.hideDebtSummary", label: "total utang-piutang" },
-  debtPeople: { key: "wmt.hideDebtPeople", label: "utang-piutang per orang" },
+  debtList: { key: "wmt.hideDebtList", label: "daftar utang-piutang" },
 } as const;
 export type PrivacySection = keyof typeof PRIVACY_SECTIONS;
 

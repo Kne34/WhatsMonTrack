@@ -1,203 +1,138 @@
 "use client";
 
 import React, { useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, ChevronDown, Handshake, Pencil, Trash2 } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Check, Handshake, Pencil, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDayMonth, formatRupiah } from "@/lib/format";
-import { Button, Card, CardHeader, EmptyState, IconButton, SegmentedControl, focusRing } from "../../common/ui";
-import type { DebtPreset } from "../dialogs";
+import type { DebtNote } from "@/lib/api";
+import { Button, Card, EmptyState, IconButton, SegmentedControl, focusRing } from "../../common/ui";
 import { usePrivacy } from "../shared/privacy";
 
-export interface DebtEntry {
-  id: string;
-  type: "EXPENSE" | "INCOME";
-  amount: number;
-  category: string;
-  subcategory?: string | null;
-  counterparty?: string | null;
-  fromAccountId?: string | null;
-  toAccountId?: string | null;
-  fromAccount?: { name: string } | null;
-  toAccount?: { name: string } | null;
-  createdAt: string;
-}
-
-export interface DebtPerson {
-  /** "" = transactions without a person */
-  name: string;
-  out: number;
-  in: number;
-  /** out − in: above 0 they still owe you, below 0 you owe them */
-  balance: number;
-  count: number;
-  lastAt: string;
-}
-
-export interface DebtSummary {
-  people: DebtPerson[];
-  owedToYou: number;
-  youOwe: number;
-  entries: DebtEntry[];
-}
-
 interface DebtsViewProps {
-  data: DebtSummary | null;
-  onRecord: (preset: DebtPreset) => void;
-  onEdit: (tx: DebtEntry) => void;
-  onDelete: (tx: DebtEntry) => void;
+  /** null while loading */
+  notes: DebtNote[] | null;
+  onAdd: () => void;
+  onEdit: (note: DebtNote) => void;
+  /** The checkbox: lunas / belum lunas */
+  onToggle: (note: DebtNote) => void;
+  onDelete: (note: DebtNote) => void;
 }
 
-const NO_NAME = "Tanpa nama";
-const personKey = (name: string | null | undefined) => (name ?? "").trim().toLowerCase();
+type Scope = "open" | "settled" | "all";
 
-function StatusLine({ person }: { person: DebtPerson }) {
-  if (person.balance > 0) return <>Belum bayar ke kamu</>;
-  if (person.balance < 0) return <>Kamu belum bayar</>;
-  return <>Lunas</>;
-}
+const isSettled = (n: DebtNote) => n.paid >= n.amount;
 
-export default function DebtsView({ data, onRecord, onEdit, onDelete }: DebtsViewProps) {
-  const privacy = usePrivacy(["debtSummary", "debtPeople"] as const);
-  const [scope, setScope] = useState<"open" | "all">("open");
-  const [expanded, setExpanded] = useState<string | null>(null);
+/** To-do style list of who owes whom. Notes only: balances never change here. */
+export default function DebtsView({ notes, onAdd, onEdit, onToggle, onDelete }: DebtsViewProps) {
+  const privacy = usePrivacy(["debtSummary", "debtList"] as const);
+  const [scope, setScope] = useState<Scope>("open");
 
-  const people = data?.people ?? [];
-  const openPeople = people.filter((p) => p.balance !== 0);
-  const shownPeople = scope === "open" ? openPeople : people;
-  const owedCount = people.filter((p) => p.balance > 0).length;
-  const oweCount = people.filter((p) => p.balance < 0).length;
-  const amount = (v: number) => privacy.show("debtPeople", formatRupiah(v));
+  const all = notes ?? [];
+  const open = all.filter((n) => !isSettled(n));
+  const shown = scope === "open" ? open : scope === "settled" ? all.filter(isSettled) : all;
+  const left = (n: DebtNote) => n.amount - n.paid;
+  const owedToYou = open.filter((n) => n.direction === "THEY_OWE").reduce((s, n) => s + left(n), 0);
+  const youOwe = open.filter((n) => n.direction === "I_OWE").reduce((s, n) => s + left(n), 0);
+  const money = (v: number) => privacy.show("debtList", formatRupiah(v));
 
   return (
     <div className="space-y-6">
       {privacy.unlockDialog}
 
       <Card>
-        <CardHeader
-          title="Ringkasan"
-          description="Semua waktu · tidak termasuk pemasukan & pengeluaran"
-          action={privacy.eye("debtSummary", "size-8")}
-        />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="@container rounded-xl border border-border/70 p-4">
-            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <ArrowUpRight className="size-4" aria-hidden /> Orang lain berutang ke kamu
-            </p>
-            <p className="mt-2 break-words text-[clamp(1rem,9cqi,1.5rem)] font-semibold leading-tight tracking-tight text-foreground">
-              {privacy.show("debtSummary", formatRupiah(data?.owedToYou ?? 0))}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">{owedCount} orang belum lunas</p>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-foreground">Belum lunas</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Catatan saja, saldo rekening tidak berubah.</p>
           </div>
-          <div className="@container rounded-xl border border-border/70 p-4">
-            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <ArrowDownLeft className="size-4" aria-hidden /> Utang kamu
-            </p>
-            <p className="mt-2 break-words text-[clamp(1rem,9cqi,1.5rem)] font-semibold leading-tight tracking-tight text-foreground">
-              {privacy.show("debtSummary", formatRupiah(data?.youOwe ?? 0))}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">ke {oweCount} orang</p>
-          </div>
+          {privacy.eye("debtSummary", "size-8")}
         </div>
-        <div className="mt-4 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-          <Button onClick={() => onRecord({ type: "EXPENSE" })}>
-            <ArrowUpRight className="size-4" aria-hidden /> Talangin / pinjamkan
-          </Button>
-          <Button variant="secondary" onClick={() => onRecord({ type: "INCOME" })}>
-            <ArrowDownLeft className="size-4" aria-hidden /> Dibayar balik / pinjam
-          </Button>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="@container rounded-xl border border-border/70 p-3 sm:p-4">
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground sm:text-sm">
+              <ArrowDownLeft className="size-4 shrink-0" aria-hidden /> Orang utang ke kamu
+            </p>
+            <p className="mt-2 break-words text-[clamp(0.95rem,10cqi,1.5rem)] font-semibold leading-tight tracking-tight text-foreground">
+              {privacy.show("debtSummary", formatRupiah(owedToYou))}
+            </p>
+          </div>
+          <div className="@container rounded-xl border border-border/70 p-3 sm:p-4">
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground sm:text-sm">
+              <ArrowUpRight className="size-4 shrink-0" aria-hidden /> Kamu utang
+            </p>
+            <p className="mt-2 break-words text-[clamp(0.95rem,10cqi,1.5rem)] font-semibold leading-tight tracking-tight text-foreground">
+              {privacy.show("debtSummary", formatRupiah(youOwe))}
+            </p>
+          </div>
         </div>
       </Card>
 
       <Card className="p-0">
-        <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5 pb-4">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-foreground">Per orang</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">Ketuk nama untuk melihat riwayat dan mencatat pembayaran.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {privacy.eye("debtPeople", "size-8")}
-            <SegmentedControl label="Tampilkan" value={scope} onChange={setScope}
-              options={[{ value: "open", label: "Belum lunas" }, { value: "all", label: "Semua" }]} />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-4">
+          <SegmentedControl<Scope> label="Tampilkan" value={scope} onChange={setScope}
+            options={[{ value: "open", label: `Belum lunas (${open.length})` }, { value: "settled", label: "Lunas" }, { value: "all", label: "Semua" }]} />
+          <div className="flex items-center gap-1">
+            {privacy.eye("debtList", "size-8")}
+            <Button size="sm" onClick={onAdd}><Plus className="size-4" aria-hidden /> Catat</Button>
           </div>
         </div>
 
-        {people.length === 0 ? (
+        {all.length === 0 ? (
           <EmptyState
             className="pb-10"
             icon={<Handshake className="size-5" />}
-            title="Belum ada utang-piutang"
-            description='Catat saat kamu menalangi teman atau dibayar balik. Lewat chat juga bisa: "talangin makan Budi 50rb pakai BCA" atau "Budi bayar utang 50rb ke BCA".'
+            title="Belum ada catatan utang-piutang"
+            description="Catat siapa utang ke siapa, berapa, dan untuk apa. Centang kalau sudah lunas."
+            action={<Button variant="secondary" size="sm" onClick={onAdd}>Catat utang-piutang</Button>}
           />
-        ) : shownPeople.length === 0 ? (
-          <EmptyState className="pb-10" icon={<Handshake className="size-5" />} title="Semua sudah lunas"
-            action={<Button variant="secondary" size="sm" onClick={() => setScope("all")}>Lihat semua</Button>} />
+        ) : shown.length === 0 ? (
+          <EmptyState className="pb-10" icon={<Check className="size-5" />}
+            title={scope === "open" ? "Semua sudah lunas" : "Belum ada yang lunas"} />
         ) : (
           <ul className="divide-y divide-border/70 border-t border-border/70">
-            {shownPeople.map((p) => {
-              const key = personKey(p.name);
-              const open = expanded === key;
-              const label = p.name || NO_NAME;
-              const history = (data?.entries ?? []).filter((e) => personKey(e.counterparty) === key);
+            {shown.map((n) => {
+              const done = isSettled(n);
+              const theyOwe = n.direction === "THEY_OWE";
               return (
-                <li key={key || "_none"}>
-                  <button type="button" onClick={() => setExpanded(open ? null : key)} aria-expanded={open}
-                    className={cn("flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-muted/40", focusRing)}>
-                    <div className="min-w-0 flex-1">
-                      <p className={cn("truncate text-sm font-medium", p.name ? "text-foreground" : "text-muted-foreground")}>{label}</p>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        Keluar {amount(p.out)} · Masuk {amount(p.in)}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className={cn("text-sm font-semibold tabular-nums", p.balance === 0 ? "text-muted-foreground" : "text-foreground")}>
-                        {p.balance === 0 ? "Lunas" : amount(Math.abs(p.balance))}
-                      </p>
-                      {p.balance !== 0 && <p className="text-xs text-muted-foreground"><StatusLine person={p} /></p>}
-                    </div>
-                    <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden />
+                <li key={n.id} className="flex items-start gap-3 py-3 pl-4 pr-2 sm:pl-5">
+                  {/* Checkbox: lunas */}
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={done}
+                    aria-label={`${n.person}: ${done ? "lunas" : "tandai lunas"}`}
+                    onClick={() => onToggle(n)}
+                    className={cn("mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md border transition-colors", focusRing,
+                      done ? "border-foreground bg-foreground text-background" : "border-border hover:border-foreground/60")}
+                  >
+                    {done && <Check className="size-4" aria-hidden />}
                   </button>
 
-                  {open && (
-                    <div className="bg-muted/30 px-5 pb-4 pt-1">
-                      {!p.name && (
-                        <p className="mb-2 text-xs text-muted-foreground">
-                          Transaksi ini belum punya nama orang. Ubah lalu isi <span className="text-foreground">Nama orang</span> supaya terhitung per orang.
-                        </p>
-                      )}
-                      <div className="mb-2 grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
-                        {p.balance > 0 && (
-                          <Button size="sm" onClick={() => onRecord({ type: "INCOME", counterparty: p.name, amount: p.balance, description: `${label} bayar utang` })}>
-                            Catat pembayaran
-                          </Button>
-                        )}
-                        {p.balance < 0 && (
-                          <Button size="sm" onClick={() => onRecord({ type: "EXPENSE", counterparty: p.name, amount: -p.balance, description: `Bayar utang ke ${label}` })}>
-                            Bayar utang
-                          </Button>
-                        )}
-                        <Button variant="secondary" size="sm" onClick={() => onRecord({ type: "EXPENSE", counterparty: p.name })}>
-                          Talangin lagi
-                        </Button>
-                      </div>
-                      <ul className="divide-y divide-border/70">
-                        {history.map((e) => (
-                          <li key={e.id} className="flex items-center gap-2 py-2.5">
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm text-foreground">{e.subcategory || (e.type === "EXPENSE" ? "Uang keluar" : "Uang masuk")}</p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {formatDayMonth(e.createdAt)} · {e.type === "EXPENSE" ? `dari ${e.fromAccount?.name ?? "-"}` : `ke ${e.toAccount?.name ?? "-"}`}
-                              </p>
-                            </div>
-                            <span className={cn("shrink-0 text-sm tabular-nums", e.type === "INCOME" ? "text-income" : "text-foreground")}>
-                              {e.type === "INCOME" ? "+" : "−"}{amount(e.amount)}
-                            </span>
-                            <IconButton label="Ubah transaksi" onClick={() => onEdit(e)}><Pencil className="size-4" /></IconButton>
-                            <IconButton label="Hapus transaksi" onClick={() => onDelete(e)}><Trash2 className="size-4" /></IconButton>
-                          </li>
-                        ))}
-                      </ul>
+                  <div className="min-w-0 flex-1">
+                    {/* Phones: amount under the name; wider screens: on the right */}
+                    <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
+                      <p className={cn("min-w-0 break-words text-sm", done ? "text-muted-foreground line-through" : "text-foreground")}>
+                        {theyOwe
+                          ? <><span className="font-medium">{n.person}</span> utang ke kamu</>
+                          : <>Kamu utang ke <span className="font-medium">{n.person}</span></>}
+                      </p>
+                      <span className={cn("text-sm font-semibold tabular-nums sm:shrink-0",
+                        done ? "font-normal text-muted-foreground" : theyOwe ? "text-income" : "text-foreground")}>
+                        {done ? "Lunas" : `${theyOwe ? "+" : "−"}${money(left(n))}`}
+                      </span>
                     </div>
-                  )}
+                    {n.note && <p className="mt-0.5 break-words text-xs text-foreground/80">{n.note}</p>}
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {formatDayMonth(n.createdAt)}
+                      {n.paid > 0 && !done && <> · dibayar {money(n.paid)} dari {money(n.amount)}</>}
+                      {done && <> · {money(n.amount)}</>}
+                    </p>
+                  </div>
+
+                  <div className="flex shrink-0">
+                    <IconButton label="Ubah catatan" onClick={() => onEdit(n)}><Pencil className="size-4" /></IconButton>
+                    <IconButton label="Hapus catatan" onClick={() => onDelete(n)} className="hover:text-destructive"><Trash2 className="size-4" /></IconButton>
+                  </div>
                 </li>
               );
             })}

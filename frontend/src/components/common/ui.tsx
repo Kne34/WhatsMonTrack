@@ -281,7 +281,7 @@ export function SegmentedControl<T extends string>({ label, value, onChange, opt
             aria-pressed={active}
             onClick={() => onChange(o.value)}
             className={cn(
-              "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              "flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
               focusRing,
               active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
             )}

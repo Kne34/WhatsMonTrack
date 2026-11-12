@@ -218,40 +218,6 @@ export class TransactionsService {
     return { totalIncome, totalExpense, expenseByCategory, debtOut, debtIn, year, month, timezone: tz };
   }
 
-  /**
-   * Lending and debt per person, over all time (not one month). Money out (talangan, lending, repaying)
-   * minus money in (paid back, borrowing): above 0 the person still owes you, below 0 you owe them.
-   */
-  async debts(userId: string) {
-    const rows = await this.prisma.transaction.findMany({
-      where: { userId, status: 'CONFIRMED', category: { equals: DEBT_CATEGORY, mode: 'insensitive' }, type: { in: ['EXPENSE', 'INCOME'] } },
-      orderBy: { createdAt: 'desc' },
-      take: 2000,
-      include: { fromAccount: true, toAccount: true },
-    });
-
-    const people = new Map<string, { name: string; out: number; in: number; count: number; lastAt: Date }>();
-    for (const t of rows) {
-      const name = t.counterparty?.trim() || '';
-      const key = name.toLowerCase();
-      // Rows are newest first, so the first spelling seen is the latest one
-      const p = people.get(key) ?? { name, out: 0, in: 0, count: 0, lastAt: t.createdAt };
-      if (t.type === 'EXPENSE') p.out += Number(t.amount);
-      else p.in += Number(t.amount);
-      p.count++;
-      people.set(key, p);
-    }
-    const list = [...people.values()]
-      .map((p) => ({ ...p, balance: p.out - p.in }))
-      .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance) || b.lastAt.getTime() - a.lastAt.getTime());
-    return {
-      people: list,
-      owedToYou: list.filter((p) => p.balance > 0).reduce((s, p) => s + p.balance, 0),
-      youOwe: list.filter((p) => p.balance < 0).reduce((s, p) => s - p.balance, 0),
-      entries: rows,
-    };
-  }
-
   /** Has a transaction already been recorded from this WhatsApp message? */
   async existsForMessage(sourceMessageId: string) {
     return (await this.prisma.transaction.count({ where: { sourceMessageId } })) > 0;

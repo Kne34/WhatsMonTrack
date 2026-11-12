@@ -34,6 +34,7 @@ model User {
   transactions       Transaction[]
   budgets            Budget[]
   chatMessages       ChatMessage[]
+  debtNotes          DebtNote[]
 }
 
 enum TransactionType {
@@ -113,4 +114,24 @@ model ChatMessage {
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId, createdAt])
+}
+
+/// Utang-piutang page: a to-do style list of who owes whom. Notes only; it never changes balances.
+model DebtNote {
+  id        String   @id @default(uuid())
+  userId    String
+  /// The other person, e.g. "Budi"
+  person    String
+  /// THEY_OWE: the person owes the user. I_OWE: the user owes the person.
+  direction String
+  amount    BigInt
+  /// Paid back so far; settled when paid >= amount
+  paid      BigInt   @default(0)
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

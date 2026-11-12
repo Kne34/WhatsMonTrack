@@ -15,12 +15,6 @@ export class TransactionsController {
     return this.transactions.list(user.id, query);
   }
 
-  /** Lending and debt per person (Utang page). Declared before ':id' routes. */
-  @Get('debts')
-  debts(@CurrentUser() user: JwtUser) {
-    return this.transactions.debts(user.id);
-  }
-
   @Post('manual')
   createManual(@CurrentUser() user: JwtUser, @Body() body: CreateTransactionDto) {
     return this.transactions.createManual(user.id, body.data);

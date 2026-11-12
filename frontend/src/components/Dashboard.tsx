@@ -3,9 +3,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  confirmTransaction, createAccount, createTransaction, deleteAccount, deleteBudget, deleteTransaction,
-  fetchAccounts, fetchBudgets, fetchDebts, fetchPhoneStatus, fetchTransactions, fetchWhatsAppStatus, setBudget,
-  updateAccount, updateTransaction, type PhoneStatus, type WhatsAppStatus,
+  confirmTransaction, createAccount, createDebtNote, createTransaction, deleteAccount, deleteBudget, deleteDebtNote, deleteTransaction,
+  fetchAccounts, fetchBudgets, fetchDebtNotes, fetchPhoneStatus, fetchTransactions, fetchWhatsAppStatus, setBudget,
+  updateAccount, updateDebtNote, updateTransaction, type DebtNote, type DebtNoteInput, type PhoneStatus, type WhatsAppStatus,
 } from "@/lib/api";
 import { categoryLabel, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -16,11 +16,11 @@ import { PageSkeleton } from "./dashboard/skeletons";
 import { AddMenu, BottomTabs, MobileAccountMenu, MonthSwitcher, NAV_ITEMS, Sidebar, type Tab } from "./dashboard/shared/Navigation";
 import HomeView from "./dashboard/views/HomeView";
 import LedgerView, { type LedgerTx } from "./dashboard/views/LedgerView";
-import DebtsView, { type DebtSummary } from "./dashboard/views/DebtsView";
+import DebtsView from "./dashboard/views/DebtsView";
 import InboxView, { type ReviewTx } from "./dashboard/views/InboxView";
 import ChatView from "./dashboard/views/ChatView";
 import {
-  AccountDialog, BudgetDialog, ConfirmDialog, TransactionDialog, categoryOptions,
+  AccountDialog, BudgetDialog, ConfirmDialog, DebtNoteDialog, TransactionDialog, categoryOptions,
   type AccountLike, type BudgetLike, type DebtPreset, type TransactionInput, type TransactionLike,
 } from "./dashboard/dialogs";
 import WhatsAppStatusModal from "./dashboard/modals/WhatsAppStatusModal";
@@ -33,6 +33,7 @@ type DialogState =
   | { kind: "none" }
   | { kind: "account"; account: AccountLike | null }
   | { kind: "transaction"; tx: TransactionLike | null; debt?: boolean | DebtPreset }
+  | { kind: "debtNote"; note: DebtNote | null }
   | { kind: "budget"; budget: BudgetLike | null }
   | { kind: "confirm"; title: string; description: string; confirmLabel: string; action: () => Promise<void> }
   | { kind: "link" }
@@ -65,7 +66,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   // Has the user ever recorded a transaction (any month)? Once true it stays true, so it is asked only until then.
   const [hasAnyTransaction, setHasAnyTransaction] = useState(false);
   const knownHasTx = useRef(false);
-  const [debts, setDebts] = useState<DebtSummary | null>(null);
+  const [debtNotes, setDebtNotes] = useState<DebtNote[] | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // Filters the data on screen belongs to. While they differ from the selected filters,
@@ -98,9 +99,9 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
         fetchWhatsAppStatus().catch(() => null),
         fetchPhoneStatus().catch(() => null),
         knownHasTx.current ? null : fetchTransactions({ page: 1, limit: 1 }).catch(() => null),
-        fetchDebts().catch(() => null),
+        fetchDebtNotes().catch(() => null),
       ]);
-      if (debtData) setDebts(debtData);
+      if (debtData) setDebtNotes(debtData);
       if (any && (any.total ?? (any.data ?? any).length) > 0) {
         knownHasTx.current = true;
         setHasAnyTransaction(true);
@@ -202,6 +203,38 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       },
     });
   };
+
+  // ---------- Utang-piutang notes ----------
+  const saveDebtNote = (note: DebtNote | null) => async (input: DebtNoteInput) => {
+    if (note) await updateDebtNote(note.id, input);
+    else await createDebtNote(input);
+    setDebtNotes(await fetchDebtNotes());
+    notify(note ? "Catatan diperbarui" : "Catatan ditambahkan");
+  };
+  // The checkbox: shown right away, reverted if the server refuses
+  const toggleDebtNote = async (note: DebtNote) => {
+    const settled = note.paid < note.amount;
+    setDebtNotes((list) => list?.map((n) => (n.id === note.id ? { ...n, paid: settled ? n.amount : 0 } : n)) ?? null);
+    try {
+      await updateDebtNote(note.id, { settled });
+      notify(settled ? `${note.person}: ditandai lunas` : `${note.person}: belum lunas`);
+    } catch {
+      notify("Gagal menyimpan. Coba lagi.");
+    }
+    setDebtNotes(await fetchDebtNotes().catch(() => null));
+  };
+  const askDeleteDebtNote = (note: DebtNote) =>
+    setDialog({
+      kind: "confirm",
+      title: "Hapus catatan?",
+      description: `Catatan ${note.person} sebesar ${formatRupiah(note.amount)} akan dihapus. Saldo rekening tidak berubah.`,
+      confirmLabel: "Hapus",
+      action: async () => {
+        await deleteDebtNote(note.id);
+        setDebtNotes(await fetchDebtNotes());
+        notify("Catatan dihapus");
+      },
+    });
 
   const saveTransaction = (tx: TransactionLike | null) => async (data: TransactionInput) => {
     if (tx) await updateTransaction(tx.id, data);
@@ -353,10 +386,11 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
             />
           ) : activeTab === "debts" ? (
             <DebtsView
-              data={debts}
-              onRecord={(preset) => setDialog({ kind: "transaction", tx: null, debt: preset })}
-              onEdit={(tx) => setDialog({ kind: "transaction", tx: tx as unknown as TransactionLike })}
-              onDelete={askDeleteTransaction}
+              notes={debtNotes}
+              onAdd={() => setDialog({ kind: "debtNote", note: null })}
+              onEdit={(note) => setDialog({ kind: "debtNote", note })}
+              onToggle={toggleDebtNote}
+              onDelete={askDeleteDebtNote}
             />
           ) : activeTab === "transactions" ? (
             <LedgerView
@@ -419,6 +453,14 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
           onClose={closeDialog}
           onSave={saveTransaction(dialog.tx)}
           onAddAccount={() => setDialog({ kind: "account", account: null })}
+        />
+      )}
+      {dialog.kind === "debtNote" && (
+        <DebtNoteDialog
+          note={dialog.note}
+          onClose={closeDialog}
+          onSave={saveDebtNote(dialog.note)}
+          onDelete={dialog.note ? () => askDeleteDebtNote(dialog.note!) : undefined}
         />
       )}
       {dialog.kind === "budget" && (

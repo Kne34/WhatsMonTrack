@@ -67,11 +67,36 @@ export const fetchTransactions = async (
   return data;
 };
 
-/** Lending and debt per person, over all time (Utang-piutang page) */
-export const fetchDebts = async () => {
-  const { data } = await api.get('/transactions/debts');
-  return data;
-};
+// ---- Utang-piutang notes (to-do style list, separate from transactions) ----
+
+export type DebtDirection = 'THEY_OWE' | 'I_OWE';
+
+export interface DebtNote {
+  id: string;
+  person: string;
+  /** THEY_OWE: the person owes you. I_OWE: you owe the person. */
+  direction: DebtDirection;
+  amount: number;
+  /** Paid back so far; settled when paid >= amount */
+  paid: number;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DebtNoteInput {
+  person: string;
+  direction: DebtDirection;
+  amount: number;
+  paid?: number;
+  note?: string;
+}
+
+export const fetchDebtNotes = async (): Promise<DebtNote[]> => (await api.get('/debts')).data;
+export const createDebtNote = async (input: DebtNoteInput): Promise<DebtNote> => (await api.post('/debts', input)).data;
+export const updateDebtNote = async (id: string, input: Partial<DebtNoteInput> & { settled?: boolean }): Promise<DebtNote> =>
+  (await api.put(`/debts/${id}`, input)).data;
+export const deleteDebtNote = async (id: string) => (await api.delete(`/debts/${id}`)).data;
 
 // Helper to fetch accounts
 export const fetchAccounts = async () => {

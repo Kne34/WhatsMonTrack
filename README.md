@@ -57,7 +57,7 @@ Quick access to every document in this repository.
 
 ### Web dashboard
 - **Dashboard (overview):** total balance, income, expense and difference (each can be hidden with its eye icon), cash-flow chart, daily spending chart with the daily budget line, spending or income per category, accounts (with their own eye icon) and budget progress, plus a lending/debt card kept apart from the totals.
-- **Utang-piutang page:** who still owes you and whom you owe, per person over all time, with each person's history and one-tap "Catat pembayaran".
+- **Utang-piutang page:** a to-do style list of who owes whom, with a description, how much is left, and a checkbox for "lunas". Notes only, balances never change.
 - **Transaksi (ledger):** calendar day filter, paginated list (10/15/50/100 per page), add, edit and delete.
 - **Chat:** chat with the bot right on the web, with the same results as on WhatsApp (record transactions, `/rekap`). Works without a bot number or a linked phone; the history is saved and can be cleared.
 - **Perlu ditinjau (review inbox):** confirm, edit or delete uncertain bot results, or delete them all.
@@ -115,6 +115,7 @@ graph TD
 | `auth/` | Register, email OTP, login, forgot/reset password, JWT, HTML OTP email |
 | `accounts/` | Bank/e-wallet accounts (CRUD, ownership checks, loose name matching) |
 | `budgets/` | Monthly budget per category |
+| `debts/` | Utang-piutang notes: who owes whom, paid so far, lunas (never touches balances) |
 | `transactions/` | Transactions, monthly summary, `ledger.ts` (the only place that changes balances) |
 | `parser/` | Gemini parsing with regex fallback |
 | `whatsapp/` | `WhatsAppService` (Baileys socket), `BotService` (conversation logic, `/rekap`), `PhoneLinkService` (number linking), session store in PostgreSQL (`db-auth-state.ts`) |
@@ -140,7 +141,7 @@ All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-passwo
 | `GET /api/accounts`, `POST /api/accounts`, `PUT /api/accounts/:id` | Accounts; the list includes `transactionCount` (transactions that use each account) |
 | `DELETE /api/accounts/:id?withTransactions=true` | Delete an account. Without the flag an account still in use gets `409` with `transactionCount`; with it, its transactions are deleted too and other accounts' balances are corrected |
 | `GET /api/budgets`, `POST /api/budgets`, `DELETE /api/budgets/:id` | Budgets (POST creates or updates per category) |
-| `GET /api/transactions/debts` | Lending/debt (`DEBT`) per person over all time: `people` (out, in, balance = out − in), `owedToYou`, `youOwe`, `entries` |
+| `GET /api/debts`, `POST /api/debts`, `PUT /api/debts/:id`, `DELETE /api/debts/:id` | Utang-piutang notes: `person`, `direction` (THEY_OWE / I_OWE), `amount`, `paid`, `note`. `PUT` with `{ settled: true/false }` is the checkbox. Notes never change balances |
 | `GET /api/transactions?month&year&day&page&limit` | List transactions; month/day boundaries use the user's time zone. Optional filters: `type` (EXPENSE/INCOME/TRANSFER), `category` (code, case-insensitive), `accountId` (money out of or into that account), `q` (text in the description or original message), `status` (CONFIRMED/NEEDS_REVIEW) |
 | `POST /api/transactions/manual` | Add a transaction manually |
 | `PUT /api/transactions/:id`, `DELETE /api/transactions/:id` | Edit or delete (balances are corrected) |
@@ -310,7 +311,7 @@ Other replies you may get:
 | *Halo! Nomor ini belum terhubung ...* | This number is not linked to an account yet; see step 4 |
 
 #### Lending and debt (utang-piutang)
-See also the [Utang-piutang page](#11-utang-piutang-page).
+To keep a simple list of who still owes whom, use the [Utang-piutang page](#11-utang-piutang-page).
 
 Paying for a friend first, lending money, borrowing, and paying back are not real spending or income, but they do move money. Record them with category **Utang-piutang** (`DEBT`):
 
@@ -351,7 +352,7 @@ The **Chat** tab (sidebar; on a phone: the bottom bar) talks to the same bot as 
 - **Month switcher** at the top: go back to earlier months, **Bulan ini** jumps back to the current month. Future months are disabled.
 - **Saldo total**: the sum of all accounts. Its eye icon hides only this number.
 - **Pemasukan / Pengeluaran / Selisih**: income, expenses and their difference for the month. Each has its own eye icon to hide it, separate from the balance toggle and remembered in this browser.
-- **Every section has its own eye**: Saldo total, Pemasukan, Pengeluaran, Selisih, the Rekening card, the Utang-piutang card, and on the Utang-piutang page the summary and the per-person list. Hiding or showing one never changes another; each choice is remembered in this browser.
+- **Every section has its own eye**: Saldo total, Pemasukan, Pengeluaran, Selisih, the Rekening card, the Utang-piutang card, and on the Utang-piutang page the totals and the list. Hiding or showing one never changes another; each choice is remembered in this browser.
 - **Showing a hidden amount asks for your password** every time (checked by the server, at most 10 tries per minute). Hiding needs no password. This keeps the numbers from someone glancing at or picking up your screen; it is not encryption, since the data is still loaded in the page.
 - **Arus kas**: running total of income minus expenses through the month.
 - **Pengeluaran harian**: spending per day. If you have budgets, a dashed line shows the average daily budget.
@@ -369,11 +370,11 @@ Only confirmed transactions are counted; drafts waiting for review are not. Lend
 - **Edit** (pencil) or **delete** (trash) a transaction. Balances are corrected automatically, e.g. deleting an expense gives the money back to the account.
 
 ### 11. Utang-piutang page
-Menu **Utang-piutang** (phone: **Utang**). Unlike the other pages it covers all time, not one month.
-- **Ringkasan**: *Orang lain berutang ke kamu* (money you are still owed) and *Utang kamu* (money you still owe), with buttons **Talangin / pinjamkan** and **Dibayar balik / pinjam**.
-- **Per orang**: one row per person with money out, money in and what is left (*Belum bayar ke kamu*, *Kamu belum bayar* or *Lunas*). **Belum lunas** / **Semua** switches between open and all people. Tap a person to see their history (edit or delete each entry) and **Catat pembayaran** (prefilled with the person and the amount still open), **Bayar utang** or **Talangin lagi**.
-- The person comes from **Nama orang** in the transaction form (shown for category Utang-piutang), or from the chat: *"talangin makan Budi 50rb pakai BCA"*, *"Budi bayar utang 50rb ke BCA"*. Names are grouped without regard to upper/lower case. Entries without a name are grouped as **Tanpa nama**; edit them to add the name.
-- How it is counted: money out (talangan, lending, repaying) minus money in (paid back, borrowing), per person.
+Menu **Utang-piutang** (phone: **Utang**): a simple to-do style list of who owes whom. It is only a note; account balances never change here (to move money, record a transaction with category Utang-piutang as described in [Lending and debt](#lending-and-debt-utang-piutang)).
+- **Catat**: choose **Dia utang ke aku** or **Aku utang ke dia**, the person's name, the amount, an optional description (e.g. *Talangin bakmi acet*) and, if part was already paid, **Sudah dibayar**.
+- **List**: *Budi utang ke kamu* **+Rp 50.000** (still to receive) or *Kamu utang ke Sinta* **−Rp 300.000** (still to pay), with the description, the date and "dibayar Rp X dari Rp Y" for partial payments. Tick the box when it is paid in full (it moves to **Lunas**); untick it to reopen. Pencil to edit, trash to delete.
+- **Belum lunas / Lunas / Semua** filters the list. The top card shows the open totals: *Orang utang ke kamu* and *Kamu utang*.
+- Both the totals and the list have their own eye icon.
 
 ### 12. Dashboard: Perlu ditinjau (review inbox)
 Messages the bot was not sure about (confidence below 85%) appear here, with a counter on the menu. Each item shows the original WhatsApp message, the amount, the bot's confidence, the type, category and account.
@@ -528,7 +529,7 @@ A test with 16 injection messages (fake admin, reading other users' data, leakin
 - **Lending and debt (`DEBT`, "Utang-piutang"):** paying for a friend first and being paid back used to show up as a large expense and an income. Now they get their own category, recognised by Gemini and by the offline parser (talangin, bayarin, minjemin, bayar utang, ganti uang, dibalikin, pinjam dari …). Balances still change, but the totals, charts, category breakdown, budgets, the ledger calendar and `/rekap` leave them out; the dashboard and `/rekap` show them separately. A transfer between two of your own accounts stays a transfer.
 - **Tambah → Utang-piutang** on the web: the transaction form with the category already set, and only *Uang keluar* / *Uang masuk* to choose from.
 - **Eye icon on the Rekening card**, later made independent: every section (Saldo total, Rekening, Pemasukan, Pengeluaran, Selisih, Utang-piutang) has its own eye and asks for the password when shown.
-- **Utang-piutang page and person per transaction:** new `counterparty` column (migration `20261112000000_debt_counterparty`), filled by Gemini ("Budi" from "talangin makan Budi"), the offline parser and the form's **Nama orang** field. `GET /api/transactions/debts` totals it per person over all time; the page shows who owes whom, the history, and prefilled "Catat pembayaran".
+- **Utang-piutang page:** a to-do style list of who owes whom (`DebtNote`, migration `20261112010000_debt_notes`, `/api/debts`): person, direction, amount, paid so far, description, a checkbox for lunas; notes only, never balances. Transactions with category Utang-piutang also get a **Nama orang** (`counterparty`, migration `20261112000000_debt_counterparty`), filled by Gemini, the offline parser or the form.
 - **Getting-started steps** are hidden once any transaction has been recorded, even when no WhatsApp number is linked.
 - **"Ringkasan" is now "Dashboard"** in the menu and page title.
 - **Filters on the Transaksi page:** search, type, category and account, done on the server so paging stays right, with the matching total out/in and calendar dots that follow the filter.

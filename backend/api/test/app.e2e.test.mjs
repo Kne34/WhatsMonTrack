@@ -365,35 +365,50 @@ describe('money, time zones and the WhatsApp bot (real database)', () => {
     await http().get('/api/transactions?accountId=not-a-uuid').set(auth(token)).expect(400);
   });
 
-  test('lending and debt per person: out minus in, names grouped case-insensitively, only for DEBT', async () => {
+  test('a person is only kept on lending/debt transactions', async () => {
     const add = (data) => http().post('/api/transactions/manual').set(auth(token)).send({ data }).expect(201);
-    await add({ type: 'EXPENSE', amount: 161500, category: 'DEBT', counterparty: ' Elbert ', fromAccountId: account.id });
-    await add({ type: 'INCOME', amount: 29000, category: 'DEBT', counterparty: 'elbert', toAccountId: account.id });
-    await add({ type: 'INCOME', amount: 300000, category: 'DEBT', counterparty: 'Sinta', subcategory: 'Pinjam dari Sinta', toAccountId: account.id });
-    const food = await add({ type: 'EXPENSE', amount: 20000, category: 'FOOD', counterparty: 'Ignored', fromAccountId: account.id });
-    assert.equal(food.body.transaction.counterparty, null, 'a person is only kept for lending/debt');
+    const debt = await add({ type: 'EXPENSE', amount: 1000, category: 'DEBT', counterparty: ' Elbert ', fromAccountId: account.id });
+    const food = await add({ type: 'EXPENSE', amount: 1000, category: 'FOOD', counterparty: 'Ignored', fromAccountId: account.id });
+    assert.equal(debt.body.transaction.counterparty, 'Elbert');
+    assert.equal(food.body.transaction.counterparty, null);
+    const id = debt.body.transaction.id;
+    await http().put(`/api/transactions/${id}`).set(auth(token)).send({ category: 'FOOD' }).expect(200);
+    assert.equal((await prisma.transaction.findUnique({ where: { id } })).counterparty, null);
+  });
 
-    const { body } = await http().get('/api/transactions/debts').set(auth(token)).expect(200);
-    const elbert = body.people.find((p) => p.name.toLowerCase() === 'elbert');
-    const sinta = body.people.find((p) => p.name === 'Sinta');
-    assert.equal(elbert.balance, 161500 - 29000); // still owes the user
-    assert.equal(elbert.count, 2);
-    assert.equal(sinta.balance, -300000); // the user owes Sinta
-    assert.equal(body.owedToYou >= 132500, true);
-    assert.equal(body.youOwe, 300000);
-    assert.ok(body.entries.every((e) => e.category === 'DEBT'));
+  test('utang-piutang notes: create, partial payment, checkbox, ownership, open first', async () => {
+    const other = (await http().post('/api/auth/login').send({ email: 'alice@test.com', password: 'password123' }).expect(201)).body.token;
+    const a = (await http().post('/api/debts').set(auth(token))
+      .send({ person: ' Budi ', direction: 'THEY_OWE', amount: 150000, note: 'Bakmi acet' }).expect(201)).body;
+    assert.equal(a.person, 'Budi');
+    assert.equal(a.amount, 150000);
+    assert.equal(a.paid, 0);
+    const b = (await http().post('/api/debts').set(auth(token))
+      .send({ person: 'Sinta', direction: 'I_OWE', amount: 50000, paid: 999999 }).expect(201)).body;
+    assert.equal(b.paid, 50000, 'paid is capped at the amount');
 
-    // Editing the person moves the amount; changing the category away from DEBT clears it
-    const tx = body.entries.find((e) => e.counterparty === 'Sinta');
-    await http().put(`/api/transactions/${tx.id}`).set(auth(token)).send({ counterparty: 'Rani' }).expect(200);
-    const after = (await http().get('/api/transactions/debts').set(auth(token)).expect(200)).body;
-    assert.equal(after.people.find((p) => p.name === 'Rani').balance, -300000);
-    assert.equal(after.people.some((p) => p.name === 'Sinta'), false);
-    await http().put(`/api/transactions/${tx.id}`).set(auth(token)).send({ category: 'INCOME' }).expect(200);
-    const row = await prisma.transaction.findUnique({ where: { id: tx.id } });
-    assert.equal(row.counterparty, null);
+    // Partial payment, then the checkbox
+    assert.equal((await http().put(`/api/debts/${a.id}`).set(auth(token)).send({ paid: 100000 }).expect(200)).body.paid, 100000);
+    assert.equal((await http().put(`/api/debts/${a.id}`).set(auth(token)).send({ settled: true }).expect(200)).body.paid, 150000);
+    assert.equal((await http().put(`/api/debts/${a.id}`).set(auth(token)).send({ settled: false }).expect(200)).body.paid, 0);
 
-    await http().get('/api/transactions/debts').expect(401);
+    // Open notes come before settled ones (Sinta is settled)
+    const list = (await http().get('/api/debts').set(auth(token)).expect(200)).body;
+    assert.deepEqual(list.map((n) => n.person), ['Budi', 'Sinta']);
+
+    // Notes never change balances
+    const before = Number((await prisma.account.findUnique({ where: { id: account.id } })).balance);
+    await http().post('/api/debts').set(auth(token)).send({ person: 'X', direction: 'THEY_OWE', amount: 1 }).expect(201);
+    assert.equal(Number((await prisma.account.findUnique({ where: { id: account.id } })).balance), before);
+
+    // Validation and ownership
+    await http().post('/api/debts').set(auth(token)).send({ person: 'Y', direction: 'LENT', amount: 1 }).expect(400);
+    await http().post('/api/debts').set(auth(token)).send({ person: '', direction: 'I_OWE', amount: 1 }).expect(400);
+    assert.deepEqual((await http().get('/api/debts').set(auth(other)).expect(200)).body, []);
+    await http().put(`/api/debts/${a.id}`).set(auth(other)).send({ settled: true }).expect(404);
+    await http().delete(`/api/debts/${a.id}`).set(auth(other)).expect(404);
+    await http().delete(`/api/debts/${a.id}`).set(auth(token)).expect(200);
+    await http().get('/api/debts').expect(401);
   });
 });
 
