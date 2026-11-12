@@ -81,6 +81,12 @@ export class CreateTransactionDataDto {
   @MaxLength(100)
   subcategory?: string;
 
+  /** Person a lending/debt transaction is with ("Budi"); only kept for category DEBT */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  counterparty?: string;
+
   @ValidateIf((o) => o.fromAccountId !== null && o.fromAccountId !== undefined)
   @IsUUID()
   fromAccountId?: string | null;
@@ -121,6 +127,12 @@ export class UpdateTransactionDto {
   @IsString()
   @MaxLength(100)
   subcategory?: string;
+
+  /** Person a lending/debt transaction is with ("Budi"); only kept for category DEBT */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  counterparty?: string;
 
   @ValidateIf((o) => o.fromAccountId !== null && o.fromAccountId !== undefined)
   @IsUUID()

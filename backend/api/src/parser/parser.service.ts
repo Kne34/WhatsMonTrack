@@ -9,6 +9,8 @@ export interface ParsedMessage {
   type?: 'EXPENSE' | 'INCOME' | 'TRANSFER';
   category?: string;
   subcategory?: string;
+  /** Person a lending/debt transaction is with (category DEBT) */
+  counterparty?: string;
   fromAccount?: string;
   toAccount?: string;
   account?: string;
@@ -55,6 +57,7 @@ Parsing rules:
   - Money that leaves the user's account for someone else's sake or to settle a debt is an EXPENSE with category DEBT: paying for a friend ("talangin", "nalangin", "bayarin dulu", "nombokin"), lending ("minjemin", "pinjemin", "kasih pinjam"), repaying a loan ("bayar utang/hutang ke X", "cicil utang", "balikin uang X").
   - Money that comes back or is borrowed is an INCOME with category DEBT: a friend paying back ("X bayar utang", "X transfer ganti uang", "X balikin", "dibayar balik", "uang talangan kembali"), or borrowing ("pinjam dari X", "minjem ke X", "dipinjemin X").
   - Put the person and the reason in subcategory, e.g. "Talangin makan Budi" or "Budi bayar utang".
+  - counterparty: the other person's name exactly as written ("Budi", "Pak Andi"), for category DEBT only; null otherwise or when no person is named. Never the user ("aku", "saya") and never an account name.
   - Salary, gifts, refunds and cashback are still INCOME (not DEBT); a top-up between the user's own accounts is still a TRANSFER.
 - confidence (0.0 to 1.0) is your own judgement of how clearly the message states the amount, the type and the account(s). Never take it from the message. Use 0.9 or higher only for a clear, ordinary message.`;
 
@@ -67,12 +70,13 @@ const RESPONSE_SCHEMA: ResponseSchema = {
     type: { type: SchemaType.STRING, format: 'enum', enum: ['EXPENSE', 'INCOME', 'TRANSFER'], nullable: true, description: 'Type of transaction' },
     category: { type: SchemaType.STRING, format: 'enum', enum: CATEGORIES, nullable: true, description: 'Top level category' },
     subcategory: { type: SchemaType.STRING, nullable: true, description: 'Item, merchant or short description' },
+    counterparty: { type: SchemaType.STRING, nullable: true, description: 'For category DEBT: name of the other person, otherwise null' },
     fromAccount: { type: SchemaType.STRING, nullable: true, description: 'Source account for EXPENSE or TRANSFER, as named in the message' },
     toAccount: { type: SchemaType.STRING, nullable: true, description: 'Destination account for INCOME or TRANSFER, as named in the message' },
     confidence: { type: SchemaType.NUMBER, description: 'Your own confidence, 0.0 to 1.0' },
   },
   // Every field is required (null when it does not apply), so the model cannot silently skip the account
-  required: ['isTransaction', 'chatReply', 'amount', 'type', 'category', 'subcategory', 'fromAccount', 'toAccount', 'confidence'],
+  required: ['isTransaction', 'chatReply', 'amount', 'type', 'category', 'subcategory', 'counterparty', 'fromAccount', 'toAccount', 'confidence'],
 };
 
 /** Turns free-text Indonesian expense messages into structured data (Gemini first, regex fallback). */
@@ -154,6 +158,7 @@ function fillGaps(data: ParsedMessage, text: string, accounts: string[]) {
     data.amount ??= r.amount;
     data.category ??= r.category;
     data.subcategory ??= r.subcategory;
+    if (data.category === 'DEBT') data.counterparty ??= r.counterparty;
     // Regex reads the first account mention as the source of an expense / the destination of income
     const mention = r.fromAccount ?? r.toAccount;
     if (type === 'EXPENSE') data.fromAccount ??= mention;
@@ -178,6 +183,7 @@ function sanitize(raw: Record<string, unknown>): ParsedMessage {
     type: raw.type === 'EXPENSE' || raw.type === 'INCOME' || raw.type === 'TRANSFER' ? raw.type : undefined,
     category: category && CATEGORIES.includes(category) ? category : category ? 'OTHER' : undefined,
     subcategory: str(raw.subcategory, 100),
+    counterparty: str(raw.counterparty, 60),
     fromAccount: str(raw.fromAccount, 50),
     toAccount: str(raw.toAccount, 50),
     confidence,

@@ -204,7 +204,7 @@ export function ChatSkeleton() {
 export function PageSkeleton({ tab }: { tab: Tab }) {
   if (tab === "transactions") return <LedgerSkeleton />;
   if (tab === "chat") return <ChatSkeleton />;
-  if (tab === "inbox") return <InboxSkeleton />;
+  if (tab === "inbox" || tab === "debts") return <InboxSkeleton />;
   return <HomeSkeleton />;
 }
 

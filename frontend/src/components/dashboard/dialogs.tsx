@@ -285,6 +285,8 @@ export interface TransactionInput {
   amount: number;
   category: string;
   subcategory?: string;
+  /** Person of a lending/debt transaction */
+  counterparty?: string;
   fromAccountId: string | null;
   toAccountId: string | null;
   createdAt: string;
@@ -296,9 +298,18 @@ export interface TransactionLike {
   amount: number;
   category: string;
   subcategory?: string | null;
+  counterparty?: string | null;
   fromAccountId?: string | null;
   toAccountId?: string | null;
   createdAt: string;
+}
+
+/** Prefill for a new lending/debt entry, e.g. "Budi paid back" from the Utang page. */
+export interface DebtPreset {
+  type?: "EXPENSE" | "INCOME";
+  counterparty?: string;
+  amount?: number;
+  description?: string;
 }
 
 /** "2026-11-05T14:30" in local time, for <input type="datetime-local"> */
@@ -308,20 +319,23 @@ const toLocalInput = (date: Date) => {
 };
 
 /** Create (transaction = null) or edit. Mount only while open so fields start fresh. */
-export function TransactionDialog({ transaction, debt = false, accounts, categories, onClose, onSave, onAddAccount }: {
+export function TransactionDialog({ transaction, debt: debtPreset, accounts, categories, onClose, onSave, onAddAccount }: {
   transaction: TransactionLike | null;
   /** New lending/debt entry: category fixed to DEBT, money out or in instead of the three types. */
-  debt?: boolean;
+  debt?: boolean | DebtPreset;
   accounts: AccountLike[];
   categories: string[];
   onClose: () => void;
   onSave: (data: TransactionInput) => Promise<void>;
   onAddAccount: () => void;
 }) {
-  const [type, setType] = useState<TxType>(transaction?.type ?? "EXPENSE");
-  const [amount, setAmount] = useState(transaction ? String(Math.round(transaction.amount)) : "");
+  const debt = !!debtPreset;
+  const preset: DebtPreset = typeof debtPreset === "object" ? debtPreset : {};
+  const [type, setType] = useState<TxType>(transaction?.type ?? preset.type ?? "EXPENSE");
+  const [amount, setAmount] = useState(transaction ? String(Math.round(transaction.amount)) : preset.amount ? String(Math.round(preset.amount)) : "");
   const [category, setCategory] = useState(transaction?.category ?? (debt ? DEBT_CATEGORY : ""));
-  const [description, setDescription] = useState(transaction?.subcategory ?? "");
+  const [description, setDescription] = useState(transaction?.subcategory ?? preset.description ?? "");
+  const [person, setPerson] = useState(transaction?.counterparty ?? preset.counterparty ?? "");
   const [fromAccountId, setFromAccountId] = useState(transaction?.fromAccountId ?? "");
   const [toAccountId, setToAccountId] = useState(transaction?.toAccountId ?? "");
   const [when, setWhen] = useState(toLocalInput(transaction ? new Date(transaction.createdAt) : new Date()));
@@ -330,6 +344,7 @@ export function TransactionDialog({ transaction, debt = false, accounts, categor
 
   const needsFrom = type !== "INCOME";
   const needsTo = type !== "EXPENSE";
+  const isDebtEntry = type !== "TRANSFER" && category === DEBT_CATEGORY;
 
   if (accounts.length === 0) {
     return (
@@ -360,6 +375,7 @@ export function TransactionDialog({ transaction, debt = false, accounts, categor
         amount: Number(amount),
         category: category || (type === "INCOME" ? "INCOME" : "UNCATEGORIZED"),
         subcategory: description.trim() || undefined,
+        counterparty: isDebtEntry ? person.trim() : undefined,
         fromAccountId: needsFrom ? fromAccountId : null,
         toAccountId: needsTo ? toAccountId : null,
         createdAt: new Date(when).toISOString(),
@@ -402,6 +418,11 @@ export function TransactionDialog({ transaction, debt = false, accounts, categor
               ? "Uang yang dibayar balik atau dipinjam. Saldo bertambah, tapi tidak dihitung sebagai pemasukan."
               : "Talangan, uang yang dipinjamkan, atau bayar utang. Saldo berkurang, tapi tidak dihitung sebagai pengeluaran."}
           </p>
+        )}
+        {isDebtEntry && (
+          <TextField label="Nama orang" value={person} onChange={(e) => setPerson(e.target.value)} maxLength={60}
+            placeholder="Budi" autoComplete="off"
+            hint="Dipakai untuk menghitung sisa utang-piutang per orang di halaman Utang-piutang." />
         )}
         <TextField label="Keterangan (opsional)" value={description} onChange={(e) => setDescription(e.target.value)}
           placeholder={debt ? (type === "INCOME" ? "Budi bayar utang" : "Talangin makan Budi") : "Makan siang, bensin, gaji"} maxLength={100} />

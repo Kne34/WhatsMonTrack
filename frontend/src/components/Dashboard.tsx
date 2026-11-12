@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   confirmTransaction, createAccount, createTransaction, deleteAccount, deleteBudget, deleteTransaction,
-  fetchAccounts, fetchBudgets, fetchPhoneStatus, fetchTransactions, fetchWhatsAppStatus, setBudget,
+  fetchAccounts, fetchBudgets, fetchDebts, fetchPhoneStatus, fetchTransactions, fetchWhatsAppStatus, setBudget,
   updateAccount, updateTransaction, type PhoneStatus, type WhatsAppStatus,
 } from "@/lib/api";
 import { categoryLabel, formatRupiah } from "@/lib/format";
@@ -16,11 +16,12 @@ import { PageSkeleton } from "./dashboard/skeletons";
 import { AddMenu, BottomTabs, MobileAccountMenu, MonthSwitcher, NAV_ITEMS, Sidebar, type Tab } from "./dashboard/shared/Navigation";
 import HomeView from "./dashboard/views/HomeView";
 import LedgerView, { type LedgerTx } from "./dashboard/views/LedgerView";
+import DebtsView, { type DebtSummary } from "./dashboard/views/DebtsView";
 import InboxView, { type ReviewTx } from "./dashboard/views/InboxView";
 import ChatView from "./dashboard/views/ChatView";
 import {
   AccountDialog, BudgetDialog, ConfirmDialog, TransactionDialog, categoryOptions,
-  type AccountLike, type BudgetLike, type TransactionInput, type TransactionLike,
+  type AccountLike, type BudgetLike, type DebtPreset, type TransactionInput, type TransactionLike,
 } from "./dashboard/dialogs";
 import WhatsAppStatusModal from "./dashboard/modals/WhatsAppStatusModal";
 import LinkWhatsAppModal from "./dashboard/modals/LinkWhatsAppModal";
@@ -31,13 +32,13 @@ type ApiTx = any;
 type DialogState =
   | { kind: "none" }
   | { kind: "account"; account: AccountLike | null }
-  | { kind: "transaction"; tx: TransactionLike | null; debt?: boolean }
+  | { kind: "transaction"; tx: TransactionLike | null; debt?: boolean | DebtPreset }
   | { kind: "budget"; budget: BudgetLike | null }
   | { kind: "confirm"; title: string; description: string; confirmLabel: string; action: () => Promise<void> }
   | { kind: "link" }
   | { kind: "bot" };
 
-const PAGE_TITLES: Record<Tab, string> = { dashboard: "Dashboard", transactions: "Transaksi", chat: "Chat", inbox: "Perlu ditinjau" };
+const PAGE_TITLES: Record<Tab, string> = { dashboard: "Dashboard", transactions: "Transaksi", debts: "Utang-piutang", chat: "Chat", inbox: "Perlu ditinjau" };
 const REFRESH_MS = 15_000;
 
 export default function Dashboard({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
@@ -64,6 +65,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   // Has the user ever recorded a transaction (any month)? Once true it stays true, so it is asked only until then.
   const [hasAnyTransaction, setHasAnyTransaction] = useState(false);
   const knownHasTx = useRef(false);
+  const [debts, setDebts] = useState<DebtSummary | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // Filters the data on screen belongs to. While they differ from the selected filters,
@@ -88,7 +90,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   const loadData = useCallback(async () => {
     const key = `${month}/${year}/${selectedDay}/${page}/${limit}/${filterKey}`;
     try {
-      const [monthly, table, accs, budgs, wa, phone, any] = await Promise.all([
+      const [monthly, table, accs, budgs, wa, phone, any, debtData] = await Promise.all([
         fetchTransactions({ month, year, page: 1, limit: 1000 }),
         fetchTransactions({ month, year, day: selectedDay || undefined, page, limit, status: "CONFIRMED", ...JSON.parse(filterKey) }),
         fetchAccounts(),
@@ -96,7 +98,9 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
         fetchWhatsAppStatus().catch(() => null),
         fetchPhoneStatus().catch(() => null),
         knownHasTx.current ? null : fetchTransactions({ page: 1, limit: 1 }).catch(() => null),
+        fetchDebts().catch(() => null),
       ]);
+      if (debtData) setDebts(debtData);
       if (any && (any.total ?? (any.data ?? any).length) > 0) {
         knownHasTx.current = true;
         setHasAnyTransaction(true);
@@ -303,7 +307,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
             {/* Phones: month switcher left, add button right (its menu opens leftwards and stays on screen) */}
             <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
               {/* The chat is not tied to a month */}
-              {activeTab !== "chat" && <MonthSwitcher month={month} year={year} onChange={changeMonth} />}
+              {activeTab !== "chat" && activeTab !== "debts" && <MonthSwitcher month={month} year={year} onChange={changeMonth} />}
               <AddMenu {...addActions} />
             </div>
           </header>
@@ -341,10 +345,18 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
               year={year}
               phoneLinked={!!phoneStatus?.phoneNumber}
               hasAnyTransaction={hasAnyTransaction || monthlyTxs.length > 0}
+              onOpenDebts={() => navigate("debts")}
               onEditAccount={(account) => setDialog({ kind: "account", account })}
               onEditBudget={(budget) => setDialog({ kind: "budget", budget })}
               onLinkPhone={() => setDialog({ kind: "link" })}
               {...addActions}
+            />
+          ) : activeTab === "debts" ? (
+            <DebtsView
+              data={debts}
+              onRecord={(preset) => setDialog({ kind: "transaction", tx: null, debt: preset })}
+              onEdit={(tx) => setDialog({ kind: "transaction", tx: tx as unknown as TransactionLike })}
+              onDelete={askDeleteTransaction}
             />
           ) : activeTab === "transactions" ? (
             <LedgerView

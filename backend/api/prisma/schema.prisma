@@ -67,6 +67,8 @@ model Transaction {
   amount          BigInt
   category        String
   subcategory     String?
+  /// Person a lending/debt transaction (category DEBT) is with, e.g. "Budi"
+  counterparty    String?
   fromAccountId   String?
   toAccountId     String?
   rawText         String?
@@ -79,6 +81,8 @@ model Transaction {
   user            User      @relation(fields: [userId], references: [id])
   fromAccount     Account?  @relation("FromAccount", fields: [fromAccountId], references: [id])
   toAccount       Account?  @relation("ToAccount", fields: [toAccountId], references: [id])
+
+  @@index([userId, category])
 }
 
 model Budget {

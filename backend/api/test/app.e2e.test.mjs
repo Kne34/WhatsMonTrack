@@ -364,6 +364,37 @@ describe('money, time zones and the WhatsApp bot (real database)', () => {
     await http().get('/api/transactions?type=LOAN').set(auth(token)).expect(400);
     await http().get('/api/transactions?accountId=not-a-uuid').set(auth(token)).expect(400);
   });
+
+  test('lending and debt per person: out minus in, names grouped case-insensitively, only for DEBT', async () => {
+    const add = (data) => http().post('/api/transactions/manual').set(auth(token)).send({ data }).expect(201);
+    await add({ type: 'EXPENSE', amount: 161500, category: 'DEBT', counterparty: ' Elbert ', fromAccountId: account.id });
+    await add({ type: 'INCOME', amount: 29000, category: 'DEBT', counterparty: 'elbert', toAccountId: account.id });
+    await add({ type: 'INCOME', amount: 300000, category: 'DEBT', counterparty: 'Sinta', subcategory: 'Pinjam dari Sinta', toAccountId: account.id });
+    const food = await add({ type: 'EXPENSE', amount: 20000, category: 'FOOD', counterparty: 'Ignored', fromAccountId: account.id });
+    assert.equal(food.body.transaction.counterparty, null, 'a person is only kept for lending/debt');
+
+    const { body } = await http().get('/api/transactions/debts').set(auth(token)).expect(200);
+    const elbert = body.people.find((p) => p.name.toLowerCase() === 'elbert');
+    const sinta = body.people.find((p) => p.name === 'Sinta');
+    assert.equal(elbert.balance, 161500 - 29000); // still owes the user
+    assert.equal(elbert.count, 2);
+    assert.equal(sinta.balance, -300000); // the user owes Sinta
+    assert.equal(body.owedToYou >= 132500, true);
+    assert.equal(body.youOwe, 300000);
+    assert.ok(body.entries.every((e) => e.category === 'DEBT'));
+
+    // Editing the person moves the amount; changing the category away from DEBT clears it
+    const tx = body.entries.find((e) => e.counterparty === 'Sinta');
+    await http().put(`/api/transactions/${tx.id}`).set(auth(token)).send({ counterparty: 'Rani' }).expect(200);
+    const after = (await http().get('/api/transactions/debts').set(auth(token)).expect(200)).body;
+    assert.equal(after.people.find((p) => p.name === 'Rani').balance, -300000);
+    assert.equal(after.people.some((p) => p.name === 'Sinta'), false);
+    await http().put(`/api/transactions/${tx.id}`).set(auth(token)).send({ category: 'INCOME' }).expect(200);
+    const row = await prisma.transaction.findUnique({ where: { id: tx.id } });
+    assert.equal(row.counterparty, null);
+
+    await http().get('/api/transactions/debts').expect(401);
+  });
 });
 
 describe('WhatsApp session stored in PostgreSQL', () => {

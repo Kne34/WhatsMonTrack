@@ -53,6 +53,15 @@ describe('parseWithRegex', () => {
     expect(parse('talangin makan Budi 150rb pakai BCA').subcategory).toBe('talangin makan Budi');
   });
 
+  it('finds the person of a lending/debt message', () => {
+    expect(parse('talangin makan Budi 150rb pakai BCA').counterparty).toBe('Budi');
+    expect(parse('Budi bayar utang 150rb ke BCA').counterparty).toBe('Budi');
+    expect(parse('bayar utang ke Sinta 100rb pakai BCA').counterparty).toBe('Sinta');
+    expect(parse('pinjam dari sinta 500rb masuk BCA').counterparty).toBe('sinta');
+    expect(parse('talangin makan teman 200rb BCA').counterparty).toBeUndefined();
+    expect(parse('makan siang 25rb pakai BCA').counterparty).toBeUndefined(); // not lending/debt
+  });
+
   it('keeps a transfer between two own accounts a transfer, even with debt words', () => {
     expect(parse('transfer 100rb dari BCA ke GoPay buat bayar utang')).toMatchObject({ type: 'TRANSFER', category: 'OTHER' });
   });

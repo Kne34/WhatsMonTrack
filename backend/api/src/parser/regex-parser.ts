@@ -102,6 +102,21 @@ function findAmount(words: string[]): { amount: number; index: number } | null {
   return fallback;
 }
 
+const PERSON_MARKERS = new Set(['ke', 'dari', 'buat', 'untuk', 'sama', 'utk']);
+const NOT_A_PERSON = /^(aku|saya|gue|gw|ku|kamu|teman|temen|uang|duit|rekening|saldo|utang|hutang|bayar|talangin|talangan|nalangin|bayarin|minjemin|pinjemin|pinjam|pinjem|minjem|ganti|balik|dibalikin|kembali|masuk|transfer|tf|pakai|pake|via|lewat|makan|beli)$/i;
+
+function findPerson(words: string[], mentions: Mention[], amountIndex: number): string | undefined {
+  const isAccount = (i: number) => mentions.some((m) => i >= m.start && i < m.end);
+  const ok = (i: number) => {
+    const w = words[i];
+    return !!w && i !== amountIndex && !isAccount(i) && /^\p{L}[\p{L}'-]*$/u.test(w) && !NOT_A_PERSON.test(w) && !UNITS[w.toLowerCase()];
+  };
+  for (let i = 0; i < words.length - 1; i++) {
+    if (PERSON_MARKERS.has(words[i].toLowerCase()) && ok(i + 1)) return words[i + 1];
+  }
+  return words.find((w, i) => ok(i) && /^\p{Lu}/u.test(w)); // a capitalised name anywhere
+}
+
 export function parseWithRegex(text: string, accountNames: string[] = []): ParseResult {
   const words = text.replace(/[^\p{L}\p{N}.,\s-]/gu, ' ').split(/\s+/).filter(Boolean);
   const amount = findAmount(words);
@@ -138,6 +153,10 @@ export function parseWithRegex(text: string, accountNames: string[] = []): Parse
     data.fromAccount = (mentions.find((m) => FROM_MARKERS.has(before(m))) ?? mentions[0])?.name;
     data.category = debt ? 'DEBT' : (CATEGORY_WORDS.find(([, re]) => re.test(text))?.[0] ?? 'OTHER');
   }
+
+  // Lending/debt: the person is the word after "ke/dari/buat/sama" ("bayar utang ke Sinta", "pinjam dari
+  // Sinta"), otherwise a capitalised name ("Budi bayar utang", "talangin makan Budi")
+  if (debt) data.counterparty = findPerson(words, mentions, amount.index);
 
   // What is left after removing the amount, account names and filler words describes the item
   const used = new Set<number>([amount.index]);

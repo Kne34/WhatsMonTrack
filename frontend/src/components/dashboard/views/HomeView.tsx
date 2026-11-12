@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Check, Eye, EyeOff, ReceiptText, Target, Wallet } from "lucide-react";
+import { Check, ReceiptText, Target, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { categoryLabel, formatCompact, formatMonth, formatRupiah, isDebt } from "@/lib/format";
-import { Button, Card, CardHeader, EmptyState, IconButton, SegmentedControl, focusRing } from "../../common/ui";
-import { UnlockDialog } from "../dialogs";
+import { Button, Card, CardHeader, EmptyState, SegmentedControl, focusRing } from "../../common/ui";
+import { usePrivacy } from "../shared/privacy";
 
 interface Tx {
   id: string;
@@ -28,31 +28,14 @@ interface HomeViewProps {
   phoneLinked: boolean;
   /** Any transaction ever recorded (any month); the getting-started steps are hidden after the first one. */
   hasAnyTransaction: boolean;
+  /** Opens the Utang-piutang page */
+  onOpenDebts: () => void;
   onAddTransaction: () => void;
   onAddAccount: () => void;
   onEditAccount: (account: Account) => void;
   onAddBudget: () => void;
   onEditBudget: (budget: Budget) => void;
   onLinkPhone: () => void;
-}
-
-/** Each key figure has its own eye toggle, remembered per browser (localStorage key). */
-const HIDE_KEYS = {
-  balance: "wmt.hideBalances",
-  income: "wmt.hideIncome",
-  expense: "wmt.hideExpense",
-  net: "wmt.hideNet",
-} as const;
-type HideKey = keyof typeof HIDE_KEYS;
-const UNLOCK_LABEL: Record<HideKey, string> = { balance: "saldo", income: "pemasukan", expense: "pengeluaran", net: "selisih" };
-const MASK = "Rp ••••••";
-
-function EyeToggle({ hidden, what, onToggle }: { hidden: boolean; what: string; onToggle: () => void }) {
-  return (
-    <IconButton label={hidden ? `Tampilkan ${what}` : `Sembunyikan ${what}`} aria-pressed={hidden} onClick={onToggle} className="-my-2 -mr-2 size-8">
-      {hidden ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-    </IconButton>
-  );
 }
 
 // Chart chrome: recessive, solid hairlines; text in muted ink (dataviz guidelines)
@@ -128,28 +111,12 @@ function Onboarding({ hasAccount, phoneLinked, hasTransaction, onAddAccount, onL
 }
 
 export default function HomeView({
-  monthlyTxs, accounts, budgets, month, year, phoneLinked, hasAnyTransaction,
+  monthlyTxs, accounts, budgets, month, year, phoneLinked, hasAnyTransaction, onOpenDebts,
   onAddTransaction, onAddAccount, onEditAccount, onAddBudget, onEditBudget, onLinkPhone,
 }: HomeViewProps) {
-  const [hide, setHide] = useState<Record<HideKey, boolean>>({ balance: false, income: false, expense: false, net: false });
+  // Each section has its own eye (see usePrivacy); showing a hidden one asks for the password
+  const privacy = usePrivacy(["balance", "accounts", "income", "expense", "net", "debt"] as const);
   const [breakdown, setBreakdown] = useState<"EXPENSE" | "INCOME">("EXPENSE");
-
-  // Remember each "hide" preference per browser
-  useEffect(() => {
-    try {
-      const read = (k: HideKey) => localStorage.getItem(HIDE_KEYS[k]) === "1";
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reading browser-only preferences after mount
-      setHide({ balance: read("balance"), income: read("income"), expense: read("expense"), net: read("net") });
-    } catch { /* storage unavailable */ }
-  }, []);
-  const setHidden = (k: HideKey, hidden: boolean) => {
-    setHide((h) => ({ ...h, [k]: hidden }));
-    try { localStorage.setItem(HIDE_KEYS[k], hidden ? "1" : "0"); } catch { /* ignore */ }
-  };
-  // Hiding is instant; showing a hidden amount again asks for the account password every time
-  const [unlocking, setUnlocking] = useState<HideKey | null>(null);
-  const toggle = (k: HideKey) => (hide[k] ? setUnlocking(k) : setHidden(k, true));
-  const money = (v: number) => (hide.balance ? MASK : formatRupiah(v));
 
   // Only the selected month: right after switching months the previous month's data is still loaded,
   // and e.g. a transaction on Oct 31 must not be placed on a non-existent "Nov 31".
@@ -232,9 +199,7 @@ export default function HomeView({
 
   return (
     <div className="space-y-6">
-      {unlocking && (
-        <UnlockDialog what={UNLOCK_LABEL[unlocking]} onClose={() => setUnlocking(null)} onUnlocked={() => setHidden(unlocking, false)} />
-      )}
+      {privacy.unlockDialog}
       {showOnboarding && (
         <Onboarding hasAccount={accounts.length > 0} phoneLinked={phoneLinked} hasTransaction={hasTransactions}
           onAddAccount={onAddAccount} onLinkPhone={onLinkPhone} onAddTransaction={onAddTransaction} />
@@ -244,27 +209,27 @@ export default function HomeView({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           label="Saldo total"
-          value={money(totalBalance)}
+          value={privacy.show("balance", formatRupiah(totalBalance))}
           sub={`${accounts.length} rekening`}
-          action={<EyeToggle hidden={hide.balance} what="saldo" onToggle={() => toggle("balance")} />}
+          action={privacy.eye("balance")}
         />
         <StatTile
           label="Pemasukan"
-          value={hide.income ? MASK : formatRupiah(income)}
+          value={privacy.show("income", formatRupiah(income))}
           sub={monthName}
-          action={<EyeToggle hidden={hide.income} what="pemasukan" onToggle={() => toggle("income")} />}
+          action={privacy.eye("income")}
         />
         <StatTile
           label="Pengeluaran"
-          value={hide.expense ? MASK : formatRupiah(expense)}
+          value={privacy.show("expense", formatRupiah(expense))}
           sub={monthName}
-          action={<EyeToggle hidden={hide.expense} what="pengeluaran" onToggle={() => toggle("expense")} />}
+          action={privacy.eye("expense")}
         />
         <StatTile
           label="Selisih"
-          value={hide.net ? MASK : `${net > 0 ? "+" : ""}${formatRupiah(net)}`}
+          value={privacy.show("net", `${net > 0 ? "+" : ""}${formatRupiah(net)}`)}
           sub="Pemasukan dikurangi pengeluaran"
-          action={<EyeToggle hidden={hide.net} what="selisih" onToggle={() => toggle("net")} />}
+          action={privacy.eye("net")}
         />
       </div>
 
@@ -358,8 +323,8 @@ export default function HomeView({
               title="Rekening"
               action={accounts.length > 0 && (
                 <div className="flex items-center gap-1">
-                  {/* Same preference as the "Saldo total" eye */}
-                  <EyeToggle hidden={hide.balance} what="saldo rekening" onToggle={() => toggle("balance")} />
+                  {/* Its own eye, independent of "Saldo total" */}
+                  {privacy.eye("accounts", "size-8")}
                   <Button variant="ghost" size="sm" onClick={onAddAccount}>Tambah</Button>
                 </div>
               )}
@@ -371,7 +336,7 @@ export default function HomeView({
                     <button type="button" onClick={() => onEditAccount(a)}
                       className={cn("flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition-colors hover:bg-muted", focusRing)}>
                       <span className="truncate text-foreground">{a.name}</span>
-                      <span className="shrink-0 tabular-nums text-foreground">{money(a.balance)}</span>
+                      <span className="shrink-0 tabular-nums text-foreground">{privacy.show("accounts", formatRupiah(a.balance))}</span>
                     </button>
                   </li>
                 ))}
@@ -385,19 +350,28 @@ export default function HomeView({
 
           {(debtOut > 0 || debtIn > 0) && (
             <Card>
-              <CardHeader title="Utang-piutang" description={`${monthName} · tidak termasuk pemasukan & pengeluaran`} />
+              <CardHeader
+                title="Utang-piutang"
+                description={`${monthName} · tidak termasuk pemasukan & pengeluaran`}
+                action={
+                  <div className="flex items-center gap-1">
+                    {privacy.eye("debt", "size-8")}
+                    <Button variant="ghost" size="sm" onClick={onOpenDebts}>Detail</Button>
+                  </div>
+                }
+              />
               <dl className="space-y-2 text-sm">
                 <div className="flex items-baseline justify-between gap-3">
                   <dt className="text-muted-foreground">Keluar<span className="block text-xs">Talangan, pinjamkan, bayar utang</span></dt>
-                  <dd className="shrink-0 tabular-nums text-foreground">{money(debtOut)}</dd>
+                  <dd className="shrink-0 tabular-nums text-foreground">{privacy.show("debt", formatRupiah(debtOut))}</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-3">
                   <dt className="text-muted-foreground">Masuk<span className="block text-xs">Dibayar balik, pinjam</span></dt>
-                  <dd className="shrink-0 tabular-nums text-foreground">{money(debtIn)}</dd>
+                  <dd className="shrink-0 tabular-nums text-foreground">{privacy.show("debt", formatRupiah(debtIn))}</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-3 border-t border-border pt-2">
                   <dt className="font-medium text-foreground">{debtOut >= debtIn ? "Belum kembali bulan ini" : "Lebih banyak masuk"}</dt>
-                  <dd className="shrink-0 tabular-nums font-medium text-foreground">{money(Math.abs(debtOut - debtIn))}</dd>
+                  <dd className="shrink-0 tabular-nums font-medium text-foreground">{privacy.show("debt", formatRupiah(Math.abs(debtOut - debtIn)))}</dd>
                 </div>
               </dl>
             </Card>

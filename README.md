@@ -57,6 +57,7 @@ Quick access to every document in this repository.
 
 ### Web dashboard
 - **Dashboard (overview):** total balance, income, expense and difference (each can be hidden with its eye icon), cash-flow chart, daily spending chart with the daily budget line, spending or income per category, accounts (with their own eye icon) and budget progress, plus a lending/debt card kept apart from the totals.
+- **Utang-piutang page:** who still owes you and whom you owe, per person over all time, with each person's history and one-tap "Catat pembayaran".
 - **Transaksi (ledger):** calendar day filter, paginated list (10/15/50/100 per page), add, edit and delete.
 - **Chat:** chat with the bot right on the web, with the same results as on WhatsApp (record transactions, `/rekap`). Works without a bot number or a linked phone; the history is saved and can be cleared.
 - **Perlu ditinjau (review inbox):** confirm, edit or delete uncertain bot results, or delete them all.
@@ -139,6 +140,7 @@ All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-passwo
 | `GET /api/accounts`, `POST /api/accounts`, `PUT /api/accounts/:id` | Accounts; the list includes `transactionCount` (transactions that use each account) |
 | `DELETE /api/accounts/:id?withTransactions=true` | Delete an account. Without the flag an account still in use gets `409` with `transactionCount`; with it, its transactions are deleted too and other accounts' balances are corrected |
 | `GET /api/budgets`, `POST /api/budgets`, `DELETE /api/budgets/:id` | Budgets (POST creates or updates per category) |
+| `GET /api/transactions/debts` | Lending/debt (`DEBT`) per person over all time: `people` (out, in, balance = out − in), `owedToYou`, `youOwe`, `entries` |
 | `GET /api/transactions?month&year&day&page&limit` | List transactions; month/day boundaries use the user's time zone. Optional filters: `type` (EXPENSE/INCOME/TRANSFER), `category` (code, case-insensitive), `accountId` (money out of or into that account), `q` (text in the description or original message), `status` (CONFIRMED/NEEDS_REVIEW) |
 | `POST /api/transactions/manual` | Add a transaction manually |
 | `PUT /api/transactions/:id`, `DELETE /api/transactions/:id` | Edit or delete (balances are corrected) |
@@ -308,6 +310,8 @@ Other replies you may get:
 | *Halo! Nomor ini belum terhubung ...* | This number is not linked to an account yet; see step 4 |
 
 #### Lending and debt (utang-piutang)
+See also the [Utang-piutang page](#11-utang-piutang-page).
+
 Paying for a friend first, lending money, borrowing, and paying back are not real spending or income, but they do move money. Record them with category **Utang-piutang** (`DEBT`):
 
 | Situation | Type | Example message |
@@ -345,13 +349,14 @@ The **Chat** tab (sidebar; on a phone: the bottom bar) talks to the same bot as 
 
 ### 9. Dashboard (overview)
 - **Month switcher** at the top: go back to earlier months, **Bulan ini** jumps back to the current month. Future months are disabled.
-- **Saldo total**: the sum of all accounts. The eye icon hides all balances (remembered in this browser), handy in public.
+- **Saldo total**: the sum of all accounts. Its eye icon hides only this number.
 - **Pemasukan / Pengeluaran / Selisih**: income, expenses and their difference for the month. Each has its own eye icon to hide it, separate from the balance toggle and remembered in this browser.
+- **Every section has its own eye**: Saldo total, Pemasukan, Pengeluaran, Selisih, the Rekening card, the Utang-piutang card, and on the Utang-piutang page the summary and the per-person list. Hiding or showing one never changes another; each choice is remembered in this browser.
 - **Showing a hidden amount asks for your password** every time (checked by the server, at most 10 tries per minute). Hiding needs no password. This keeps the numbers from someone glancing at or picking up your screen; it is not encryption, since the data is still loaded in the page.
 - **Arus kas**: running total of income minus expenses through the month.
 - **Pengeluaran harian**: spending per day. If you have budgets, a dashed line shows the average daily budget.
 - **Per kategori**: top 5 categories plus "Lainnya", switchable between expenses and income, with amounts and percentages.
-- **Rekening** and **Anggaran** cards: click an item to edit it. The Rekening card has the same eye icon as Saldo total, so balances can be hidden from either place.
+- **Rekening** and **Anggaran** cards: click an item to edit it. The Rekening card has its own eye icon, separate from Saldo total.
 - **Utang-piutang** card (only when there is any this month): money out (talangan, lending, repaying), money in (paid back, borrowing) and the difference. These are not part of Pemasukan/Pengeluaran.
 
 Only confirmed transactions are counted; drafts waiting for review are not. Lending and debt (`DEBT`) is not counted as income or spending.
@@ -363,18 +368,25 @@ Only confirmed transactions are counted; drafts waiting for review are not. Lend
 - **Add manually:** **Tambah** → **Transaksi**. Choose Pengeluaran / Pemasukan / Transfer, amount, category, an optional description, account(s), and date & time (also for past dates).
 - **Edit** (pencil) or **delete** (trash) a transaction. Balances are corrected automatically, e.g. deleting an expense gives the money back to the account.
 
-### 11. Dashboard: Perlu ditinjau (review inbox)
+### 11. Utang-piutang page
+Menu **Utang-piutang** (phone: **Utang**). Unlike the other pages it covers all time, not one month.
+- **Ringkasan**: *Orang lain berutang ke kamu* (money you are still owed) and *Utang kamu* (money you still owe), with buttons **Talangin / pinjamkan** and **Dibayar balik / pinjam**.
+- **Per orang**: one row per person with money out, money in and what is left (*Belum bayar ke kamu*, *Kamu belum bayar* or *Lunas*). **Belum lunas** / **Semua** switches between open and all people. Tap a person to see their history (edit or delete each entry) and **Catat pembayaran** (prefilled with the person and the amount still open), **Bayar utang** or **Talangin lagi**.
+- The person comes from **Nama orang** in the transaction form (shown for category Utang-piutang), or from the chat: *"talangin makan Budi 50rb pakai BCA"*, *"Budi bayar utang 50rb ke BCA"*. Names are grouped without regard to upper/lower case. Entries without a name are grouped as **Tanpa nama**; edit them to add the name.
+- How it is counted: money out (talangan, lending, repaying) minus money in (paid back, borrowing), per person.
+
+### 12. Dashboard: Perlu ditinjau (review inbox)
 Messages the bot was not sure about (confidence below 85%) appear here, with a counter on the menu. Each item shows the original WhatsApp message, the amount, the bot's confidence, the type, category and account.
 
 - **Konfirmasi**: record it and update the balance.
 - **Ubah**: correct it first (amount, category, accounts, date).
 - **Hapus**: discard it, or **Hapus semua** to clear the whole list. Drafts never affected any balance.
 
-### 12. Theme and account menu
+### 13. Theme and account menu
 - **Tema**: Sistem (follow the device), Terang (light) or Gelap (dark). In the sidebar on desktop, in the account menu on phones.
 - **Keluar**: log out.
 
-### 13. Troubleshooting the bot (admin)
+### 14. Troubleshooting the bot (admin)
 Everything below is in the **Bot WhatsApp** dialog (sidebar; on a phone: the account icon). What it offers depends on the bot's state:
 
 | Bot state | Sidebar | Actions |
@@ -515,7 +527,8 @@ A test with 16 injection messages (fake admin, reading other users' data, leakin
 ### Phase 13: Feedback after a few weeks of use
 - **Lending and debt (`DEBT`, "Utang-piutang"):** paying for a friend first and being paid back used to show up as a large expense and an income. Now they get their own category, recognised by Gemini and by the offline parser (talangin, bayarin, minjemin, bayar utang, ganti uang, dibalikin, pinjam dari …). Balances still change, but the totals, charts, category breakdown, budgets, the ledger calendar and `/rekap` leave them out; the dashboard and `/rekap` show them separately. A transfer between two of your own accounts stays a transfer.
 - **Tambah → Utang-piutang** on the web: the transaction form with the category already set, and only *Uang keluar* / *Uang masuk* to choose from.
-- **Eye icon on the Rekening card:** hides account balances without scrolling up to Saldo total (same setting).
+- **Eye icon on the Rekening card**, later made independent: every section (Saldo total, Rekening, Pemasukan, Pengeluaran, Selisih, Utang-piutang) has its own eye and asks for the password when shown.
+- **Utang-piutang page and person per transaction:** new `counterparty` column (migration `20261112000000_debt_counterparty`), filled by Gemini ("Budi" from "talangin makan Budi"), the offline parser and the form's **Nama orang** field. `GET /api/transactions/debts` totals it per person over all time; the page shows who owes whom, the history, and prefilled "Catat pembayaran".
 - **Getting-started steps** are hidden once any transaction has been recorded, even when no WhatsApp number is linked.
 - **"Ringkasan" is now "Dashboard"** in the menu and page title.
 - **Filters on the Transaksi page:** search, type, category and account, done on the server so paging stays right, with the matching total out/in and calendar dots that follow the filter.

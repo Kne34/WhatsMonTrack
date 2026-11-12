@@ -67,6 +67,12 @@ export const fetchTransactions = async (
   return data;
 };
 
+/** Lending and debt per person, over all time (Utang-piutang page) */
+export const fetchDebts = async () => {
+  const { data } = await api.get('/transactions/debts');
+  return data;
+};
+
 // Helper to fetch accounts
 export const fetchAccounts = async () => {
   const { data } = await api.get('/accounts');

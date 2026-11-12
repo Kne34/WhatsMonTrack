@@ -155,6 +155,7 @@ export class BotService {
         amount,
         category: parsed.category,
         subcategory: parsed.subcategory,
+        counterparty: parsed.counterparty,
         fromAccountId: from?.id,
         toAccountId: to?.id,
         rawText: text,
@@ -196,7 +197,8 @@ export class BotService {
       const label = type === 'INCOME' ? `masuk ke ${toLabel}` : `keluar dari ${fromLabel}`;
       const account = type === 'INCOME' ? toLabel : fromLabel;
       const balance = type === 'INCOME' ? toBal : fromBal;
-      return `Berhasil! Utang-piutang ${amountText} (${item}) ${label}.\nTidak dihitung sebagai ${type === 'INCOME' ? 'pemasukan' : 'pengeluaran'}, tapi saldo tetap berubah.\nSisa saldo ${account}: ${balance}${timestamp}`;
+      const who = parsed.counterparty ? ` dengan ${parsed.counterparty}` : '';
+      return `Berhasil! Utang-piutang${who} ${amountText} (${item}) ${label}.\nTidak dihitung sebagai ${type === 'INCOME' ? 'pemasukan' : 'pengeluaran'}, tapi saldo tetap berubah.\nSisa saldo ${account}: ${balance}${timestamp}`;
     }
     if (type === 'INCOME') {
       return `Berhasil! Pemasukan ${amountText} untuk ${item} telah ditambahkan ke ${toLabel}.\nSisa saldo ${toLabel}: ${toBal}${timestamp}`;

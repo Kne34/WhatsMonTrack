@@ -14,6 +14,7 @@ export interface NewTransaction {
   amount: number;
   category?: string | null;
   subcategory?: string | null;
+  counterparty?: string | null;
   fromAccountId?: string | null;
   toAccountId?: string | null;
   rawText?: string | null;
@@ -21,6 +22,12 @@ export interface NewTransaction {
   createdAt?: Date;
   /** WhatsApp message id: unique, so a re-delivered message can't be recorded twice */
   sourceMessageId?: string | null;
+}
+
+/** The person is only kept for lending/debt; trimmed, empty becomes null. */
+function personFor(category: string | null | undefined, person: string | null | undefined) {
+  if (category?.toUpperCase() !== DEBT_CATEGORY) return null;
+  return person?.trim().slice(0, 60) || null;
 }
 
 @Injectable()
@@ -87,6 +94,7 @@ export class TransactionsService {
           amount: input.amount,
           category: input.category || 'UNCATEGORIZED',
           subcategory: input.subcategory || null,
+          counterparty: personFor(input.category, input.counterparty),
           fromAccountId: input.fromAccountId || null,
           toAccountId: input.toAccountId || null,
           rawText: input.rawText ?? null,
@@ -149,6 +157,10 @@ export class TransactionsService {
           amount: dto.amount ?? transaction.amount,
           category: dto.category ?? transaction.category,
           subcategory: dto.subcategory !== undefined ? dto.subcategory : transaction.subcategory,
+          counterparty: personFor(
+            dto.category ?? transaction.category,
+            dto.counterparty !== undefined ? dto.counterparty : transaction.counterparty,
+          ),
           fromAccountId: dto.fromAccountId !== undefined ? dto.fromAccountId : transaction.fromAccountId,
           toAccountId: dto.toAccountId !== undefined ? dto.toAccountId : transaction.toAccountId,
           createdAt: dto.createdAt ? new Date(dto.createdAt) : transaction.createdAt,
@@ -204,6 +216,40 @@ export class TransactionsService {
       }
     }
     return { totalIncome, totalExpense, expenseByCategory, debtOut, debtIn, year, month, timezone: tz };
+  }
+
+  /**
+   * Lending and debt per person, over all time (not one month). Money out (talangan, lending, repaying)
+   * minus money in (paid back, borrowing): above 0 the person still owes you, below 0 you owe them.
+   */
+  async debts(userId: string) {
+    const rows = await this.prisma.transaction.findMany({
+      where: { userId, status: 'CONFIRMED', category: { equals: DEBT_CATEGORY, mode: 'insensitive' }, type: { in: ['EXPENSE', 'INCOME'] } },
+      orderBy: { createdAt: 'desc' },
+      take: 2000,
+      include: { fromAccount: true, toAccount: true },
+    });
+
+    const people = new Map<string, { name: string; out: number; in: number; count: number; lastAt: Date }>();
+    for (const t of rows) {
+      const name = t.counterparty?.trim() || '';
+      const key = name.toLowerCase();
+      // Rows are newest first, so the first spelling seen is the latest one
+      const p = people.get(key) ?? { name, out: 0, in: 0, count: 0, lastAt: t.createdAt };
+      if (t.type === 'EXPENSE') p.out += Number(t.amount);
+      else p.in += Number(t.amount);
+      p.count++;
+      people.set(key, p);
+    }
+    const list = [...people.values()]
+      .map((p) => ({ ...p, balance: p.out - p.in }))
+      .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance) || b.lastAt.getTime() - a.lastAt.getTime());
+    return {
+      people: list,
+      owedToYou: list.filter((p) => p.balance > 0).reduce((s, p) => s + p.balance, 0),
+      youOwe: list.filter((p) => p.balance < 0).reduce((s, p) => s - p.balance, 0),
+      entries: rows,
+    };
   }
 
   /** Has a transaction already been recorded from this WhatsApp message? */
