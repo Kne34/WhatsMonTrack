@@ -8,8 +8,14 @@ WORKDIR /app
 
 # Install dependencies based on the preferred package manager
 COPY package.json package-lock.json* ./
-# Retries ride out a flaky connection (ECONNRESET) instead of failing the whole release
-RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
+# Retries ride out a flaky connection (ECONNRESET). npm treats the platform binaries of lightningcss and
+# Tailwind (oxide) as optional and silently skips them when their download fails, which only shows up later
+# as "Cannot find module ../lightningcss.linux-x64-musl.node". So check that they load, and install again if not.
+RUN for i in 1 2 3; do \
+      npm ci --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 && \
+      node -e "require('lightningcss'); require('@tailwindcss/oxide')" && exit 0; \
+      echo "Native build tools missing after npm ci (attempt $i), installing again..."; \
+    done; exit 1
 
 # Rebuild the source code only when needed
 FROM base AS builder
