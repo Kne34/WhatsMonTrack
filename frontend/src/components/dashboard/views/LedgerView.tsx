@@ -1,10 +1,11 @@
 "use client";
 
-import React from "react";
-import { ChevronLeft, ChevronRight, Pencil, ReceiptText, Trash2, X } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, Pencil, ReceiptText, Search, SearchX, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { categoryLabel, formatDayMonth, formatMonth, formatRupiah, formatTime, isDebt, TX_TYPE_LABEL, type TxType } from "@/lib/format";
-import { Button, Card, EmptyState, IconButton, focusRing } from "../../common/ui";
+import { categoryLabel, formatDayMonth, formatMonth, formatRupiah, formatTime, TX_TYPE_LABEL, type TxType } from "@/lib/format";
+import { Button, Card, EmptyState, IconButton, focusRing, inputBase } from "../../common/ui";
+import { activeFilterCount, matchesFilters, NO_FILTERS, type TxFilters } from "@/lib/txFilters";
 import { LedgerRowsSkeleton } from "../skeletons";
 
 export interface LedgerTx {
@@ -13,6 +14,9 @@ export interface LedgerTx {
   amount: number;
   category: string;
   subcategory?: string | null;
+  rawText?: string | null;
+  fromAccountId?: string | null;
+  toAccountId?: string | null;
   createdAt: string;
   fromAccount?: { name: string } | null;
   toAccount?: { name: string } | null;
@@ -35,6 +39,63 @@ interface LedgerViewProps {
   onAdd: () => void;
   onEdit: (tx: LedgerTx) => void;
   onDelete: (tx: LedgerTx) => void;
+  filters: TxFilters;
+  onFiltersChange: (filters: TxFilters) => void;
+  /** Category codes for the filter (known ones plus the user's own) */
+  categories: string[];
+  accounts: { id: string; name: string }[];
+}
+
+/** Search box, type, category and account. The search is sent after a short pause in typing. */
+function FilterBar({ filters, onChange, categories, accounts }: {
+  filters: TxFilters;
+  onChange: (filters: TxFilters) => void;
+  categories: string[];
+  accounts: { id: string; name: string }[];
+}) {
+  const [search, setSearch] = useState(filters.q);
+  // Cleared from outside ("Hapus filter"): show the empty box
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- keep the box in sync with the applied filter
+  useEffect(() => { if (filters.q === "") setSearch(""); }, [filters.q]);
+  useEffect(() => {
+    if (search === filters.q) return;
+    const t = setTimeout(() => onChange({ ...filters, q: search }), 350);
+    return () => clearTimeout(t);
+  }, [search, filters, onChange]);
+
+  // Phones: the three selects fold away behind a "Filter" button; from md they are always shown
+  const [open, setOpen] = useState(false);
+  const selectCount = [filters.type, filters.category, filters.accountId].filter(Boolean).length;
+  const select = cn(inputBase, "h-10 border-border pr-8", focusRing);
+  const set = (patch: Partial<TxFilters>) => onChange({ ...filters, ...patch });
+  return (
+    <div className="space-y-2 border-b border-border/70 px-5 py-3 md:grid md:grid-cols-4 md:gap-2 md:space-y-0">
+      <div className="flex gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari"
+            aria-label="Cari transaksi" maxLength={100} className={cn(inputBase, "h-10 border-border pl-9")} />
+        </div>
+        <Button variant="secondary" className="h-10 shrink-0 md:hidden" aria-expanded={open} aria-controls="ledger-filters" onClick={() => setOpen((o) => !o)}>
+          <SlidersHorizontal className="size-4" aria-hidden /> Filter{selectCount > 0 && ` (${selectCount})`}
+        </Button>
+      </div>
+      <div id="ledger-filters" className={cn("grid-cols-1 gap-2 md:col-span-3 md:grid md:grid-cols-3", open ? "grid" : "hidden")}>
+      <select aria-label="Jenis" value={filters.type} onChange={(e) => set({ type: e.target.value as TxFilters["type"] })} className={select}>
+        <option value="">Semua jenis</option>
+        {(["EXPENSE", "INCOME", "TRANSFER"] as TxType[]).map((t) => <option key={t} value={t}>{TX_TYPE_LABEL[t]}</option>)}
+      </select>
+      <select aria-label="Kategori" value={filters.category} onChange={(e) => set({ category: e.target.value })} className={select}>
+        <option value="">Semua kategori</option>
+        {categories.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
+      </select>
+      <select aria-label="Rekening" value={filters.accountId} onChange={(e) => set({ accountId: e.target.value })} className={select}>
+        <option value="">Semua rekening</option>
+        {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+      </select>
+      </div>
+    </div>
+  );
 }
 
 const WEEKDAYS = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
@@ -63,23 +124,32 @@ function Meta({ tx }: { tx: LedgerTx }) {
 export default function LedgerView({
   month, year, monthlyTxs, pageTxs, listLoading = false, selectedDay, onSelectDay,
   page, totalPages, limit, onPageChange, onLimitChange, onAdd, onEdit, onDelete,
+  filters, onFiltersChange, categories, accounts,
 }: LedgerViewProps) {
+  const filterCount = activeFilterCount(filters);
+  // The month's transactions that match the filters: calendar dots and the totals of the selection
+  const matching = monthlyTxs.filter((t) => matchesFilters(t, filters));
   const daysInMonth = new Date(year, month, 0).getDate();
   const firstWeekday = (new Date(year, month - 1, 1).getDay() + 6) % 7; // Monday = 0
   const today = new Date();
 
   const perDay = new Map<number, { income: number; expense: number; count: number }>();
-  for (const t of monthlyTxs) {
+  for (const t of matching) {
     const date = new Date(t.createdAt);
     if (date.getMonth() + 1 !== month || date.getFullYear() !== year) continue; // stale data from the previous month
     const d = date.getDate();
     const v = perDay.get(d) ?? { income: 0, expense: 0, count: 0 };
-    // Lending/debt is not real income or spending (same as the dashboard totals)
-    if (t.type === "INCOME" && !isDebt(t.category)) v.income += t.amount;
-    if (t.type === "EXPENSE" && !isDebt(t.category)) v.expense += t.amount;
+    // Dots mark money going out / coming in (lending and debt included, so a debt filter still shows them)
+    if (t.type === "INCOME") v.income += t.amount;
+    if (t.type === "EXPENSE") v.expense += t.amount;
     v.count++;
     perDay.set(d, v);
   }
+
+  // Totals of what the list shows (selected day, if any), so e.g. "all food this month" is one glance
+  const selection = matching.filter((t) => !selectedDay || new Date(t.createdAt).getDate() === selectedDay);
+  const selOut = selection.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
+  const selIn = selection.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
 
   const period = selectedDay
     ? new Date(year, month - 1, selectedDay).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
@@ -153,8 +223,30 @@ export default function LedgerView({
           </label>
         </div>
 
+        <FilterBar filters={filters} onChange={onFiltersChange} categories={categories} accounts={accounts} />
+        {filterCount > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border/70 px-5 py-2.5 text-xs text-muted-foreground">
+            <p className="tabular-nums">
+              {selection.length} transaksi
+              {selOut > 0 && <> · Keluar <span className="text-foreground">{formatRupiah(selOut)}</span></>}
+              {selIn > 0 && <> · Masuk <span className="text-income">{formatRupiah(selIn)}</span></>}
+            </p>
+            <Button variant="ghost" size="sm" onClick={() => onFiltersChange(NO_FILTERS)}>
+              <X className="size-3.5" aria-hidden /> Hapus filter
+            </Button>
+          </div>
+        )}
+
         {listLoading ? (
           <LedgerRowsSkeleton rows={Math.min(limit, 8)} />
+        ) : pageTxs.length === 0 && filterCount > 0 ? (
+          <EmptyState
+            className="py-12"
+            icon={<SearchX className="size-5" />}
+            title="Tidak ada transaksi yang cocok"
+            description={`Coba ubah atau hapus filter untuk ${period}.`}
+            action={<Button variant="secondary" size="sm" onClick={() => onFiltersChange(NO_FILTERS)}>Hapus filter</Button>}
+          />
         ) : pageTxs.length === 0 ? (
           <EmptyState
             className="py-12"

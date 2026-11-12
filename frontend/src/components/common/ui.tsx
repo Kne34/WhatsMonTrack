@@ -84,7 +84,7 @@ export function IconButton({ label, className, children, ...props }: React.Butto
 // ---------- Form fields ----------
 
 // min-w-0: date/time inputs have a wide built-in minimum width. text-base below sm: iOS zooms into fields under 16px.
-const inputBase =
+export const inputBase =
   "h-11 w-full min-w-0 rounded-xl border bg-card px-3.5 text-base sm:text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors outline-none focus:border-foreground/40 focus:ring-2 focus:ring-foreground/5 disabled:opacity-60";
 
 interface FieldShellProps {

@@ -10,6 +10,7 @@ import {
 import { categoryLabel, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useKeyboardOpen } from "@/lib/useKeyboardOpen";
+import { filterParams, NO_FILTERS, type TxFilters } from "@/lib/txFilters";
 import type { SessionUser } from "./AuthWrapper";
 import { PageSkeleton } from "./dashboard/skeletons";
 import { AddMenu, BottomTabs, MobileAccountMenu, MonthSwitcher, NAV_ITEMS, Sidebar, type Tab } from "./dashboard/shared/Navigation";
@@ -67,7 +68,10 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   const [loadError, setLoadError] = useState(false);
   // Filters the data on screen belongs to. While they differ from the selected filters,
   // the affected part shows a skeleton instead of the previous month's/page's data.
-  const [shown, setShown] = useState<{ month: number; year: number; day: number | null; page: number; limit: number } | null>(null);
+  // Transaksi page filters; `filterKey` identifies them in the request key below
+  const [filters, setFilters] = useState<TxFilters>(NO_FILTERS);
+  const filterKey = JSON.stringify(filterParams(filters));
+  const [shown, setShown] = useState<{ month: number; year: number; day: number | null; page: number; limit: number; filterKey: string } | null>(null);
   const latestRequest = useRef("");
 
   const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
@@ -82,11 +86,11 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   }, []);
 
   const loadData = useCallback(async () => {
-    const key = `${month}/${year}/${selectedDay}/${page}/${limit}`;
+    const key = `${month}/${year}/${selectedDay}/${page}/${limit}/${filterKey}`;
     try {
       const [monthly, table, accs, budgs, wa, phone, any] = await Promise.all([
         fetchTransactions({ month, year, page: 1, limit: 1000 }),
-        fetchTransactions({ month, year, day: selectedDay || undefined, page, limit }),
+        fetchTransactions({ month, year, day: selectedDay || undefined, page, limit, status: "CONFIRMED", ...JSON.parse(filterKey) }),
         fetchAccounts(),
         fetchBudgets(),
         fetchWhatsAppStatus().catch(() => null),
@@ -99,7 +103,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       }
       // A slower response for filters the user already left must not overwrite newer data
       if (key !== latestRequest.current) return;
-      setShown({ month, year, day: selectedDay, page, limit });
+      setShown({ month, year, day: selectedDay, page, limit, filterKey });
       setMonthlyTxs(monthly.data ?? monthly);
       setPageTxs((table.data ?? table).filter((t: ApiTx) => t.status === "CONFIRMED"));
       setTotalPages(table.totalPages || 1);
@@ -114,10 +118,10 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     } finally {
       setLoaded(true);
     }
-  }, [month, year, selectedDay, page, limit]);
+  }, [month, year, selectedDay, page, limit, filterKey]);
 
   useEffect(() => {
-    latestRequest.current = `${month}/${year}/${selectedDay}/${page}/${limit}`;
+    latestRequest.current = `${month}/${year}/${selectedDay}/${page}/${limit}/${filterKey}`;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch on mount/filter change, then poll
     loadData();
     const interval = setInterval(loadData, REFRESH_MS);
@@ -127,11 +131,11 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [loadData, month, year, selectedDay, page, limit]);
+  }, [loadData, month, year, selectedDay, page, limit, filterKey]);
 
   // Month/year changed: every page shows other data. Day/page/size changed: only the ledger list.
   const monthPending = !shown || shown.month !== month || shown.year !== year;
-  const listPending = monthPending || shown.day !== selectedDay || shown.page !== page || shown.limit !== limit;
+  const listPending = monthPending || shown.day !== selectedDay || shown.page !== page || shown.limit !== limit || shown.filterKey !== filterKey;
 
   const changeMonth = (m: number, y: number) => {
     setMonth(m);
@@ -356,6 +360,10 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
               limit={limit}
               onPageChange={setPage}
               onLimitChange={(l) => { setLimit(l); setPage(1); }}
+              filters={filters}
+              onFiltersChange={(f) => { setFilters(f); setPage(1); }}
+              categories={categories}
+              accounts={accounts}
               onAdd={addActions.onAddTransaction}
               onEdit={(tx) => setDialog({ kind: "transaction", tx: tx as unknown as TransactionLike })}
               onDelete={askDeleteTransaction}

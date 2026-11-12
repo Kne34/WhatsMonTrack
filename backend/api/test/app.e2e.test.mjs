@@ -339,6 +339,31 @@ describe('money, time zones and the WhatsApp bot (real database)', () => {
     assert.equal(await prisma.account.count({ where: { userId: user.id } }), before);
     assert.equal(await prisma.transaction.count({ where: { sourceMessageId: 'WAMSG-2' } }), 0);
   });
+
+  test('transaction filters: type, category, account, text and status (combined, with the right total)', async () => {
+    const ovo = (await http().post('/api/accounts').set(auth(token)).send({ name: 'OVO filter', initialBalance: 500000 }).expect(201)).body;
+    const add = (data) => http().post('/api/transactions/manual').set(auth(token))
+      .send({ data: { createdAt: '2026-12-05T05:00:00.000Z', ...data } }).expect(201);
+    await add({ type: 'EXPENSE', amount: 40000, category: 'FOOD', subcategory: 'Bakmi Acet', fromAccountId: ovo.id });
+    await add({ type: 'EXPENSE', amount: 161500, category: 'DEBT', subcategory: 'Talangin bakmi acet', fromAccountId: ovo.id });
+    await add({ type: 'INCOME', amount: 29000, category: 'DEBT', subcategory: 'Elbert bayar utang', toAccountId: account.id });
+    await add({ type: 'TRANSFER', amount: 10000, fromAccountId: account.id, toAccountId: ovo.id });
+
+    const list = async (params) => (await http().get('/api/transactions').query({ month: 12, year: 2026, ...params }).set(auth(token)).expect(200)).body;
+    assert.equal((await list({})).total, 4);
+    assert.equal((await list({ type: 'EXPENSE' })).total, 2);
+    assert.equal((await list({ category: 'debt' })).total, 2); // case-insensitive
+    assert.equal((await list({ accountId: ovo.id })).total, 3); // out of OVO, and the transfer into it
+    assert.equal((await list({ q: 'ACET' })).total, 2);
+    const combined = await list({ type: 'EXPENSE', category: 'DEBT', accountId: ovo.id, q: 'bakmi', limit: 1 });
+    assert.equal(combined.total, 1);
+    assert.equal(combined.totalPages, 1);
+    assert.equal(combined.data[0].subcategory, 'Talangin bakmi acet');
+    assert.equal((await list({ status: 'NEEDS_REVIEW' })).total, 0);
+
+    await http().get('/api/transactions?type=LOAN').set(auth(token)).expect(400);
+    await http().get('/api/transactions?accountId=not-a-uuid').set(auth(token)).expect(400);
+  });
 });
 
 describe('WhatsApp session stored in PostgreSQL', () => {

@@ -139,7 +139,7 @@ All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-passwo
 | `GET /api/accounts`, `POST /api/accounts`, `PUT /api/accounts/:id` | Accounts; the list includes `transactionCount` (transactions that use each account) |
 | `DELETE /api/accounts/:id?withTransactions=true` | Delete an account. Without the flag an account still in use gets `409` with `transactionCount`; with it, its transactions are deleted too and other accounts' balances are corrected |
 | `GET /api/budgets`, `POST /api/budgets`, `DELETE /api/budgets/:id` | Budgets (POST creates or updates per category) |
-| `GET /api/transactions?month&year&day&page&limit` | List transactions; month/day boundaries use the user's time zone |
+| `GET /api/transactions?month&year&day&page&limit` | List transactions; month/day boundaries use the user's time zone. Optional filters: `type` (EXPENSE/INCOME/TRANSFER), `category` (code, case-insensitive), `accountId` (money out of or into that account), `q` (text in the description or original message), `status` (CONFIRMED/NEEDS_REVIEW) |
 | `POST /api/transactions/manual` | Add a transaction manually |
 | `PUT /api/transactions/:id`, `DELETE /api/transactions/:id` | Edit or delete (balances are corrected) |
 | `PUT /api/transactions/:id/confirm` | Confirm a draft from the review inbox |
@@ -359,6 +359,7 @@ Only confirmed transactions are counted; drafts waiting for review are not. Lend
 ### 10. Dashboard: Transaksi (ledger)
 - **Pilih tanggal**: a calendar of the selected month. Dots mark days with expenses (dark) and income (green). Click a day to show only that day; click again or **Semua tanggal** to show the whole month.
 - **Daftar transaksi**: date and time, description, category, account and amount (income in green with +, expenses with −). Choose 10, 15, 50 or 100 per page.
+- **Filter**: search the description or the original chat message, and pick a type (Pengeluaran / Pemasukan / Transfer), a category (e.g. Makanan or Utang-piutang) and an account. Filters combine with each other and with the selected day, and stay when you switch months. While a filter is on, a line shows how many transactions match and their total out and in (e.g. "all Makanan this month"), and the calendar dots only show matching days. On phones the three dropdowns sit behind the **Filter** button. **Hapus filter** clears them.
 - **Add manually:** **Tambah** → **Transaksi**. Choose Pengeluaran / Pemasukan / Transfer, amount, category, an optional description, account(s), and date & time (also for past dates).
 - **Edit** (pencil) or **delete** (trash) a transaction. Balances are corrected automatically, e.g. deleting an expense gives the money back to the account.
 
@@ -517,4 +518,5 @@ A test with 16 injection messages (fake admin, reading other users' data, leakin
 - **Eye icon on the Rekening card:** hides account balances without scrolling up to Saldo total (same setting).
 - **Getting-started steps** are hidden once any transaction has been recorded, even when no WhatsApp number is linked.
 - **"Ringkasan" is now "Dashboard"** in the menu and page title.
+- **Filters on the Transaksi page:** search, type, category and account, done on the server so paging stays right, with the matching total out/in and calendar dots that follow the filter.
 - **Password to show hidden amounts:** every eye icon asks for the account password before showing a hidden amount again (`POST /api/auth/verify-password`, rate-limited). Hiding stays one tap.

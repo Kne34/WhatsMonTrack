@@ -41,6 +41,25 @@ export class TransactionsQueryDto {
   // Dashboard's monthly summary fetches up to 1000
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000)
   limit?: number;
+
+  // ---- Filters (Transaksi page) ----
+  @IsOptional() @IsIn(TX_TYPES)
+  type?: TxType;
+
+  /** Category code, e.g. FOOD or DEBT (case-insensitive) */
+  @IsOptional() @IsString() @MaxLength(50)
+  category?: string;
+
+  /** Transactions that leave or enter this account */
+  @IsOptional() @IsUUID()
+  accountId?: string;
+
+  /** Text in the description or the original message */
+  @IsOptional() @IsString() @MaxLength(100)
+  q?: string;
+
+  @IsOptional() @IsIn(['CONFIRMED', 'NEEDS_REVIEW'])
+  status?: 'CONFIRMED' | 'NEEDS_REVIEW';
 }
 
 export class CreateTransactionDataDto {

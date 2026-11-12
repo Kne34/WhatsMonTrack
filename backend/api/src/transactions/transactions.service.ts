@@ -31,8 +31,24 @@ export class TransactionsService {
   ) {}
 
   async list(userId: string, query: TransactionsQueryDto) {
-    const { month, year, day, page = 1, limit = 100 } = query;
+    const { month, year, day, page = 1, limit = 100, type, category, accountId, q, status } = query;
     const where: Prisma.TransactionWhereInput = { userId };
+    const and: Prisma.TransactionWhereInput[] = [];
+
+    if (status) where.status = status;
+    if (type) where.type = type;
+    if (category?.trim()) where.category = { equals: category.trim(), mode: 'insensitive' };
+    if (accountId) and.push({ OR: [{ fromAccountId: accountId }, { toAccountId: accountId }] });
+    const text = q?.trim();
+    if (text) {
+      and.push({
+        OR: [
+          { subcategory: { contains: text, mode: 'insensitive' } },
+          { rawText: { contains: text, mode: 'insensitive' } },
+        ],
+      });
+    }
+    if (and.length) where.AND = and;
 
     if (month && year) {
       // Calendar boundaries in the user's zone (not the server's), as a UTC [start, end) range

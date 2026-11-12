@@ -57,7 +57,11 @@ export const getProfile = async () => {
 
 // Helper to fetch transactions, with optional pagination and filters
 export const fetchTransactions = async (
-  params?: { page?: number; limit?: number; month?: number; year?: number; day?: number }
+  params?: {
+    page?: number; limit?: number; month?: number; year?: number; day?: number;
+    // Filters (Transaksi page)
+    type?: string; category?: string; accountId?: string; q?: string; status?: 'CONFIRMED' | 'NEEDS_REVIEW';
+  }
 ) => {
   const { data } = await api.get('/transactions', { params });
   return data;
