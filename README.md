@@ -135,6 +135,7 @@ All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-passwo
 | `POST /api/auth/login` | Login, returns a JWT; optional `timeZone` |
 | `POST /api/auth/forgot-password`, `POST /api/auth/reset-password` | Password reset with an emailed code |
 | `GET /api/auth/me` | Current user |
+| `POST /api/auth/verify-password` | Checks the signed-in user's password (`{ valid }`), used to show hidden amounts. Max 10 tries per minute |
 | `GET /api/accounts`, `POST /api/accounts`, `PUT /api/accounts/:id` | Accounts; the list includes `transactionCount` (transactions that use each account) |
 | `DELETE /api/accounts/:id?withTransactions=true` | Delete an account. Without the flag an account still in use gets `409` with `transactionCount`; with it, its transactions are deleted too and other accounts' balances are corrected |
 | `GET /api/budgets`, `POST /api/budgets`, `DELETE /api/budgets/:id` | Budgets (POST creates or updates per category) |
@@ -346,6 +347,7 @@ The **Chat** tab (sidebar; on a phone: the bottom bar) talks to the same bot as 
 - **Month switcher** at the top: go back to earlier months, **Bulan ini** jumps back to the current month. Future months are disabled.
 - **Saldo total**: the sum of all accounts. The eye icon hides all balances (remembered in this browser), handy in public.
 - **Pemasukan / Pengeluaran / Selisih**: income, expenses and their difference for the month. Each has its own eye icon to hide it, separate from the balance toggle and remembered in this browser.
+- **Showing a hidden amount asks for your password** every time (checked by the server, at most 10 tries per minute). Hiding needs no password. This keeps the numbers from someone glancing at or picking up your screen; it is not encryption, since the data is still loaded in the page.
 - **Arus kas**: running total of income minus expenses through the month.
 - **Pengeluaran harian**: spending per day. If you have budgets, a dashed line shows the average daily budget.
 - **Per kategori**: top 5 categories plus "Lainnya", switchable between expenses and income, with amounts and percentages.
@@ -515,3 +517,4 @@ A test with 16 injection messages (fake admin, reading other users' data, leakin
 - **Eye icon on the Rekening card:** hides account balances without scrolling up to Saldo total (same setting).
 - **Getting-started steps** are hidden once any transaction has been recorded, even when no WhatsApp number is linked.
 - **"Ringkasan" is now "Dashboard"** in the menu and page title.
+- **Password to show hidden amounts:** every eye icon asks for the account password before showing a hidden amount again (`POST /api/auth/verify-password`, rate-limited). Hiding stays one tap.

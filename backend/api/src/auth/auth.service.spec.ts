@@ -127,6 +127,17 @@ describe('AuthService.login', () => {
   });
 });
 
+describe('AuthService.verifyPassword', () => {
+  it('accepts only the password of the signed-in user', async () => {
+    const password = await bcrypt.hash('password123', 4);
+    const { service } = setup([{ id: 'u1', email: reg.email, password, isVerified: true }]);
+
+    expect(await service.verifyPassword('u1', 'password123')).toEqual({ valid: true });
+    expect(await service.verifyPassword('u1', 'wrong-password')).toMatchObject({ valid: false });
+    await expect(service.verifyPassword('nobody', 'password123')).rejects.toThrow('User not found');
+  });
+});
+
 describe('AuthService.forgotPassword / resetPassword', () => {
   async function verifiedUser() {
     const password = await bcrypt.hash('old-password', 4);

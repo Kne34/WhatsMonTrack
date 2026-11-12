@@ -44,6 +44,12 @@ export const resetPassword = async (data: { email: string; otpCode: string; pass
   return res.data;
 };
 
+/** Checks the signed-in user's password (to show hidden amounts). */
+export const verifyPassword = async (password: string): Promise<{ valid: boolean; message?: string }> => {
+  const { data } = await api.post('/auth/verify-password', { password });
+  return data;
+};
+
 export const getProfile = async () => {
   const res = await api.get('/auth/me');
   return res.data;

@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthGuard } from '../common/auth.guard';
 import type { JwtUser } from '../common/config';
 import { CurrentUser } from '../common/current-user.decorator';
-import { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto, VerifyOtpDto } from './auth.dto';
+import { ForgotPasswordDto, LoginDto, RegisterDto, ResetPasswordDto, VerifyOtpDto, VerifyPasswordDto } from './auth.dto';
 import { AuthService } from './auth.service';
 
 const STRICT = { default: { ttl: 60_000, limit: 5 } };
@@ -40,6 +40,15 @@ export class AuthController {
   @Post('reset-password')
   resetPassword(@Body() body: ResetPasswordDto) {
     return this.auth.resetPassword(body);
+  }
+
+  /** Checks the signed-in user's password. Rate-limited like login, so it cannot be used to guess it. */
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @UseGuards(AuthGuard)
+  @HttpCode(200)
+  @Post('verify-password')
+  verifyPassword(@CurrentUser() user: JwtUser, @Body() body: VerifyPasswordDto) {
+    return this.auth.verifyPassword(user.id, body.password);
   }
 
   @UseGuards(AuthGuard)

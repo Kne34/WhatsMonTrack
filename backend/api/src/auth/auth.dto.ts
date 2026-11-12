@@ -45,6 +45,13 @@ export class VerifyOtpDto {
   otpCode: string;
 }
 
+/** Re-entering the password of the signed-in user (e.g. to show hidden amounts on the dashboard). */
+export class VerifyPasswordDto {
+  @IsString()
+  @MaxLength(128)
+  password: string;
+}
+
 export class LoginDto {
   @IsEmail()
   email: string;

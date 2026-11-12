@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Alert, Button, SegmentedControl, SelectField, TextField } from "../common/ui";
+import { Alert, Button, PasswordField, SegmentedControl, SelectField, TextField } from "../common/ui";
+import { verifyPassword } from "@/lib/api";
 import { CATEGORIES, DEBT_CATEGORY, categoryLabel, TX_TYPE_LABEL, type TxType } from "@/lib/format";
 
 // ---------- Shared shell ----------
@@ -55,6 +56,51 @@ function useSubmit() {
     }
   };
   return { busy, error, setError, submit };
+}
+
+// ---------- Password check before showing hidden amounts ----------
+
+/** Asks for the account password every time a hidden amount is shown again. Hiding needs no password. */
+export function UnlockDialog({ what, onClose, onUnlocked }: { what: string; onClose: () => void; onUnlocked: () => void }) {
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!password) return setError("Masukkan password.");
+    setBusy(true);
+    setError("");
+    try {
+      const res = await verifyPassword(password);
+      if (res.valid) {
+        onUnlocked();
+        onClose();
+      } else {
+        setError(res.message || "Password salah.");
+      }
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      setError(status === 429 ? "Terlalu banyak percobaan. Tunggu 1 menit, lalu coba lagi." : apiError(err, "Gagal memeriksa password. Coba lagi."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <AppDialog open onClose={onClose} title={`Tampilkan ${what}`} description="Masukkan password akun WhatsMonTrack kamu.">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
+        {/* Hidden username so password managers know which account this is for */}
+        <input type="text" name="username" autoComplete="username" hidden readOnly />
+        <PasswordField label="Password" name="password" autoComplete="current-password" autoFocus
+          value={password} onChange={(e) => { setPassword(e.target.value); setError(""); }} error={error} />
+        <DialogActions>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>Batal</Button>
+          <Button type="submit" loading={busy}>Tampilkan</Button>
+        </DialogActions>
+      </form>
+    </AppDialog>
+  );
 }
 
 // ---------- Amount input: digits only, shown with thousand separators ----------

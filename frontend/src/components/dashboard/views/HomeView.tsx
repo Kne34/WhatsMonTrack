@@ -6,6 +6,7 @@ import { Check, Eye, EyeOff, ReceiptText, Target, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { categoryLabel, formatCompact, formatMonth, formatRupiah, isDebt } from "@/lib/format";
 import { Button, Card, CardHeader, EmptyState, IconButton, SegmentedControl, focusRing } from "../../common/ui";
+import { UnlockDialog } from "../dialogs";
 
 interface Tx {
   id: string;
@@ -43,6 +44,7 @@ const HIDE_KEYS = {
   net: "wmt.hideNet",
 } as const;
 type HideKey = keyof typeof HIDE_KEYS;
+const UNLOCK_LABEL: Record<HideKey, string> = { balance: "saldo", income: "pemasukan", expense: "pengeluaran", net: "selisih" };
 const MASK = "Rp ••••••";
 
 function EyeToggle({ hidden, what, onToggle }: { hidden: boolean; what: string; onToggle: () => void }) {
@@ -140,11 +142,13 @@ export default function HomeView({
       setHide({ balance: read("balance"), income: read("income"), expense: read("expense"), net: read("net") });
     } catch { /* storage unavailable */ }
   }, []);
-  const toggle = (k: HideKey) => {
-    const next = !hide[k];
-    setHide((h) => ({ ...h, [k]: next }));
-    try { localStorage.setItem(HIDE_KEYS[k], next ? "1" : "0"); } catch { /* ignore */ }
+  const setHidden = (k: HideKey, hidden: boolean) => {
+    setHide((h) => ({ ...h, [k]: hidden }));
+    try { localStorage.setItem(HIDE_KEYS[k], hidden ? "1" : "0"); } catch { /* ignore */ }
   };
+  // Hiding is instant; showing a hidden amount again asks for the account password every time
+  const [unlocking, setUnlocking] = useState<HideKey | null>(null);
+  const toggle = (k: HideKey) => (hide[k] ? setUnlocking(k) : setHidden(k, true));
   const money = (v: number) => (hide.balance ? MASK : formatRupiah(v));
 
   // Only the selected month: right after switching months the previous month's data is still loaded,
@@ -228,6 +232,9 @@ export default function HomeView({
 
   return (
     <div className="space-y-6">
+      {unlocking && (
+        <UnlockDialog what={UNLOCK_LABEL[unlocking]} onClose={() => setUnlocking(null)} onUnlocked={() => setHidden(unlocking, false)} />
+      )}
       {showOnboarding && (
         <Onboarding hasAccount={accounts.length > 0} phoneLinked={phoneLinked} hasTransaction={hasTransactions}
           onAddAccount={onAddAccount} onLinkPhone={onLinkPhone} onAddTransaction={onAddTransaction} />

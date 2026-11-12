@@ -138,6 +138,14 @@ export class AuthService {
     return this.loginResult(user);
   }
 
+  /** Is this the signed-in user's password? Used to show amounts hidden behind the dashboard's eye icons. */
+  async verifyPassword(userId: string, password: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { password: true } });
+    if (!user) throw new NotFoundException('User not found');
+    const valid = await bcrypt.compare(password, user.password);
+    return valid ? { valid: true } : { valid: false, message: 'Password salah.' };
+  }
+
   /** Current profile, read from the DB so a freshly linked phone number shows up without re-login. */
   async profile(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
