@@ -317,6 +317,7 @@ Paying for a friend first, lending money, borrowing, and paying back are not rea
 - The account balance changes as usual.
 - **Pemasukan**, **Pengeluaran**, **Selisih**, the charts, the category breakdown and the budgets leave them out. The dashboard shows them in a separate **Utang-piutang** card (out, in, and what has not come back this month), and `/rekap` lists them separately.
 - Paid for a group and your own share is part of it? Send two messages: your share as a normal expense, the rest as talangan (e.g. *makan 100rb BCA* and *talangin makan teman 200rb BCA*).
+- On the web: **Tambah** → **Utang-piutang**, choose **Uang keluar** or **Uang masuk**, the amount, a description (e.g. *Talangin makan Budi*) and the account.
 - Already recorded as an expense or income? Open it in **Transaksi** → **Ubah** and change the category to **Utang-piutang**.
 
 Sending the same message twice by accident is fine to retry: a single WhatsApp message is never recorded twice.
@@ -510,6 +511,7 @@ A test with 16 injection messages (fake admin, reading other users' data, leakin
 
 ### Phase 13: Feedback after a few weeks of use
 - **Lending and debt (`DEBT`, "Utang-piutang"):** paying for a friend first and being paid back used to show up as a large expense and an income. Now they get their own category, recognised by Gemini and by the offline parser (talangin, bayarin, minjemin, bayar utang, ganti uang, dibalikin, pinjam dari …). Balances still change, but the totals, charts, category breakdown, budgets, the ledger calendar and `/rekap` leave them out; the dashboard and `/rekap` show them separately. A transfer between two of your own accounts stays a transfer.
+- **Tambah → Utang-piutang** on the web: the transaction form with the category already set, and only *Uang keluar* / *Uang masuk* to choose from.
 - **Eye icon on the Rekening card:** hides account balances without scrolling up to Saldo total (same setting).
 - **Getting-started steps** are hidden once any transaction has been recorded, even when no WhatsApp number is linked.
 - **"Ringkasan" is now "Dashboard"** in the menu and page title.

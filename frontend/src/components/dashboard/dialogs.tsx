@@ -262,8 +262,10 @@ const toLocalInput = (date: Date) => {
 };
 
 /** Create (transaction = null) or edit. Mount only while open so fields start fresh. */
-export function TransactionDialog({ transaction, accounts, categories, onClose, onSave, onAddAccount }: {
+export function TransactionDialog({ transaction, debt = false, accounts, categories, onClose, onSave, onAddAccount }: {
   transaction: TransactionLike | null;
+  /** New lending/debt entry: category fixed to DEBT, money out or in instead of the three types. */
+  debt?: boolean;
   accounts: AccountLike[];
   categories: string[];
   onClose: () => void;
@@ -272,7 +274,7 @@ export function TransactionDialog({ transaction, accounts, categories, onClose, 
 }) {
   const [type, setType] = useState<TxType>(transaction?.type ?? "EXPENSE");
   const [amount, setAmount] = useState(transaction ? String(Math.round(transaction.amount)) : "");
-  const [category, setCategory] = useState(transaction?.category ?? "");
+  const [category, setCategory] = useState(transaction?.category ?? (debt ? DEBT_CATEGORY : ""));
   const [description, setDescription] = useState(transaction?.subcategory ?? "");
   const [fromAccountId, setFromAccountId] = useState(transaction?.fromAccountId ?? "");
   const [toAccountId, setToAccountId] = useState(transaction?.toAccountId ?? "");
@@ -323,7 +325,11 @@ export function TransactionDialog({ transaction, accounts, categories, onClose, 
   const accountOptions = accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>);
 
   return (
-    <AppDialog open onClose={onClose} title={transaction ? "Ubah transaksi" : "Tambah transaksi"}>
+    <AppDialog
+      open
+      onClose={onClose}
+      title={transaction ? "Ubah transaksi" : debt ? "Catat utang-piutang" : "Tambah transaksi"}
+    >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && <Alert>{error}</Alert>}
         <SegmentedControl<TxType>
@@ -331,10 +337,12 @@ export function TransactionDialog({ transaction, accounts, categories, onClose, 
           value={type}
           onChange={setType}
           className="flex w-full"
-          options={(["EXPENSE", "INCOME", "TRANSFER"] as TxType[]).map((t) => ({ value: t, label: TX_TYPE_LABEL[t] }))}
+          options={debt
+            ? [{ value: "EXPENSE", label: "Uang keluar" }, { value: "INCOME", label: "Uang masuk" }]
+            : (["EXPENSE", "INCOME", "TRANSFER"] as TxType[]).map((t) => ({ value: t, label: TX_TYPE_LABEL[t] }))}
         />
         <AmountField label="Jumlah" digits={amount} onChange={setAmount} error={errors.amount} />
-        {type !== "TRANSFER" && (
+        {type !== "TRANSFER" && !debt && (
           <SelectField label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)}>
             <option value="">{type === "INCOME" ? "Pemasukan" : "Tanpa kategori"}</option>
             {categories.filter((c) => (type === "INCOME" ? true : c !== "INCOME")).map((c) => (
@@ -350,7 +358,7 @@ export function TransactionDialog({ transaction, accounts, categories, onClose, 
           </p>
         )}
         <TextField label="Keterangan (opsional)" value={description} onChange={(e) => setDescription(e.target.value)}
-          placeholder="Makan siang, bensin, gaji" maxLength={100} />
+          placeholder={debt ? (type === "INCOME" ? "Budi bayar utang" : "Talangin makan Budi") : "Makan siang, bensin, gaji"} maxLength={100} />
         <div className={type === "TRANSFER" ? "grid gap-4 sm:grid-cols-2" : "space-y-4"}>
           {needsFrom && (
             <SelectField label={type === "TRANSFER" ? "Dari rekening" : "Rekening"} value={fromAccountId}

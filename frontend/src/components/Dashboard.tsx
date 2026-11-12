@@ -30,7 +30,7 @@ type ApiTx = any;
 type DialogState =
   | { kind: "none" }
   | { kind: "account"; account: AccountLike | null }
-  | { kind: "transaction"; tx: TransactionLike | null }
+  | { kind: "transaction"; tx: TransactionLike | null; debt?: boolean }
   | { kind: "budget"; budget: BudgetLike | null }
   | { kind: "confirm"; title: string; description: string; confirmLabel: string; action: () => Promise<void> }
   | { kind: "link" }
@@ -270,6 +270,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
 
   const addActions = {
     onAddTransaction: () => setDialog({ kind: "transaction", tx: null }),
+    onAddDebt: () => setDialog({ kind: "transaction", tx: null, debt: true }),
     onAddAccount: () => setDialog({ kind: "account", account: null }),
     onAddBudget: () => setDialog({ kind: "budget", budget: null }),
   };
@@ -392,6 +393,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       {dialog.kind === "transaction" && (
         <TransactionDialog
           transaction={dialog.tx}
+          debt={dialog.debt}
           accounts={accounts}
           categories={categories}
           onClose={closeDialog}

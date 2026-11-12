@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ChevronLeft, ChevronRight, Inbox, LayoutGrid, LogOut, MessageCircle, MessagesSquare, Plus, ReceiptText, Smartphone, Target, User, Wallet } from "lucide-react";
+import { ChevronLeft, ChevronRight, Handshake, Inbox, LayoutGrid, LogOut, MessageCircle, MessagesSquare, Plus, ReceiptText, Smartphone, Target, User, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMonth, formatPhone } from "@/lib/format";
 import { Button, IconButton, Menu, focusRing, type MenuItem } from "../../common/ui";
@@ -212,11 +212,17 @@ export function MonthSwitcher({ month, year, onChange }: { month: number; year: 
 }
 
 /** Single primary action, with the three things a user can add. */
-export function AddMenu({ onAddTransaction, onAddAccount, onAddBudget }: { onAddTransaction: () => void; onAddAccount: () => void; onAddBudget: () => void }) {
+export function AddMenu({ onAddTransaction, onAddDebt, onAddAccount, onAddBudget }: {
+  onAddTransaction: () => void;
+  onAddDebt: () => void;
+  onAddAccount: () => void;
+  onAddBudget: () => void;
+}) {
   return (
     <Menu
       items={[
         { label: "Transaksi", description: "Pengeluaran, pemasukan, atau transfer", icon: <ReceiptText className="size-4" />, onSelect: onAddTransaction },
+        { label: "Utang-piutang", description: "Talangan, pinjaman, atau dibayar balik", icon: <Handshake className="size-4" />, onSelect: onAddDebt },
         { label: "Rekening", description: "Bank, e-wallet, atau tunai", icon: <Wallet className="size-4" />, onSelect: onAddAccount },
         { label: "Anggaran", description: "Batas pengeluaran per kategori", icon: <Target className="size-4" />, onSelect: onAddBudget },
       ]}
