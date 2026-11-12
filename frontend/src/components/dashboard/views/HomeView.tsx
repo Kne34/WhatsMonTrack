@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Check, Eye, EyeOff, ReceiptText, Target, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { categoryLabel, formatCompact, formatMonth, formatRupiah } from "@/lib/format";
+import { categoryLabel, formatCompact, formatMonth, formatRupiah, isDebt } from "@/lib/format";
 import { Button, Card, CardHeader, EmptyState, IconButton, SegmentedControl, focusRing } from "../../common/ui";
 
 interface Tx {
@@ -25,6 +25,8 @@ interface HomeViewProps {
   month: number;
   year: number;
   phoneLinked: boolean;
+  /** Any transaction ever recorded (any month); the getting-started steps are hidden after the first one. */
+  hasAnyTransaction: boolean;
   onAddTransaction: () => void;
   onAddAccount: () => void;
   onEditAccount: (account: Account) => void;
@@ -124,7 +126,7 @@ function Onboarding({ hasAccount, phoneLinked, hasTransaction, onAddAccount, onL
 }
 
 export default function HomeView({
-  monthlyTxs, accounts, budgets, month, year, phoneLinked,
+  monthlyTxs, accounts, budgets, month, year, phoneLinked, hasAnyTransaction,
   onAddTransaction, onAddAccount, onEditAccount, onAddBudget, onEditBudget, onLinkPhone,
 }: HomeViewProps) {
   const [hide, setHide] = useState<Record<HideKey, boolean>>({ balance: false, income: false, expense: false, net: false });
@@ -155,9 +157,15 @@ export default function HomeView({
       }),
     [monthlyTxs, month, year],
   );
+  // Lending/debt (paying for a friend, being paid back) changes balances but is not real income or
+  // spending: it is left out of the totals, charts and budgets and shown on its own.
+  const counted = useMemo(() => confirmed.filter((t) => !isDebt(t.category)), [confirmed]);
+  const debtTxs = confirmed.filter((t) => isDebt(t.category));
+  const debtOut = debtTxs.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
+  const debtIn = debtTxs.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
   const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
-  const income = confirmed.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
-  const expense = confirmed.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
+  const income = counted.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
+  const expense = counted.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
   const net = income - expense;
   const monthName = formatMonth(month, year);
 
@@ -167,7 +175,7 @@ export default function HomeView({
   const lastDay = month === now.getMonth() + 1 && year === now.getFullYear() ? now.getDate() : daysInMonth;
   const daily = useMemo(() => {
     const rows = Array.from({ length: daysInMonth }, (_, i) => ({ day: i + 1, income: 0, expense: 0, net: null as number | null }));
-    for (const t of confirmed) {
+    for (const t of counted) {
       const d = new Date(t.createdAt).getDate() - 1;
       if (t.type === "INCOME") rows[d].income += t.amount;
       if (t.type === "EXPENSE") rows[d].expense += t.amount;
@@ -178,7 +186,7 @@ export default function HomeView({
       r.net = r.day <= lastDay ? running : null;
     }
     return rows;
-  }, [confirmed, daysInMonth, lastDay]);
+  }, [counted, daysInMonth, lastDay]);
   const netGoesNegative = daily.some((r) => (r.net ?? 0) < 0);
 
   const totalBudget = budgets.reduce((s, b) => s + b.limit, 0);
@@ -187,7 +195,7 @@ export default function HomeView({
   // Ranked categories (top 5 + "Lainnya")
   const categories = useMemo(() => {
     const totals = new Map<string, number>();
-    for (const t of confirmed.filter((x) => x.type === breakdown)) {
+    for (const t of counted.filter((x) => x.type === breakdown)) {
       const key = (t.category || "UNCATEGORIZED").toUpperCase();
       totals.set(key, (totals.get(key) ?? 0) + t.amount);
     }
@@ -197,10 +205,10 @@ export default function HomeView({
     if (rest > 0) top.push({ label: "Lainnya", value: rest });
     const sum = top.reduce((s, c) => s + c.value, 0);
     return top.map((c) => ({ ...c, share: sum ? c.value / sum : 0 }));
-  }, [confirmed, breakdown]);
+  }, [counted, breakdown]);
 
   const budgetRows = budgets.map((b) => {
-    const spent = confirmed
+    const spent = counted
       .filter((t) => t.type === "EXPENSE" && (t.category || "UNCATEGORIZED").toUpperCase() === b.categoryName)
       .reduce((s, t) => s + t.amount, 0);
     const ratio = b.limit > 0 ? spent / b.limit : 0;
@@ -208,7 +216,7 @@ export default function HomeView({
   });
 
   const hasTransactions = confirmed.length > 0;
-  const showOnboarding = accounts.length === 0 || !phoneLinked;
+  const showOnboarding = !hasAnyTransaction && (accounts.length === 0 || !phoneLinked);
   const noTxState = (
     <EmptyState
       icon={<ReceiptText className="size-5" />}
@@ -339,7 +347,16 @@ export default function HomeView({
 
         <div className="space-y-6">
           <Card>
-            <CardHeader title="Rekening" action={accounts.length > 0 && <Button variant="ghost" size="sm" onClick={onAddAccount}>Tambah</Button>} />
+            <CardHeader
+              title="Rekening"
+              action={accounts.length > 0 && (
+                <div className="flex items-center gap-1">
+                  {/* Same preference as the "Saldo total" eye */}
+                  <EyeToggle hidden={hide.balance} what="saldo rekening" onToggle={() => toggle("balance")} />
+                  <Button variant="ghost" size="sm" onClick={onAddAccount}>Tambah</Button>
+                </div>
+              )}
+            />
             {accounts.length > 0 ? (
               <ul className="-mx-2">
                 {accounts.map((a) => (
@@ -358,6 +375,26 @@ export default function HomeView({
                 action={<Button variant="secondary" size="sm" onClick={onAddAccount}>Tambah rekening</Button>} />
             )}
           </Card>
+
+          {(debtOut > 0 || debtIn > 0) && (
+            <Card>
+              <CardHeader title="Utang-piutang" description={`${monthName} · tidak termasuk pemasukan & pengeluaran`} />
+              <dl className="space-y-2 text-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-muted-foreground">Keluar<span className="block text-xs">Talangan, pinjamkan, bayar utang</span></dt>
+                  <dd className="shrink-0 tabular-nums text-foreground">{money(debtOut)}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <dt className="text-muted-foreground">Masuk<span className="block text-xs">Dibayar balik, pinjam</span></dt>
+                  <dd className="shrink-0 tabular-nums text-foreground">{money(debtIn)}</dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-3 border-t border-border pt-2">
+                  <dt className="font-medium text-foreground">{debtOut >= debtIn ? "Belum kembali bulan ini" : "Lebih banyak masuk"}</dt>
+                  <dd className="shrink-0 tabular-nums font-medium text-foreground">{money(Math.abs(debtOut - debtIn))}</dd>
+                </div>
+              </dl>
+            </Card>
+          )}
 
           <Card>
             <CardHeader title="Anggaran" description={monthName} action={budgets.length > 0 && <Button variant="ghost" size="sm" onClick={onAddBudget}>Tambah</Button>} />

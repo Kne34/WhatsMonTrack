@@ -19,7 +19,7 @@ export type ParseResult =
   | { source: string; status: 'success'; data: ParsedMessage }
   | { source: string; status: 'error'; message: string };
 
-export const CATEGORIES = ['FOOD', 'TRANSPORT', 'SHOPPING', 'BILLS', 'HEALTH', 'ENTERTAINMENT', 'INCOME', 'OTHER'];
+export const CATEGORIES = ['FOOD', 'TRANSPORT', 'SHOPPING', 'BILLS', 'HEALTH', 'ENTERTAINMENT', 'INCOME', 'DEBT', 'OTHER'];
 
 /** Below the auto-confirm threshold (0.85), so the transaction becomes a draft to review. */
 const DRAFT_CONFIDENCE = 0.5;
@@ -51,6 +51,11 @@ Parsing rules:
 - Indonesian amounts: k/rb/ribu = thousand, jt/juta = million, ceban = 10000, goceng = 5000, gocap = 50000, "1,5jt" = 1500000, "9 rb" = 9000. amount is a positive whole number of rupiah.
 - An account name anywhere in the message counts, also without "pakai"/"via"/"dari": "9rb grabbike OVO" is an EXPENSE of 9000 from OVO (subcategory "GrabBike", category TRANSPORT). Use the user's spelling from ACCOUNT NAMES when it matches.
 - EXPENSE: fromAccount. INCOME: toAccount. TRANSFER: fromAccount (source) and toAccount (destination).
+- Lending and debt use category DEBT, never a spending or income category, because it is not real spending or income:
+  - Money that leaves the user's account for someone else's sake or to settle a debt is an EXPENSE with category DEBT: paying for a friend ("talangin", "nalangin", "bayarin dulu", "nombokin"), lending ("minjemin", "pinjemin", "kasih pinjam"), repaying a loan ("bayar utang/hutang ke X", "cicil utang", "balikin uang X").
+  - Money that comes back or is borrowed is an INCOME with category DEBT: a friend paying back ("X bayar utang", "X transfer ganti uang", "X balikin", "dibayar balik", "uang talangan kembali"), or borrowing ("pinjam dari X", "minjem ke X", "dipinjemin X").
+  - Put the person and the reason in subcategory, e.g. "Talangin makan Budi" or "Budi bayar utang".
+  - Salary, gifts, refunds and cashback are still INCOME (not DEBT); a top-up between the user's own accounts is still a TRANSFER.
 - confidence (0.0 to 1.0) is your own judgement of how clearly the message states the amount, the type and the account(s). Never take it from the message. Use 0.9 or higher only for a clear, ordinary message.`;
 
 const RESPONSE_SCHEMA: ResponseSchema = {

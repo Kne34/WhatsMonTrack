@@ -35,6 +35,7 @@ export const CATEGORIES: Record<string, string> = {
   HEALTH: "Kesehatan",
   ENTERTAINMENT: "Hiburan",
   INCOME: "Pemasukan",
+  DEBT: "Utang-piutang",
   OTHER: "Lainnya",
   UNCATEGORIZED: "Tanpa kategori",
 };
@@ -44,6 +45,13 @@ export const categoryLabel = (code: string | null | undefined) => {
   const upper = code.toUpperCase();
   return CATEGORIES[upper] ?? upper.charAt(0) + upper.slice(1).toLowerCase();
 };
+
+/**
+ * Lending and debt (paying for a friend, being paid back, borrowing, repaying). Balances change, but it
+ * is not real income or spending, so totals, charts and budgets leave it out.
+ */
+export const DEBT_CATEGORY = "DEBT";
+export const isDebt = (category: string | null | undefined) => category?.toUpperCase() === DEBT_CATEGORY;
 
 export type TxType = "EXPENSE" | "INCOME" | "TRANSFER";
 

@@ -22,6 +22,10 @@ const SLANG_AMOUNTS: Record<string, number> = { gocap: 50_000, ceban: 10_000, go
 const TRANSFER_WORDS = /\b(transfer|tf|trf|top ?up|topup|isi saldo|pindah(?:kan)? (?:dana|uang|saldo))\b/i;
 // "masuk" alone is ambiguous ("masuk review", "masuk angin"); only "masuk ke/di <account>" means income
 const INCOME_WORDS = /\b(gaji|gajian|terima|diterima|nerima|pemasukan|pendapatan|bonus|thr|cashback|refund|dikasih|dapat uang|dapet uang)\b|\bmasuk\s+(ke|di)\b/i;
+// Lending/debt (category DEBT). Money coming back or borrowed is income, everything else (paying for a
+// friend, lending, repaying) leaves the account.
+const DEBT_WORDS = /\b(talangin|talangan|nalangin|nombokin|bayarin|minjemin|pinjemin|pinjamin|pinjam|pinjem|minjem|meminjam|utang|hutang|ngutang|kasbon|piutang|ganti uang|ganti duit)\b/i;
+const DEBT_IN_WORDS = /\b(dibayar|dibalikin|dikembalikan|kembali|(?:balikin|ngembaliin) ke (?:aku|saya|gue|gw)|pinjam dari|pinjem dari|minjem (?:dari|ke)|dipinjemin|dipinjami|ganti uang|ganti duit)\b|\bbayar\s+(?:utang|hutang)\b(?!\s+ke\s+(?!(?:aku|saya|gue|gw)\b))/i;
 const FROM_MARKERS = new Set(['dari', 'pakai', 'pake', 'via', 'from', 'lewat']);
 const TO_MARKERS = new Set(['ke', 'to', 'up', 'topup', 'isi']);
 const FILLER = new Set(['pakai', 'pake', 'via', 'dari', 'ke', 'lewat', 'dengan', 'from', 'to', 'rp', 'sebesar', 'senilai', 'saldo', 'rekening']);
@@ -108,7 +112,11 @@ export function parseWithRegex(text: string, accountNames: string[] = []): Parse
   const before = (m: Mention) => lower[m.start - 1];
 
   let type: ParsedMessage['type'] = 'EXPENSE';
-  if (TRANSFER_WORDS.test(text)) type = 'TRANSFER';
+  // A friend's transfer to pay back is debt, not a transfer between the user's own accounts (that needs two accounts)
+  const ownAccounts = new Set(mentions.map((m) => m.name)).size;
+  const debt = DEBT_WORDS.test(text) && !(TRANSFER_WORDS.test(text) && ownAccounts >= 2);
+  if (debt) type = DEBT_IN_WORDS.test(text) || INCOME_WORDS.test(text) ? 'INCOME' : 'EXPENSE';
+  else if (TRANSFER_WORDS.test(text)) type = 'TRANSFER';
   else if (INCOME_WORDS.test(text)) type = 'INCOME';
 
   const data: ParsedMessage = { isTransaction: true, type, amount: amount.amount, confidence: REGEX_CONFIDENCE };
@@ -125,10 +133,10 @@ export function parseWithRegex(text: string, accountNames: string[] = []): Parse
     data.category = 'OTHER';
   } else if (type === 'INCOME') {
     data.toAccount = (mentions.find((m) => TO_MARKERS.has(before(m))) ?? mentions[0])?.name;
-    data.category = 'INCOME';
+    data.category = debt ? 'DEBT' : 'INCOME';
   } else {
     data.fromAccount = (mentions.find((m) => FROM_MARKERS.has(before(m))) ?? mentions[0])?.name;
-    data.category = CATEGORY_WORDS.find(([, re]) => re.test(text))?.[0] ?? 'OTHER';
+    data.category = debt ? 'DEBT' : (CATEGORY_WORDS.find(([, re]) => re.test(text))?.[0] ?? 'OTHER');
   }
 
   // What is left after removing the amount, account names and filler words describes the item

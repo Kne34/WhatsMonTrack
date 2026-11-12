@@ -3,7 +3,7 @@
 import React from "react";
 import { ChevronLeft, ChevronRight, Pencil, ReceiptText, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { categoryLabel, formatDayMonth, formatMonth, formatRupiah, formatTime, TX_TYPE_LABEL, type TxType } from "@/lib/format";
+import { categoryLabel, formatDayMonth, formatMonth, formatRupiah, formatTime, isDebt, TX_TYPE_LABEL, type TxType } from "@/lib/format";
 import { Button, Card, EmptyState, IconButton, focusRing } from "../../common/ui";
 import { LedgerRowsSkeleton } from "../skeletons";
 
@@ -74,8 +74,9 @@ export default function LedgerView({
     if (date.getMonth() + 1 !== month || date.getFullYear() !== year) continue; // stale data from the previous month
     const d = date.getDate();
     const v = perDay.get(d) ?? { income: 0, expense: 0, count: 0 };
-    if (t.type === "INCOME") v.income += t.amount;
-    if (t.type === "EXPENSE") v.expense += t.amount;
+    // Lending/debt is not real income or spending (same as the dashboard totals)
+    if (t.type === "INCOME" && !isDebt(t.category)) v.income += t.amount;
+    if (t.type === "EXPENSE" && !isDebt(t.category)) v.expense += t.amount;
     v.count++;
     perDay.set(d, v);
   }

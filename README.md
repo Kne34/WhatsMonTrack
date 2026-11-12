@@ -42,6 +42,7 @@ Quick access to every document in this repository.
 - **AI with a safety net.** Google Gemini (structured JSON output) parses the message; if Gemini is unavailable (no key, quota, outage) an offline parser takes over and saves its results as drafts to review. Your own account names are given to the model so it picks real accounts. The message is always treated as data, never as instructions to the AI.
 - **Unsure? Ask, don't guess.** When the AI is less than 85% confident, the transaction is saved as a draft in **Perlu ditinjau** (review inbox) and balances are not touched until you confirm it. Account names the bot cannot find are never created automatically; the bot replies with your list of accounts.
 - **Loose account matching.** `Go-Pay` = `GO PAY` = `gopay`, `cash` = `tunai` = `uang tunai`, case and punctuation are ignored.
+- **Lending and debt (utang-piutang).** *"talangin makan Budi 150rb pakai BCA"* or *"Budi bayar utang 150rb ke BCA"* change the balance but are not counted as spending or income, so the totals show what you really spent and earned.
 - **`/rekap` or `/recap`.** Monthly summary straight in WhatsApp without using AI credits.
 - **Casual chat.** "Halo" or "cara pakainya gimana?" gets a friendly answer instead of an error.
 - **Never double-counted.** Each WhatsApp message is recorded at most once (message id + database unique constraint), also when WhatsApp re-delivers messages after a reconnect. Messages sent while the bot was offline are still processed when it comes back (up to `WA_OFFLINE_MAX_AGE_HOURS`, default 72 hours).
@@ -55,7 +56,7 @@ Quick access to every document in this repository.
 - **Admin role** (`ADMIN_EMAILS`): only admins can see the bot's QR code and number, link the bot, **change the bot number** or **unlink it** (the bot logs out of WhatsApp and stays off until it is linked again).
 
 ### Web dashboard
-- **Ringkasan (overview):** total balance, income, expense and difference (each can be hidden with its eye icon), cash-flow chart, daily spending chart with the daily budget line, spending or income per category, accounts and budget progress.
+- **Dashboard (overview):** total balance, income, expense and difference (each can be hidden with its eye icon), cash-flow chart, daily spending chart with the daily budget line, spending or income per category, accounts (with their own eye icon) and budget progress, plus a lending/debt card kept apart from the totals.
 - **Transaksi (ledger):** calendar day filter, paginated list (10/15/50/100 per page), add, edit and delete.
 - **Chat:** chat with the bot right on the web, with the same results as on WhatsApp (record transactions, `/rekap`). Works without a bot number or a linked phone; the history is saved and can be cleared.
 - **Perlu ditinjau (review inbox):** confirm, edit or delete uncertain bot results, or delete them all.
@@ -224,12 +225,12 @@ If you log in with an account that is not verified yet, you are taken to the ver
 You stay logged in for 7 days. Your browser's time zone is saved on every login, so dates follow where you are.
 
 ### 2. First steps (onboarding)
-On the **Ringkasan** page a checklist shows what is left to do:
+On the **Dashboard** page a checklist shows what is left to do:
 1. **Tambah rekening** (add an account)
 2. **Hubungkan WhatsApp** (link your number). No bot number yet? Use the **Chat** tab instead ([section 8](#8-chat-on-the-web-no-bot-number-needed)).
 3. **Catat transaksi pertama** (record your first transaction)
 
-It disappears once you have an account and a linked number.
+It disappears once you have an account and a linked number, or as soon as you have recorded any transaction.
 
 ### 3. Accounts (rekening)
 An account is anywhere you keep money: a bank (BCA, Mandiri), an e-wallet (GoPay, OVO, DANA) or cash (Tunai).
@@ -271,7 +272,7 @@ A budget is a monthly spending limit for one category.
 - **Edit or delete:** click the budget in the **Anggaran** card. Deleting a budget does not delete transactions.
 - Progress bars show spent / limit for the selected month: **Hampir habis** (almost used up) from 80%, **Melebihi** (over) from 100%.
 
-Categories: Makanan (`FOOD`), Transportasi (`TRANSPORT`), Belanja (`SHOPPING`), Tagihan (`BILLS`), Kesehatan (`HEALTH`), Hiburan (`ENTERTAINMENT`), Lainnya (`OTHER`), and Pemasukan (`INCOME`) for income.
+Categories: Makanan (`FOOD`), Transportasi (`TRANSPORT`), Belanja (`SHOPPING`), Tagihan (`BILLS`), Kesehatan (`HEALTH`), Hiburan (`ENTERTAINMENT`), Lainnya (`OTHER`), Pemasukan (`INCOME`) for income, and Utang-piutang (`DEBT`) for lending and debt (no budget, see [Lending and debt](#lending-and-debt-utang-piutang)).
 
 ### 6. Record transactions via WhatsApp
 From your linked number, send a message to the bot. Just type naturally and mention the amount and the account:
@@ -283,6 +284,8 @@ From your linked number, send a message to the bot. Just type naturally and ment
 | *beli bensin goceng cash* | Expense Rp 5.000 from Tunai |
 | *gajian 5jt masuk ke bca* | Income Rp 5.000.000 to BCA |
 | *transfer 100rb dari bca ke gopay* | Transfer Rp 100.000, BCA → GoPay |
+| *talangin makan Budi 150rb pakai bca* | Utang-piutang out Rp 150.000 from BCA (not spending) |
+| *Budi bayar utang 150rb ke bca* | Utang-piutang in Rp 150.000 to BCA (not income) |
 
 The bot replies, for example:
 
@@ -303,12 +306,26 @@ Other replies you may get:
 | *Tolong sebutkan rekening sumber dan tujuan untuk transfer ini* | A transfer needs two different accounts; answer e.g. *dari BCA ke OVO* |
 | *Halo! Nomor ini belum terhubung ...* | This number is not linked to an account yet; see step 4 |
 
+#### Lending and debt (utang-piutang)
+Paying for a friend first, lending money, borrowing, and paying back are not real spending or income, but they do move money. Record them with category **Utang-piutang** (`DEBT`):
+
+| Situation | Type | Example message |
+|---|---|---|
+| You pay for someone (talangin), lend, or repay your own debt | Out (expense type) | *talangin makan Budi 150rb pakai BCA*, *minjemin Andi 200rb dari gopay*, *bayar utang ke Sinta 100rb BCA* |
+| Someone pays you back, or you borrow | In (income type) | *Budi bayar utang 150rb ke BCA*, *Andi transfer ganti uang 50rb ke gopay*, *pinjam dari Sinta 500rb masuk BCA* |
+
+- The account balance changes as usual.
+- **Pemasukan**, **Pengeluaran**, **Selisih**, the charts, the category breakdown and the budgets leave them out. The dashboard shows them in a separate **Utang-piutang** card (out, in, and what has not come back this month), and `/rekap` lists them separately.
+- Paid for a group and your own share is part of it? Send two messages: your share as a normal expense, the rest as talangan (e.g. *makan 100rb BCA* and *talangin makan teman 200rb BCA*).
+- Already recorded as an expense or income? Open it in **Transaksi** → **Ubah** and change the category to **Utang-piutang**.
+
 Sending the same message twice by accident is fine to retry: a single WhatsApp message is never recorded twice.
 
 ### 7. WhatsApp recap
 Send `/rekap` or `/recap` to the bot to get this month's summary (in your time zone) without opening the dashboard and without using AI credits:
 - Total income and total expenses
 - Net cash flow
+- Lending and debt (out and in), when there was any, listed apart from the totals
 - Current balance of every account
 - Every budget with spent / limit and status (Aman ✅ / Over ⚠️)
 
@@ -318,22 +335,23 @@ The **Chat** tab (sidebar; on a phone: the bottom bar) talks to the same bot as 
 - Type like on WhatsApp: *makan siang 25rb pakai BCA*, *gajian 5jt masuk ke bca*, *transfer 100rb dari bca ke gopay*, or `/rekap`. All examples and replies from [section 6](#6-record-transactions-via-whatsapp) and [section 7](#7-whatsapp-recap) apply.
 - An empty chat offers a few example messages; tap one to send it.
 - **Enter** sends, **Shift+Enter** starts a new line. Messages are up to 500 characters, 20 per minute.
-- Recorded transactions show up right away in **Ringkasan**, **Transaksi** and, when the bot was unsure, **Perlu ditinjau**.
+- Recorded transactions show up right away in **Dashboard**, **Transaksi** and, when the bot was unsure, **Perlu ditinjau**.
 - You do not need to link a WhatsApp number; you are already logged in, so the bot knows it is you.
 - The conversation is saved (the latest 100 messages are shown). The trash icon clears it; recorded transactions stay.
 - If sending fails, your text goes back into the input so you can try again.
 - On a phone the chat fills the screen like a messaging app; while the keyboard is open, the bottom bar hides so the input stays right above the keyboard (it comes back when the keyboard closes).
 
-### 9. Dashboard: Ringkasan (overview)
+### 9. Dashboard (overview)
 - **Month switcher** at the top: go back to earlier months, **Bulan ini** jumps back to the current month. Future months are disabled.
 - **Saldo total**: the sum of all accounts. The eye icon hides all balances (remembered in this browser), handy in public.
 - **Pemasukan / Pengeluaran / Selisih**: income, expenses and their difference for the month. Each has its own eye icon to hide it, separate from the balance toggle and remembered in this browser.
 - **Arus kas**: running total of income minus expenses through the month.
 - **Pengeluaran harian**: spending per day. If you have budgets, a dashed line shows the average daily budget.
 - **Per kategori**: top 5 categories plus "Lainnya", switchable between expenses and income, with amounts and percentages.
-- **Rekening** and **Anggaran** cards: click an item to edit it.
+- **Rekening** and **Anggaran** cards: click an item to edit it. The Rekening card has the same eye icon as Saldo total, so balances can be hidden from either place.
+- **Utang-piutang** card (only when there is any this month): money out (talangan, lending, repaying), money in (paid back, borrowing) and the difference. These are not part of Pemasukan/Pengeluaran.
 
-Only confirmed transactions are counted; drafts waiting for review are not.
+Only confirmed transactions are counted; drafts waiting for review are not. Lending and debt (`DEBT`) is not counted as income or spending.
 
 ### 10. Dashboard: Transaksi (ledger)
 - **Pilih tanggal**: a calendar of the selected month. Dots mark days with expenses (dark) and income (green). Click a day to show only that day; click again or **Semua tanggal** to show the whole month.
@@ -489,3 +507,9 @@ A test with 16 injection messages (fake admin, reading other users' data, leakin
 - **Short answers to the bot's questions:** after "Dibayar pakai rekening apa?", a short reply such as *OVO* (up to 4 words, within 10 minutes) is read together with the previous message.
 - **Mobile chat:** full-screen layout between the top bar and the bottom tabs, tabs hidden while typing, `interactive-widget=resizes-content` so the keyboard shrinks the page instead of covering the input, 16px input text (no zoom on iOS); on the Chat tab the page is exactly the visible screen height (`dvh`), so the top bar cannot scroll away.
 - **Responsive audit:** every page and dialog checked at 320, 360, 390, 412, 768, 1024, 1280 and 1536 px wide with long names and large amounts. Fixed: pages that could be dragged sideways on phones (single-column grids now `grid-cols-1`), dialogs too wide on a 320 px phone, the add menu opening off-screen, the transaction table on tablets (list below 1024 px, calendar beside the table from 1280 px), pagination on small phones (icon buttons), stat figures that scale with their tile, 16 px form fields on phones (iOS no longer zooms in), and the bottom bar staying hidden after closing the keyboard with Android's back button.
+
+### Phase 13: Feedback after a few weeks of use
+- **Lending and debt (`DEBT`, "Utang-piutang"):** paying for a friend first and being paid back used to show up as a large expense and an income. Now they get their own category, recognised by Gemini and by the offline parser (talangin, bayarin, minjemin, bayar utang, ganti uang, dibalikin, pinjam dari …). Balances still change, but the totals, charts, category breakdown, budgets, the ledger calendar and `/rekap` leave them out; the dashboard and `/rekap` show them separately. A transfer between two of your own accounts stays a transfer.
+- **Eye icon on the Rekening card:** hides account balances without scrolling up to Saldo total (same setting).
+- **Getting-started steps** are hidden once any transaction has been recorded, even when no WhatsApp number is linked.
+- **"Ringkasan" is now "Dashboard"** in the menu and page title.

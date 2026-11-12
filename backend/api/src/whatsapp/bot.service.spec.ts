@@ -156,6 +156,28 @@ describe('BotService.reply', () => {
   });
 });
 
+describe('BotService lending and debt', () => {
+  it('says a debt payment changes the balance but is not counted as spending', async () => {
+    const { bot } = setup({ ...expense('bca', 150000), category: 'DEBT', subcategory: 'Talangin makan Budi' });
+    const reply = await bot.reply('6281111111111', 'talangin makan Budi 150rb pakai BCA', 'MSG-D1');
+    expect(reply).toContain('Utang-piutang Rp');
+    expect(reply).toContain('Tidak dihitung sebagai pengeluaran');
+    expect(reply).toContain('Sisa saldo BCA');
+  });
+
+  it('lists lending and debt apart in /rekap', async () => {
+    const { bot, transactions } = setup({});
+    transactions.monthlySummary.mockResolvedValue({
+      totalIncome: 1000000, totalExpense: 200000, expenseByCategory: {}, debtOut: 150000, debtIn: 50000, year: 2026, month: 11, timezone: 'Asia/Jakarta',
+    });
+    (bot as any).budgets = { list: jest.fn(async () => []) };
+    const reply = await bot.reply('6281111111111', '/rekap', 'MSG-D2');
+    expect(reply).toContain('Utang-piutang');
+    expect(reply).toMatch(/Keluar.*150\.000/);
+    expect(reply).toMatch(/Masuk.*50\.000/);
+  });
+});
+
 describe('normalizeAccountName', () => {
   it('ignores case, spaces and punctuation', () => {
     expect(normalizeAccountName(' go-pay ')).toBe('GOPAY');

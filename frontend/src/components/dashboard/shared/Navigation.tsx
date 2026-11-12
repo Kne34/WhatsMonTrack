@@ -10,7 +10,7 @@ import { ThemeSwitcher } from "../../theme";
 export type Tab = "dashboard" | "transactions" | "chat" | "inbox";
 
 export const NAV_ITEMS: { id: Tab; label: string; icon: React.ElementType }[] = [
-  { id: "dashboard", label: "Ringkasan", icon: LayoutGrid },
+  { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
   { id: "transactions", label: "Transaksi", icon: ReceiptText },
   { id: "chat", label: "Chat", icon: MessagesSquare },
   { id: "inbox", label: "Perlu ditinjau", icon: Inbox },

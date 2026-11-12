@@ -4,7 +4,7 @@ import { PrismaService } from '../database/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { applyToBalances } from './ledger';
 import { DEFAULT_TIMEZONE, dayRange, monthRange, zonedParts } from '../common/time';
-import { CreateTransactionDataDto, TransactionsQueryDto, TxType, UpdateTransactionDto } from './transactions.dto';
+import { CreateTransactionDataDto, DEBT_CATEGORY, TransactionsQueryDto, TxType, UpdateTransactionDto } from './transactions.dto';
 
 /** Below this AI confidence a transaction is saved as a draft (NEEDS_REVIEW) without touching balances. */
 const AUTO_CONFIRM_CONFIDENCE = 0.85;
@@ -158,7 +158,7 @@ export class TransactionsService {
     return { success: true };
   }
 
-  /** Confirmed income/expense totals for the calendar month (in the user's zone) containing `date`. */
+  /** Confirmed income/expense totals (lending/debt kept apart) for the calendar month (in the user's zone) containing `date`. */
   async monthlySummary(userId: string, date = new Date()) {
     const tz = await this.timezoneOf(userId);
     const { year, month } = zonedParts(date, tz);
@@ -171,17 +171,23 @@ export class TransactionsService {
 
     let totalIncome = 0;
     let totalExpense = 0;
+    // Lending/debt is tracked on its own: money lent or repaid (out) and money paid back or borrowed (in)
+    let debtOut = 0;
+    let debtIn = 0;
     const expenseByCategory: Record<string, number> = {};
     for (const t of transactions) {
       const amount = Number(t.amount);
-      if (t.type === 'INCOME') {
+      if (t.category?.toUpperCase() === DEBT_CATEGORY) {
+        if (t.type === 'EXPENSE') debtOut += amount;
+        else if (t.type === 'INCOME') debtIn += amount;
+      } else if (t.type === 'INCOME') {
         totalIncome += amount;
       } else if (t.type === 'EXPENSE') {
         totalExpense += amount;
         expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + amount;
       }
     }
-    return { totalIncome, totalExpense, expenseByCategory, year, month, timezone: tz };
+    return { totalIncome, totalExpense, expenseByCategory, debtOut, debtIn, year, month, timezone: tz };
   }
 
   /** Has a transaction already been recorded from this WhatsApp message? */

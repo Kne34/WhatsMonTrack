@@ -3,7 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { BudgetsService } from '../budgets/budgets.service';
 import { TransactionsService } from '../transactions/transactions.service';
-import { MAX_AMOUNT, TX_TYPES, TxType } from '../transactions/transactions.dto';
+import { DEBT_CATEGORY, MAX_AMOUNT, TX_TYPES, TxType } from '../transactions/transactions.dto';
 import { ParserService } from '../parser/parser.service';
 import { formatIDR } from '../common/format';
 import { normalizePhone } from '../common/phone';
@@ -174,6 +174,7 @@ export class BotService {
     const tz = await this.timezoneOf(userId);
     const amountText = formatIDR(amount);
     const item = parsed.subcategory || parsed.category;
+    const isDebt = parsed.category?.toUpperCase() === DEBT_CATEGORY && type !== 'TRANSFER';
     const fromLabel = from?.name;
     const toLabel = to?.name;
     const at = transaction.createdAt;
@@ -190,6 +191,12 @@ export class BotService {
     const toBal = formatIDR(toAccount?.balance ?? 0);
     if (type === 'TRANSFER') {
       return `Berhasil! Transfer ${amountText} dari ${fromLabel} ke ${toLabel} telah dicatat.\nSisa saldo ${fromLabel}: ${fromBal}\nSisa saldo ${toLabel}: ${toBal}${timestamp}`;
+    }
+    if (isDebt) {
+      const label = type === 'INCOME' ? `masuk ke ${toLabel}` : `keluar dari ${fromLabel}`;
+      const account = type === 'INCOME' ? toLabel : fromLabel;
+      const balance = type === 'INCOME' ? toBal : fromBal;
+      return `Berhasil! Utang-piutang ${amountText} (${item}) ${label}.\nTidak dihitung sebagai ${type === 'INCOME' ? 'pemasukan' : 'pengeluaran'}, tapi saldo tetap berubah.\nSisa saldo ${account}: ${balance}${timestamp}`;
     }
     if (type === 'INCOME') {
       return `Berhasil! Pemasukan ${amountText} untuk ${item} telah ditambahkan ke ${toLabel}.\nSisa saldo ${toLabel}: ${toBal}${timestamp}`;
@@ -220,6 +227,12 @@ export class BotService {
       ? `- Belum ada rekening tercatat.\n`
       : accounts.map((a) => `- ${a.name}: ${formatIDR(a.balance)}\n`).join('');
     recap += `\n`;
+
+    if (summary.debtOut > 0 || summary.debtIn > 0) {
+      recap += `🤝 *Utang-piutang* (tidak termasuk pemasukan/pengeluaran):\n`;
+      recap += `- Keluar (talangan, pinjamkan, bayar utang): ${formatIDR(summary.debtOut)}\n`;
+      recap += `- Masuk (dibayar balik, pinjam): ${formatIDR(summary.debtIn)}\n\n`;
+    }
 
     recap += `🎯 *Status Anggaran (Budget)*:\n`;
     recap += budgets.length === 0

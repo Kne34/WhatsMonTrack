@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Alert, Button, SegmentedControl, SelectField, TextField } from "../common/ui";
-import { CATEGORIES, categoryLabel, TX_TYPE_LABEL, type TxType } from "@/lib/format";
+import { CATEGORIES, DEBT_CATEGORY, categoryLabel, TX_TYPE_LABEL, type TxType } from "@/lib/format";
 
 // ---------- Shared shell ----------
 
@@ -215,7 +215,7 @@ export function BudgetDialog({ budget, categories, onClose, onSave, onDelete }: 
         <SelectField label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)}
           disabled={!!budget} error={errors.category}>
           <option value="">Pilih kategori</option>
-          {categories.filter((c) => c !== "INCOME").map((c) => (
+          {categories.filter((c) => c !== "INCOME" && c !== DEBT_CATEGORY).map((c) => (
             <option key={c} value={c}>{categoryLabel(c)}</option>
           ))}
         </SelectField>
@@ -341,6 +341,13 @@ export function TransactionDialog({ transaction, accounts, categories, onClose, 
               <option key={c} value={c}>{categoryLabel(c)}</option>
             ))}
           </SelectField>
+        )}
+        {type !== "TRANSFER" && category === DEBT_CATEGORY && (
+          <p className="-mt-2 text-xs text-muted-foreground">
+            {type === "INCOME"
+              ? "Uang yang dibayar balik atau dipinjam. Saldo bertambah, tapi tidak dihitung sebagai pemasukan."
+              : "Talangan, uang yang dipinjamkan, atau bayar utang. Saldo berkurang, tapi tidak dihitung sebagai pengeluaran."}
+          </p>
         )}
         <TextField label="Keterangan (opsional)" value={description} onChange={(e) => setDescription(e.target.value)}
           placeholder="Makan siang, bensin, gaji" maxLength={100} />

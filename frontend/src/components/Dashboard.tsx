@@ -36,7 +36,7 @@ type DialogState =
   | { kind: "link" }
   | { kind: "bot" };
 
-const PAGE_TITLES: Record<Tab, string> = { dashboard: "Ringkasan", transactions: "Transaksi", chat: "Chat", inbox: "Perlu ditinjau" };
+const PAGE_TITLES: Record<Tab, string> = { dashboard: "Dashboard", transactions: "Transaksi", chat: "Chat", inbox: "Perlu ditinjau" };
 const REFRESH_MS = 15_000;
 
 export default function Dashboard({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
@@ -60,6 +60,9 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   const [budgets, setBudgets] = useState<BudgetLike[]>([]);
   const [waStatus, setWaStatus] = useState<WhatsAppStatus | null>(null);
   const [phoneStatus, setPhoneStatus] = useState<PhoneStatus | null>(null);
+  // Has the user ever recorded a transaction (any month)? Once true it stays true, so it is asked only until then.
+  const [hasAnyTransaction, setHasAnyTransaction] = useState(false);
+  const knownHasTx = useRef(false);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // Filters the data on screen belongs to. While they differ from the selected filters,
@@ -81,14 +84,19 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   const loadData = useCallback(async () => {
     const key = `${month}/${year}/${selectedDay}/${page}/${limit}`;
     try {
-      const [monthly, table, accs, budgs, wa, phone] = await Promise.all([
+      const [monthly, table, accs, budgs, wa, phone, any] = await Promise.all([
         fetchTransactions({ month, year, page: 1, limit: 1000 }),
         fetchTransactions({ month, year, day: selectedDay || undefined, page, limit }),
         fetchAccounts(),
         fetchBudgets(),
         fetchWhatsAppStatus().catch(() => null),
         fetchPhoneStatus().catch(() => null),
+        knownHasTx.current ? null : fetchTransactions({ page: 1, limit: 1 }).catch(() => null),
       ]);
+      if (any && (any.total ?? (any.data ?? any).length) > 0) {
+        knownHasTx.current = true;
+        setHasAnyTransaction(true);
+      }
       // A slower response for filters the user already left must not overwrite newer data
       if (key !== latestRequest.current) return;
       setShown({ month, year, day: selectedDay, page, limit });
@@ -327,6 +335,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
               month={month}
               year={year}
               phoneLinked={!!phoneStatus?.phoneNumber}
+              hasAnyTransaction={hasAnyTransaction || monthlyTxs.length > 0}
               onEditAccount={(account) => setDialog({ kind: "account", account })}
               onEditBudget={(budget) => setDialog({ kind: "budget", budget })}
               onLinkPhone={() => setDialog({ kind: "link" })}

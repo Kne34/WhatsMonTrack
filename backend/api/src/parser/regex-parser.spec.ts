@@ -45,6 +45,18 @@ describe('parseWithRegex', () => {
     expect(data.toAccount).toBeUndefined(); // the bot then asks for both accounts
   });
 
+  it('files lending and debt under DEBT, out or in depending on who pays', () => {
+    const out = ['talangin makan Budi 150rb pakai BCA', 'minjemin Andi 200rb dari gopay', 'bayar utang ke Sinta 100rb pakai BCA', 'bayarin tiket Rani 300rb BCA'];
+    for (const text of out) expect(parse(text)).toMatchObject({ type: 'EXPENSE', category: 'DEBT', fromAccount: expect.any(String) });
+    const back = ['Budi bayar utang 150rb ke BCA', 'Andi transfer ganti uang 50rb ke gopay', 'uang talangan Rani kembali 300rb masuk ke BCA', 'pinjam dari Sinta 500rb masuk BCA', 'Budi bayar utang ke aku 75rb BCA'];
+    for (const text of back) expect(parse(text)).toMatchObject({ type: 'INCOME', category: 'DEBT', toAccount: expect.any(String) });
+    expect(parse('talangin makan Budi 150rb pakai BCA').subcategory).toBe('talangin makan Budi');
+  });
+
+  it('keeps a transfer between two own accounts a transfer, even with debt words', () => {
+    expect(parse('transfer 100rb dari BCA ke GoPay buat bayar utang')).toMatchObject({ type: 'TRANSFER', category: 'OTHER' });
+  });
+
   it('leaves the account empty when none is mentioned instead of assuming cash', () => {
     expect(parse('makan 20rb').fromAccount).toBeUndefined();
   });
