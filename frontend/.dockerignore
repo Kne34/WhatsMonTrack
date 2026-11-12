@@ -1,0 +1,9 @@
+# Keep the build context small: dependencies are installed and the app is built inside the image
+node_modules
+.next
+out
+coverage
+*.tsbuildinfo
+npm-debug.log*
+.env*
+.git
