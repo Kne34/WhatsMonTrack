@@ -349,7 +349,7 @@ The **Chat** tab (sidebar; on a phone: the bottom bar) talks to the same bot as 
 - On a phone the chat fills the screen like a messaging app; while the keyboard is open, the bottom bar hides so the input stays right above the keyboard (it comes back when the keyboard closes).
 
 ### 9. Dashboard (overview)
-- **Month switcher** at the top: go back to earlier months, **Bulan ini** jumps back to the current month. Future months are disabled.
+- **Month switcher** at the top: go to earlier or later months (transactions can be dated ahead, e.g. December), **Bulan ini** jumps back to the current month.
 - **Saldo total**: the sum of all accounts. Its eye icon hides only this number.
 - **Pemasukan / Pengeluaran / Selisih**: income, expenses and their difference for the month. Each has its own eye icon to hide it, separate from the balance toggle and remembered in this browser.
 - **Every section has its own eye**: Saldo total, Pemasukan, Pengeluaran, Selisih, the Rekening card, the Utang-piutang card, and on the Utang-piutang page the totals and the list. Hiding or showing one never changes another; each choice is remembered in this browser.

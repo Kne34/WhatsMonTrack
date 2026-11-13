@@ -140,10 +140,12 @@ export default function HomeView({
   const net = income - expense;
   const monthName = formatMonth(month, year);
 
-  // Daily series. In the current month, days after today are left empty so the line stops at today.
+  // Daily series. In the current month, days after today are left empty so the line stops at today,
+  // unless a transaction is dated later this month: then the line runs to that day.
   const daysInMonth = new Date(year, month, 0).getDate();
   const now = new Date();
-  const lastDay = month === now.getMonth() + 1 && year === now.getFullYear() ? now.getDate() : daysInMonth;
+  const lastTxDay = counted.reduce((m, t) => Math.max(m, new Date(t.createdAt).getDate()), 0);
+  const lastDay = month === now.getMonth() + 1 && year === now.getFullYear() ? Math.max(now.getDate(), lastTxDay) : daysInMonth;
   const daily = useMemo(() => {
     const rows = Array.from({ length: daysInMonth }, (_, i) => ({ day: i + 1, income: 0, expense: 0, net: null as number | null }));
     for (const t of counted) {

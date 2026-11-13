@@ -190,10 +190,13 @@ export function BottomTabs({ active, onNavigate, reviewCount }: { active: Tab; o
   );
 }
 
-/** Previous/next month. Future months are disabled: they can't contain transactions yet. */
+/** Previous/next month. Future months stay reachable: a transaction can be dated ahead (e.g. a planned payment). */
 export function MonthSwitcher({ month, year, onChange }: { month: number; year: number; onChange: (month: number, year: number) => void }) {
   const now = new Date();
   const isCurrent = month === now.getMonth() + 1 && year === now.getFullYear();
+  // Same range the API accepts (year 2000-2100)
+  const atEnd = month === 12 && year >= 2100;
+  const atStart = month === 1 && year <= 2000;
   const shift = (delta: number) => {
     const d = new Date(year, month - 1 + delta, 1);
     onChange(d.getMonth() + 1, d.getFullYear());
@@ -201,9 +204,9 @@ export function MonthSwitcher({ month, year, onChange }: { month: number; year: 
   return (
     <div className="flex items-center gap-1">
       <div className="flex items-center rounded-xl border border-border/70 bg-card">
-        <IconButton label="Bulan sebelumnya" onClick={() => shift(-1)}><ChevronLeft className="size-4" /></IconButton>
+        <IconButton label="Bulan sebelumnya" onClick={() => shift(-1)} disabled={atStart}><ChevronLeft className="size-4" /></IconButton>
         <span className="min-w-32 text-center text-sm font-medium capitalize tabular-nums" aria-live="polite">{formatMonth(month, year)}</span>
-        <IconButton label="Bulan berikutnya" onClick={() => shift(1)} disabled={isCurrent}><ChevronRight className="size-4" /></IconButton>
+        <IconButton label="Bulan berikutnya" onClick={() => shift(1)} disabled={atEnd}><ChevronRight className="size-4" /></IconButton>
       </div>
       {!isCurrent && (
         <Button variant="ghost" size="sm" onClick={() => onChange(now.getMonth() + 1, now.getFullYear())}>Bulan ini</Button>
