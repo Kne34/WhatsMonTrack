@@ -42,7 +42,7 @@ Quick access to every document in this repository.
 - **AI with a safety net.** Google Gemini (structured JSON output) parses the message; if Gemini is unavailable (no key, quota, outage) an offline parser takes over and saves its results as drafts to review. Your own account names are given to the model so it picks real accounts. The message is always treated as data, never as instructions to the AI.
 - **Unsure? Ask, don't guess.** When the AI is less than 85% confident, the transaction is saved as a draft in **Perlu ditinjau** (review inbox) and balances are not touched until you confirm it. Account names the bot cannot find are never created automatically; the bot replies with your list of accounts.
 - **Loose account matching.** `Go-Pay` = `GO PAY` = `gopay`, `cash` = `tunai` = `uang tunai`, case and punctuation are ignored.
-- **Lending and debt (utang-piutang).** *"talangin makan Budi 150rb pakai BCA"* or *"Budi bayar utang 150rb ke BCA"* change the balance but are not counted as spending or income, so the totals show what you really spent and earned.
+- **Lending and debt (utang-piutang).** *"talangin makan Budi 150rb pakai BCA"* creates a talangan on the Utang-piutang page (the money leaves BCA right away, but it is not spending yet); *"Budi bayar utang 50rb ke GoPay"* ticks Budi as paid. Only your own share reaches the expense reports, once the record is settled.
 - **`/rekap` or `/recap`.** Monthly summary straight in WhatsApp without using AI credits.
 - **Casual chat.** "Halo" or "cara pakainya gimana?" gets a friendly answer instead of an error.
 - **Never double-counted.** Each WhatsApp message is recorded at most once (message id + database unique constraint), also when WhatsApp re-delivers messages after a reconnect. Messages sent while the bot was offline are still processed when it comes back (up to `WA_OFFLINE_MAX_AGE_HOURS`, default 72 hours).
@@ -57,7 +57,7 @@ Quick access to every document in this repository.
 
 ### Web dashboard
 - **Dashboard (overview):** total balance, income, expense and difference (each can be hidden with its eye icon), cash-flow chart, daily spending chart with the daily budget line, spending or income per category, accounts (with their own eye icon) and budget progress, plus a lending/debt card kept apart from the totals.
-- **Utang-piutang page:** a to-do style list of who owes whom, with a description, how much is left, and a checkbox for "lunas". Notes only, balances never change.
+- **Utang-piutang page:** talangan (piutang) and debts (utang) with the people involved. Balances move the moment money moves (the talangan leaving, each person paying to whichever account); the real expense (your own share, or what you repaid) is recorded only when the record is settled, without touching a balance again.
 - **Investasi page:** Indonesian stocks (IDX, in lots), US stocks and crypto on Stockbit, Pluang and other platforms, with live prices (Yahoo Finance, CoinGecko) and the live USD/IDR rate. Portfolio value, cost and unrealized profit/loss in rupiah, an allocation donut by asset class or platform, a filterable holdings table, and buy/sell that recomputes the average price. Separate from accounts: balances never change.
 - **Transaksi (ledger):** calendar day filter, paginated list (10/15/50/100 per page), add, edit and delete.
 - **Chat:** chat with the bot right on the web, with the same results as on WhatsApp (record transactions, `/rekap`). Works without a bot number or a linked phone; the history is saved and can be cleared.
@@ -116,7 +116,7 @@ graph TD
 | `auth/` | Register, email OTP, login, forgot/reset password, JWT, HTML OTP email |
 | `accounts/` | Bank/e-wallet accounts (CRUD, ownership checks, loose name matching) |
 | `budgets/` | Monthly budget per category |
-| `debts/` | Utang-piutang notes: who owes whom, paid so far, lunas (never touches balances) |
+| `debts/` | Utang-piutang: records with participants, real-time cash flow (transactions with `inReports: false`) and settling (an expense/income with `affectsBalance: false`) |
 | `investments/` | Investasi: holdings, buy/sell history (`portfolio.ts` has the average-price math) and `market.service.ts`, the live prices from Yahoo Finance and CoinGecko with a 3-minute cache and a database fallback |
 | `transactions/` | Transactions, monthly summary, `ledger.ts` (the only place that changes balances) |
 | `parser/` | Gemini parsing with regex fallback |
@@ -143,7 +143,10 @@ All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-passwo
 | `GET /api/accounts`, `POST /api/accounts`, `PUT /api/accounts/:id` | Accounts; the list includes `transactionCount` (transactions that use each account) |
 | `DELETE /api/accounts/:id?withTransactions=true` | Delete an account. Without the flag an account still in use gets `409` with `transactionCount`; with it, its transactions are deleted too and other accounts' balances are corrected |
 | `GET /api/budgets`, `POST /api/budgets`, `DELETE /api/budgets/:id` | Budgets (POST creates or updates per category) |
-| `GET /api/debts`, `POST /api/debts`, `PUT /api/debts/:id`, `DELETE /api/debts/:id` | Utang-piutang notes: `person`, `direction` (THEY_OWE / I_OWE), `amount`, `paid`, `note`. `PUT` with `{ settled: true/false }` is the checkbox. Notes never change balances |
+| `GET /api/debts?status=OPEN&type=RECEIVABLE&q=budi`, `GET /api/debts/summary`, `GET /api/debts/:id` | Utang-piutang records with `participants` and `progress` (`total`, `paid`, `expected`, `remaining`, `difference`); the list also returns the open `summary` (`receivable`, `payable`, `openCount`) |
+| `POST /api/debts`, `PUT /api/debts/:id`, `DELETE /api/debts/:id` | `title`, `type` (RECEIVABLE / PAYABLE), `totalAmount`, `category` (a spending category), `accountId`, `addToBalance`, `recordExpense`, `date`, `notes`, `participants` [{ `id`?, `personName`, `expectedAmount` }]. Creating a talangan takes the total from the account; editing redoes that movement; deleting undoes every movement. Open records only |
+| `POST /api/debts/:id/participants/:pid/pay`, `DELETE` same path | Tick `{ amount, accountId, paidAt }`: the money enters (talangan) or leaves (utang) that account now. `DELETE` unticks and gives the balance back |
+| `POST /api/debts/:id/settle`, `POST /api/debts/:id/reopen` | Settle: records total − paid (talangan) or what was paid (utang) as an expense with `affectsBalance: false`; `{ recordExcessAsIncome }`, `{ recordExpense }`. Reopen removes it |
 | `GET /api/investments`, `POST /api/investments`, `PUT /api/investments/:id`, `DELETE /api/investments/:id` | Holdings: `assetType` (IDX_STOCK / US_STOCK / CRYPTO), `symbol` (BBCA, NVDA, BTC; no `.JK`), `platform`, `currency` (IDR / USD; IDX is always IDR), `quantity` (lots for IDX, decimals allowed otherwise), `avgPrice` (per share/unit), optional `name` and `coingeckoId` (found automatically). An unknown ticker is refused; the same ticker on the same platform is a 409. `PUT` is a direct correction and cannot change the type or ticker |
 | `GET /api/investments/:id/trades`, `POST /api/investments/:id/trades` | Buy/sell history. `{ side: BUY or SELL, quantity, price, tradedAt?, note? }`: a buy recomputes the average price, a sell keeps it and stores the realized P&L. Selling more than you hold is a 400 |
 | `GET /api/market/prices?refresh=true` | Live prices of your own holdings plus `fx` (USD/IDR): `{ prices: { "IDX:BBCA": { price, currency, priceIdr?, updatedAt, stale } }, fx, fetchedAt }`. Cached for 3 minutes (`refresh` still reuses prices younger than 30 seconds). When Yahoo or CoinGecko fail, the last price saved in the database comes back with `stale: true`; a price never seen is `null` |
@@ -281,7 +284,7 @@ A budget is a monthly spending limit for one category.
 - **Edit or delete:** click the budget in the **Anggaran** card. Deleting a budget does not delete transactions.
 - Progress bars show spent / limit for the selected month: **Hampir habis** (almost used up) from 80%, **Melebihi** (over) from 100%.
 
-Categories: Makanan (`FOOD`), Transportasi (`TRANSPORT`), Belanja (`SHOPPING`), Tagihan (`BILLS`), Kesehatan (`HEALTH`), Hiburan (`ENTERTAINMENT`), Lainnya (`OTHER`), Pemasukan (`INCOME`) for income, and Utang-piutang (`DEBT`) for lending and debt (no budget, see [Lending and debt](#lending-and-debt-utang-piutang)).
+Categories: Makanan (`FOOD`), Transportasi (`TRANSPORT`), Belanja (`SHOPPING`), Tagihan (`BILLS`), Kesehatan (`HEALTH`), Hiburan (`ENTERTAINMENT`), Lainnya (`OTHER`), and Pemasukan (`INCOME`) for income. There is no lending/debt category: use the [Utang-piutang page](#11-utang-piutang-page).
 
 ### 6. Record transactions via WhatsApp
 From your linked number, send a message to the bot. Just type naturally and mention the amount and the account:
@@ -293,8 +296,8 @@ From your linked number, send a message to the bot. Just type naturally and ment
 | *beli bensin goceng cash* | Expense Rp 5.000 from Tunai |
 | *gajian 5jt masuk ke bca* | Income Rp 5.000.000 to BCA |
 | *transfer 100rb dari bca ke gopay* | Transfer Rp 100.000, BCA → GoPay |
-| *talangin makan Budi 150rb pakai bca* | Utang-piutang out Rp 150.000 from BCA (not spending) |
-| *Budi bayar utang 150rb ke bca* | Utang-piutang in Rp 150.000 to BCA (not income) |
+| *talangin makan Budi 150rb pakai bca* | Talangan Rp 150.000 from BCA for Budi on the Utang-piutang page (not spending yet) |
+| *Budi bayar utang 150rb ke gopay* | Budi ticked as paid on his open talangan, Rp 150.000 into GoPay |
 
 The bot replies, for example:
 
@@ -316,20 +319,18 @@ Other replies you may get:
 | *Halo! Nomor ini belum terhubung ...* | This number is not linked to an account yet; see step 4 |
 
 #### Lending and debt (utang-piutang)
-To keep a simple list of who still owes whom, use the [Utang-piutang page](#11-utang-piutang-page).
+Talangan and debts are recorded on the [Utang-piutang page](#11-utang-piutang-page), also from WhatsApp:
 
-Paying for a friend first, lending money, borrowing, and paying back are not real spending or income, but they do move money. Record them with category **Utang-piutang** (`DEBT`):
+| You send | What happens |
+|---|---|
+| *talangin makan malam Budi 150rb pakai BCA* | New talangan (Makanan) for Budi; Rp 150.000 leaves BCA now, not counted as spending |
+| *ditalangin Sinta tiket 75rb* | New debt to Sinta; no balance changes |
+| *pinjam dari Sinta 500rb masuk BCA* | New debt to Sinta; Rp 500.000 comes into BCA |
+| *Budi bayar utang 50rb ke gopay* | Budi is ticked as paid (Rp 50.000 into GoPay) on his only open talangan |
+| *bayar utang ke Sinta 75rb pakai BCA* | Sinta is ticked on your only open debt to her (Rp 75.000 out of BCA) |
 
-| Situation | Type | Example message |
-|---|---|---|
-| You pay for someone (talangin), lend, or repay your own debt | Out (expense type) | *talangin makan Budi 150rb pakai BCA*, *minjemin Andi 200rb dari gopay*, *bayar utang ke Sinta 100rb BCA* |
-| Someone pays you back, or you borrow | In (income type) | *Budi bayar utang 150rb ke BCA*, *Andi transfer ganti uang 50rb ke gopay*, *pinjam dari Sinta 500rb masuk BCA* |
-
-- The account balance changes as usual.
-- **Pemasukan**, **Pengeluaran**, **Selisih**, the charts, the category breakdown and the budgets leave them out. The dashboard shows them in a separate **Utang-piutang** card (out, in, and what has not come back this month), and `/rekap` lists them separately.
-- Paid for a group and your own share is part of it? Send two messages: your share as a normal expense, the rest as talangan (e.g. *makan 100rb BCA* and *talangin makan teman 200rb BCA*).
-- On the web: **Tambah** → **Utang-piutang**, choose **Uang keluar** or **Uang masuk**, the amount, a description (e.g. *Talangin makan Budi*) and the account.
-- Already recorded as an expense or income? Open it in **Transaksi** → **Ubah** and change the category to **Utang-piutang**.
+- If the person is on several open records, or on none, the bot records nothing and asks you to tick it on the web.
+- Nothing counts as spending until you settle the record on the web.
 
 Sending the same message twice by accident is fine to retry: a single WhatsApp message is never recorded twice.
 
@@ -337,7 +338,7 @@ Sending the same message twice by accident is fine to retry: a single WhatsApp m
 Send `/rekap` or `/recap` to the bot to get this month's summary (in your time zone) without opening the dashboard and without using AI credits:
 - Total income and total expenses
 - Net cash flow
-- Lending and debt (out and in), when there was any, listed apart from the totals
+- Open Utang-piutang: what others still owe you and what you still owe, when there is any
 - Current balance of every account
 - Every budget with spent / limit and status (Aman ✅ / Over ⚠️)
 
@@ -363,23 +364,39 @@ The **Chat** tab (sidebar; on a phone: the bottom bar) talks to the same bot as 
 - **Pengeluaran harian**: spending per day. If you have budgets, a dashed line shows the average daily budget.
 - **Per kategori**: top 5 categories plus "Lainnya", switchable between expenses and income, with amounts and percentages.
 - **Rekening** and **Anggaran** cards: click an item to edit it. The Rekening card has its own eye icon, separate from Saldo total.
-- **Utang-piutang** card (only when there is any this month): money out (talangan, lending, repaying), money in (paid back, borrowing) and the difference. These are not part of Pemasukan/Pengeluaran.
+- **Utang-piutang** card (only while a record is open): what others still owe you and what you still owe. **Detail** opens the page.
 
-Only confirmed transactions are counted; drafts waiting for review are not. Lending and debt (`DEBT`) is not counted as income or spending.
+Only confirmed transactions are counted; drafts waiting for review are not. Talangan and debt payments are not counted as income or spending until their record is settled.
 
 ### 10. Dashboard: Transaksi (ledger)
 - **Pilih tanggal**: a calendar of the selected month. Dots mark days with expenses (dark) and income (green). Click a day to show only that day; click again or **Semua tanggal** to show the whole month.
 - **Daftar transaksi**: date and time, description, category, account and amount (income in green with +, expenses with −). Choose 10, 15, 50 or 100 per page.
-- **Filter**: search the description or the original chat message, and pick a type (Pengeluaran / Pemasukan / Transfer), a category (e.g. Makanan or Utang-piutang) and an account. Filters combine with each other and with the selected day, and stay when you switch months. While a filter is on, a line shows how many transactions match and their total out and in (e.g. "all Makanan this month"), and the calendar dots only show matching days. On phones the three dropdowns sit behind the **Filter** button. **Hapus filter** clears them.
+- **Filter**: search the description or the original chat message, and pick a type (Pengeluaran / Pemasukan / Transfer), a category (e.g. Makanan) and an account. Filters combine with each other and with the selected day, and stay when you switch months. While a filter is on, a line shows how many transactions match and their total spending and income (e.g. "all Makanan this month"; talangan and debt payments are listed but not in these totals), and the calendar dots only show matching days. On phones the three dropdowns sit behind the **Filter** button. **Hapus filter** clears them.
 - **Add manually:** **Tambah** → **Transaksi**. Choose Pengeluaran / Pemasukan / Transfer, amount, category, an optional description, account(s), and date & time (also for past dates).
 - **Edit** (pencil) or **delete** (trash) a transaction. Balances are corrected automatically, e.g. deleting an expense gives the money back to the account.
+- Rows from the Utang-piutang page have a label: **Talangan** / **Utang** (money moved, not counted yet) or **Utang-piutang selesai** (in the reports, the balance did not change again). They are changed from that page only (the handshake icon opens it).
 
 ### 11. Utang-piutang page
-Menu **Utang-piutang** (phone: **Utang**): a simple to-do style list of who owes whom. It is only a note; account balances never change here (to move money, record a transaction with category Utang-piutang as described in [Lending and debt](#lending-and-debt-utang-piutang)).
-- **Catat**: choose **Dia utang ke aku** or **Aku utang ke dia**, the person's name, the amount, an optional description (e.g. *Talangin bakmi acet*) and, if part was already paid, **Sudah dibayar**.
-- **List**: *Budi utang ke kamu* **+Rp 50.000** (still to receive) or *Kamu utang ke Sinta* **−Rp 300.000** (still to pay), with the description, the date and "dibayar Rp X dari Rp Y" for partial payments. Tick the box when it is paid in full (it moves to **Lunas**); untick it to reopen. Pencil to edit, trash to delete.
-- **Belum lunas / Lunas / Semua** filters the list. The top card shows the open totals: *Orang utang ke kamu* and *Kamu utang*.
-- Both the totals and the list have their own eye icon.
+Menu **Utang-piutang** (phone: **Utang**). For money you paid for others (**Piutang / Talangan**) and money you owe (**Utang**). Balances are always real: money moves the moment it moves. Only the real expense reaches the reports, when you settle the record.
+
+**Example: dinner Rp 400.000 paid with BCA for you and three friends.**
+1. **Catat** → **Piutang / Talangan**: title *Makan malam*, total Rp 400.000, category Makanan, **Ditalangi pakai** BCA, and the people: Andi, Budi, Citra (Rp 100.000 each; **Bagi rata (termasuk aku)** fills that in). BCA goes down Rp 400.000 right away; nothing is counted as spending yet.
+2. Andi transfers to GoPay: tick **Andi**, enter what he actually paid (Rp 100.000), choose **GoPay** and the date. GoPay goes up right away (not income). Unticking undoes it and the balance goes back.
+3. Citra never pays: press **Selesaikan**. The confirmation shows *Total awal*, *Total dibayar* and the *Selisih*: here Rp 200.000 (your Rp 100.000 + Citra's Rp 100.000) becomes an expense on Makanan, dated on the record's date, without changing a balance again.
+4. Made a mistake? **Buka kembali** removes that expense (balances stay as they are) and the record can be changed again.
+
+**Utang** (you owe): choose **Utang**, the people you owe and the amount.
+- Someone paid for you: leave **Uang pinjaman masuk ke rekening saya** off; no balance changes. When you pay them back, tick them and choose the account it left from.
+- A cash loan into your account: turn it on and choose the account; it goes up right away. Repaying a loan is not spending, so **Catat yang kubayar sebagai pengeluaran** is off by default.
+- Settling records what you paid as an expense (when that option is on).
+
+**More:**
+- When others paid more than the total, settling can record the excess as income (report only).
+- Top cards: **Piutang aktif** (what others still owe you), **Utang aktif** (what you still owe), and how many records are open. Their expected shares count, or the total when no shares are set.
+- **Belum selesai / Selesai** tabs, **Semua / Piutang / Utang**, and search by title or name.
+- Pencil to edit an open record (total, account, date and people; the balance follows), trash to delete it (every balance change is undone). A settled record must be reopened first. A person who already paid can't be removed until unticked.
+- An account used by a record can't be deleted until the record is changed or deleted.
+- The totals and the list have their own eye icon.
 
 ### 12. Investasi page
 Menu **Investasi**: your stocks and crypto across platforms, with live prices. Like the Utang-piutang page it is separate from your accounts: buying or selling here never changes a balance.
@@ -560,3 +577,12 @@ A test with 16 injection messages (fake admin, reading other users' data, leakin
 - **Holdings and history:** `Investment` and `InvestmentTrade` (migration `20261123000000_investments`), `/api/investments`. IDX stocks in lots, US stocks and crypto with decimals, USD or IDR. Buys recompute the weighted average price; sells store the realized P&L.
 - **Live prices without extra dependencies:** the API calls the Yahoo Finance chart endpoint and the CoinGecko simple-price endpoint with `fetch` (one CoinGecko request for all coins, at most 4 Yahoo requests at a time, 8-second timeout). Prices are shared by all users: memory cache for 3 minutes, the last good price stored in `MarketPrice` and served with `stale: true` when a source fails, and a failed source left alone for a minute.
 - **Page:** summary, an allocation donut (categorical palette checked for color-vision deficiency, with a labeled legend), the holdings table with filters, and buy/sell and edit dialogs. Its own eye per section. The phone tab bar now has six tabs; the add button stays next to the title on pages without a month switcher.
+
+### Phase 15: Utang-piutang with real-time cash flow
+- **The `DEBT` category is gone.** Its transactions, the `counterparty` column and the old to-do style notes (`DebtNote`) are removed (migration `20261124000000_debt_records`; balances were left as they were, that money really moved). The parser no longer has the category; the server refuses it.
+- **`DebtRecord` and `DebtParticipant`:** a talangan (RECEIVABLE) or a debt (PAYABLE) with the people involved, their expected share, what they actually paid, into or out of which account, and when.
+- **Two flags on `Transaction` keep balances and reports apart:** cash movements of a record have `inReports: false` (the balance changes, the totals, charts, budgets and `/rekap` ignore them); the expense/income made when settling has `affectsBalance: false` (in the reports, no balance change). `applyToBalances` skips `affectsBalance: false`, the single place balances change, so editing, deleting or reopening can never count money twice. These rows are managed from the Utang-piutang page only (409 elsewhere).
+- **Settling** records total − paid for a talangan (your share plus what nobody paid), or what you paid on a debt, on the record's category and date; **reopen** removes it.
+- **Bot:** Gemini and the offline parser mark lending/debt as LEND / BORROW / REPAID / REPAY with the person, and the bot creates the record or ticks the person on their only open record. `/rekap` shows the open totals.
+- **Page:** open totals, Belum selesai / Selesai, type filter and search, a form with a list of people (and an equal split), a checklist with a progress bar, a payment dialog (amount, account, date), and the settle confirmation with the difference.
+- **`deploy/vps/reset-data.sh`:** empties the whole database after a backup and a typed confirmation (used once to start over).

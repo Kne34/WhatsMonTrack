@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Pencil, ReceiptText, Search, SearchX, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Handshake, Pencil, ReceiptText, Search, SearchX, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { categoryLabel, formatDayMonth, formatMonth, formatRupiah, formatTime, TX_TYPE_LABEL, type TxType } from "@/lib/format";
 import { Button, Card, EmptyState, IconButton, focusRing, inputBase } from "../../common/ui";
@@ -20,6 +20,12 @@ export interface LedgerTx {
   createdAt: string;
   fromAccount?: { name: string } | null;
   toAccount?: { name: string } | null;
+  /** false: a talangan or debt payment; moves money but is not income or spending yet */
+  inReports?: boolean;
+  /** false: the expense/income of a settled debt; in the reports, the money already moved */
+  affectsBalance?: boolean;
+  /** Made by this Utang-piutang record: managed from that page only */
+  debtRecord?: { id: string; title: string; type: "RECEIVABLE" | "PAYABLE"; status: string } | null;
 }
 
 interface LedgerViewProps {
@@ -39,6 +45,8 @@ interface LedgerViewProps {
   onAdd: () => void;
   onEdit: (tx: LedgerTx) => void;
   onDelete: (tx: LedgerTx) => void;
+  /** Rows made by an Utang-piutang record open that page instead of being edited here */
+  onOpenDebts: () => void;
   filters: TxFilters;
   onFiltersChange: (filters: TxFilters) => void;
   /** Category codes for the filter (known ones plus the user's own) */
@@ -113,7 +121,36 @@ function Amount({ tx }: { tx: LedgerTx }) {
 }
 
 function Title({ tx }: { tx: LedgerTx }) {
-  return tx.type === "TRANSFER" ? "Transfer" : tx.subcategory || categoryLabel(tx.category);
+  return (
+    <>
+      {tx.type === "TRANSFER" ? "Transfer" : tx.subcategory || categoryLabel(tx.category)}
+      <DebtBadge tx={tx} />
+    </>
+  );
+}
+
+/** Says why a row is (not) in the totals: a talangan/debt movement, or the expense of a settled one. */
+function DebtBadge({ tx }: { tx: LedgerTx }) {
+  if (!tx.debtRecord) return null;
+  const movement = tx.inReports === false;
+  return (
+    <span title={movement ? "Saldo berubah, belum dihitung sebagai pemasukan/pengeluaran" : "Masuk laporan, saldo tidak berubah lagi"}
+      className="ml-2 inline-block rounded-md bg-muted px-1.5 py-0.5 align-middle text-[11px] font-medium text-muted-foreground">
+      {movement ? (tx.debtRecord.type === "RECEIVABLE" ? "Talangan" : "Utang") : "Utang-piutang selesai"}
+    </span>
+  );
+}
+
+function RowActions({ tx, onEdit, onDelete, onOpenDebts }: { tx: LedgerTx; onEdit: (tx: LedgerTx) => void; onDelete: (tx: LedgerTx) => void; onOpenDebts: () => void }) {
+  if (tx.debtRecord) {
+    return <IconButton label="Kelola di halaman Utang-piutang" onClick={onOpenDebts}><Handshake className="size-4" /></IconButton>;
+  }
+  return (
+    <>
+      <IconButton label="Ubah transaksi" onClick={() => onEdit(tx)}><Pencil className="size-4" /></IconButton>
+      <IconButton label="Hapus transaksi" onClick={() => onDelete(tx)} className="hover:text-destructive"><Trash2 className="size-4" /></IconButton>
+    </>
+  );
 }
 
 function Meta({ tx }: { tx: LedgerTx }) {
@@ -123,7 +160,7 @@ function Meta({ tx }: { tx: LedgerTx }) {
 
 export default function LedgerView({
   month, year, monthlyTxs, pageTxs, listLoading = false, selectedDay, onSelectDay,
-  page, totalPages, limit, onPageChange, onLimitChange, onAdd, onEdit, onDelete,
+  page, totalPages, limit, onPageChange, onLimitChange, onAdd, onEdit, onDelete, onOpenDebts,
   filters, onFiltersChange, categories, accounts,
 }: LedgerViewProps) {
   const filterCount = activeFilterCount(filters);
@@ -139,7 +176,7 @@ export default function LedgerView({
     if (date.getMonth() + 1 !== month || date.getFullYear() !== year) continue; // stale data from the previous month
     const d = date.getDate();
     const v = perDay.get(d) ?? { income: 0, expense: 0, count: 0 };
-    // Dots mark money going out / coming in (lending and debt included, so a debt filter still shows them)
+    // Dots mark money going out / coming in (talangan and debt payments included)
     if (t.type === "INCOME") v.income += t.amount;
     if (t.type === "EXPENSE") v.expense += t.amount;
     v.count++;
@@ -147,7 +184,9 @@ export default function LedgerView({
   }
 
   // Totals of what the list shows (selected day, if any), so e.g. "all food this month" is one glance
-  const selection = matching.filter((t) => !selectedDay || new Date(t.createdAt).getDate() === selectedDay);
+  const shownRows = matching.filter((t) => !selectedDay || new Date(t.createdAt).getDate() === selectedDay);
+  // Totals count only income/spending, like the Dashboard (not talangan or debt payments)
+  const selection = shownRows.filter((t) => t.inReports !== false);
   const selOut = selection.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
   const selIn = selection.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
 
@@ -227,9 +266,9 @@ export default function LedgerView({
         {filterCount > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border/70 px-5 py-2.5 text-xs text-muted-foreground">
             <p className="tabular-nums">
-              {selection.length} transaksi
-              {selOut > 0 && <> · Keluar <span className="text-foreground">{formatRupiah(selOut)}</span></>}
-              {selIn > 0 && <> · Masuk <span className="text-income">{formatRupiah(selIn)}</span></>}
+              {shownRows.length} transaksi
+              {selOut > 0 && <> · Pengeluaran <span className="text-foreground">{formatRupiah(selOut)}</span></>}
+              {selIn > 0 && <> · Pemasukan <span className="text-income">{formatRupiah(selIn)}</span></>}
             </p>
             <Button variant="ghost" size="sm" onClick={() => onFiltersChange(NO_FILTERS)}>
               <X className="size-3.5" aria-hidden /> Hapus filter
@@ -286,8 +325,7 @@ export default function LedgerView({
                     <td className="whitespace-nowrap px-4 py-3 text-right"><Amount tx={tx} /></td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end">
-                        <IconButton label="Ubah transaksi" onClick={() => onEdit(tx)}><Pencil className="size-4" /></IconButton>
-                        <IconButton label="Hapus transaksi" onClick={() => onDelete(tx)} className="hover:text-destructive"><Trash2 className="size-4" /></IconButton>
+                        <RowActions tx={tx} onEdit={onEdit} onDelete={onDelete} onOpenDebts={onOpenDebts} />
                       </div>
                     </td>
                   </tr>
@@ -309,8 +347,7 @@ export default function LedgerView({
                       {formatDayMonth(tx.createdAt)}, {formatTime(tx.createdAt)} · <Meta tx={tx} />
                     </p>
                   </div>
-                  <IconButton label="Ubah transaksi" onClick={() => onEdit(tx)}><Pencil className="size-4" /></IconButton>
-                  <IconButton label="Hapus transaksi" onClick={() => onDelete(tx)}><Trash2 className="size-4" /></IconButton>
+                  <RowActions tx={tx} onEdit={onEdit} onDelete={onDelete} onOpenDebts={onOpenDebts} />
                 </li>
               ))}
             </ul>

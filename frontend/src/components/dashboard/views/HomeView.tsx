@@ -4,7 +4,8 @@ import React, { useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Check, ReceiptText, Target, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { categoryLabel, formatCompact, formatMonth, formatRupiah, isDebt } from "@/lib/format";
+import { categoryLabel, formatCompact, formatMonth, formatRupiah, inReports } from "@/lib/format";
+import type { DebtSummary } from "@/lib/api";
 import { Button, Card, CardHeader, EmptyState, SegmentedControl, focusRing } from "../../common/ui";
 import { usePrivacy } from "../shared/privacy";
 
@@ -15,6 +16,8 @@ interface Tx {
   category: string;
   status: "CONFIRMED" | "NEEDS_REVIEW";
   createdAt: string;
+  /** false: a talangan or debt payment (moves money, not income or spending until settled) */
+  inReports?: boolean;
 }
 interface Account { id: string; name: string; balance: number }
 interface Budget { id: string; categoryName: string; limit: number }
@@ -28,6 +31,8 @@ interface HomeViewProps {
   phoneLinked: boolean;
   /** Any transaction ever recorded (any month); the getting-started steps are hidden after the first one. */
   hasAnyTransaction: boolean;
+  /** Open Utang-piutang totals; null while loading */
+  debtSummary: DebtSummary | null;
   /** Opens the Utang-piutang page */
   onOpenDebts: () => void;
   onAddTransaction: () => void;
@@ -111,7 +116,7 @@ function Onboarding({ hasAccount, phoneLinked, hasTransaction, onAddAccount, onL
 }
 
 export default function HomeView({
-  monthlyTxs, accounts, budgets, month, year, phoneLinked, hasAnyTransaction, onOpenDebts,
+  monthlyTxs, accounts, budgets, month, year, phoneLinked, hasAnyTransaction, debtSummary, onOpenDebts,
   onAddTransaction, onAddAccount, onEditAccount, onAddBudget, onEditBudget, onLinkPhone,
 }: HomeViewProps) {
   // Each section has its own eye (see usePrivacy); showing a hidden one asks for the password
@@ -128,12 +133,9 @@ export default function HomeView({
       }),
     [monthlyTxs, month, year],
   );
-  // Lending/debt (paying for a friend, being paid back) changes balances but is not real income or
-  // spending: it is left out of the totals, charts and budgets and shown on its own.
-  const counted = useMemo(() => confirmed.filter((t) => !isDebt(t.category)), [confirmed]);
-  const debtTxs = confirmed.filter((t) => isDebt(t.category));
-  const debtOut = debtTxs.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
-  const debtIn = debtTxs.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
+  // Talangan and debt payments move money but are not income or spending until their record is settled:
+  // left out of the totals, charts and budgets
+  const counted = useMemo(() => confirmed.filter(inReports), [confirmed]);
   const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
   const income = counted.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
   const expense = counted.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
@@ -350,11 +352,11 @@ export default function HomeView({
             )}
           </Card>
 
-          {(debtOut > 0 || debtIn > 0) && (
+          {!!debtSummary?.openCount && (
             <Card>
               <CardHeader
                 title="Utang-piutang"
-                description={`${monthName} · tidak termasuk pemasukan & pengeluaran`}
+                description={`${debtSummary.openCount} belum selesai · belum termasuk pengeluaran`}
                 action={
                   <div className="flex items-center gap-1">
                     {privacy.eye("debt", "size-8")}
@@ -364,16 +366,12 @@ export default function HomeView({
               />
               <dl className="space-y-2 text-sm">
                 <div className="flex items-baseline justify-between gap-3">
-                  <dt className="text-muted-foreground">Keluar<span className="block text-xs">Talangan, pinjamkan, bayar utang</span></dt>
-                  <dd className="shrink-0 tabular-nums text-foreground">{privacy.show("debt", formatRupiah(debtOut))}</dd>
+                  <dt className="text-muted-foreground">Orang utang ke kamu</dt>
+                  <dd className="shrink-0 tabular-nums text-foreground">{privacy.show("debt", formatRupiah(debtSummary.receivable))}</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-3">
-                  <dt className="text-muted-foreground">Masuk<span className="block text-xs">Dibayar balik, pinjam</span></dt>
-                  <dd className="shrink-0 tabular-nums text-foreground">{privacy.show("debt", formatRupiah(debtIn))}</dd>
-                </div>
-                <div className="flex items-baseline justify-between gap-3 border-t border-border pt-2">
-                  <dt className="font-medium text-foreground">{debtOut >= debtIn ? "Belum kembali bulan ini" : "Lebih banyak masuk"}</dt>
-                  <dd className="shrink-0 tabular-nums font-medium text-foreground">{privacy.show("debt", formatRupiah(Math.abs(debtOut - debtIn)))}</dd>
+                  <dt className="text-muted-foreground">Kamu utang</dt>
+                  <dd className="shrink-0 tabular-nums text-foreground">{privacy.show("debt", formatRupiah(debtSummary.payable))}</dd>
                 </div>
               </dl>
             </Card>

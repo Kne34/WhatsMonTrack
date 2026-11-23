@@ -15,7 +15,7 @@ export const PRIVACY_SECTIONS = {
   income: { key: "wmt.hideIncome", label: "pemasukan" },
   expense: { key: "wmt.hideExpense", label: "pengeluaran" },
   net: { key: "wmt.hideNet", label: "selisih" },
-  debt: { key: "wmt.hideDebt", label: "utang-piutang bulan ini" },
+  debt: { key: "wmt.hideDebt", label: "utang-piutang di Dashboard" },
   debtSummary: { key: "wmt.hideDebtSummary", label: "total utang-piutang" },
   debtList: { key: "wmt.hideDebtList", label: "daftar utang-piutang" },
   portfolio: { key: "wmt.hidePortfolio", label: "ringkasan investasi" },

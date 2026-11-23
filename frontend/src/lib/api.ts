@@ -68,36 +68,90 @@ export const fetchTransactions = async (
   return data;
 };
 
-// ---- Utang-piutang notes (to-do style list, separate from transactions) ----
+// ---- Utang-piutang (talangan and debts, real-time cash flow) ----
 
-export type DebtDirection = 'THEY_OWE' | 'I_OWE';
+/** RECEIVABLE: I paid first (talangan), others pay me back. PAYABLE: I owe others. */
+export type DebtType = 'RECEIVABLE' | 'PAYABLE';
+export type DebtStatus = 'OPEN' | 'SETTLED';
 
-export interface DebtNote {
+export interface DebtParticipant {
   id: string;
-  person: string;
-  /** THEY_OWE: the person owes you. I_OWE: you owe the person. */
-  direction: DebtDirection;
-  amount: number;
-  /** Paid back so far; settled when paid >= amount */
+  personName: string;
+  expectedAmount: number;
+  paidAmount: number;
+  paidAccountId: string | null;
+  paidAccount: { id: string; name: string } | null;
+  isPaid: boolean;
+  paidAt: string | null;
+}
+
+export interface DebtProgress {
+  total: number;
   paid: number;
-  note: string | null;
-  createdAt: string;
-  updatedAt: string;
+  /** Sum of the expected shares (0 when none set) */
+  expected: number;
+  /** Still to be paid (by the others, or by me) */
+  remaining: number;
+  /** Total minus paid: what settling records */
+  difference: number;
 }
 
-export interface DebtNoteInput {
-  person: string;
-  direction: DebtDirection;
-  amount: number;
-  paid?: number;
-  note?: string;
+export interface DebtRecord {
+  id: string;
+  title: string;
+  type: DebtType;
+  totalAmount: number;
+  category: string;
+  accountId: string | null;
+  account: { id: string; name: string } | null;
+  addToBalance: boolean;
+  recordExpense: boolean;
+  status: DebtStatus;
+  date: string;
+  notes: string | null;
+  settledAt: string | null;
+  settledDifference: number | null;
+  linkedTransactionId: string | null;
+  participants: DebtParticipant[];
+  progress: DebtProgress;
 }
 
-export const fetchDebtNotes = async (): Promise<DebtNote[]> => (await api.get('/debts')).data;
-export const createDebtNote = async (input: DebtNoteInput): Promise<DebtNote> => (await api.post('/debts', input)).data;
-export const updateDebtNote = async (id: string, input: Partial<DebtNoteInput> & { settled?: boolean }): Promise<DebtNote> =>
-  (await api.put(`/debts/${id}`, input)).data;
-export const deleteDebtNote = async (id: string) => (await api.delete(`/debts/${id}`)).data;
+export interface DebtSummary {
+  /** What others still owe me (open talangan) */
+  receivable: number;
+  /** What I still owe (open debts) */
+  payable: number;
+  openCount: number;
+}
+
+export interface DebtInput {
+  title: string;
+  type: DebtType;
+  totalAmount: number;
+  category: string;
+  accountId: string | null;
+  addToBalance?: boolean;
+  recordExpense?: boolean;
+  date?: string;
+  notes?: string;
+  participants: { id?: string; personName: string; expectedAmount?: number }[];
+}
+
+export const fetchDebts = async (params: { status?: DebtStatus; type?: DebtType; q?: string } = {}): Promise<{ records: DebtRecord[]; summary: DebtSummary }> =>
+  (await api.get('/debts', { params })).data;
+export const fetchDebtSummary = async (): Promise<DebtSummary> => (await api.get('/debts/summary')).data;
+export const createDebt = async (input: DebtInput): Promise<DebtRecord> => (await api.post('/debts', input)).data;
+/** OPEN records only; the type cannot change */
+export const updateDebt = async (id: string, input: Omit<Partial<DebtInput>, 'type'>): Promise<DebtRecord> => (await api.put(`/debts/${id}`, input)).data;
+export const deleteDebt = async (id: string) => (await api.delete(`/debts/${id}`)).data;
+/** Tick a person: the money enters (talangan) or leaves (utang) the account right away */
+export const payDebtParticipant = async (id: string, participantId: string, input: { amount: number; accountId: string; paidAt?: string }): Promise<DebtRecord> =>
+  (await api.post(`/debts/${id}/participants/${participantId}/pay`, input)).data;
+export const unpayDebtParticipant = async (id: string, participantId: string): Promise<DebtRecord> =>
+  (await api.delete(`/debts/${id}/participants/${participantId}/pay`)).data;
+export const settleDebt = async (id: string, input: { recordExcessAsIncome?: boolean; recordExpense?: boolean } = {}): Promise<DebtRecord> =>
+  (await api.post(`/debts/${id}/settle`, input)).data;
+export const reopenDebt = async (id: string): Promise<DebtRecord> => (await api.post(`/debts/${id}/reopen`)).data;
 
 // Helper to fetch accounts
 // ---- Investasi (holdings, buy/sell history, live prices) ----

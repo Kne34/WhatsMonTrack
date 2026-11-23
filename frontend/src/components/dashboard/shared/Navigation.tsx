@@ -228,7 +228,7 @@ export function AddMenu({ onAddTransaction, onAddDebt, onAddInvestment, onAddAcc
     <Menu
       items={[
         { label: "Transaksi", description: "Pengeluaran, pemasukan, atau transfer", icon: <ReceiptText className="size-4" />, onSelect: onAddTransaction },
-        { label: "Utang-piutang", description: "Talangan, pinjaman, atau dibayar balik", icon: <Handshake className="size-4" />, onSelect: onAddDebt },
+        { label: "Utang-piutang", description: "Talangan atau utang ke teman", icon: <Handshake className="size-4" />, onSelect: onAddDebt },
         { label: "Aset investasi", description: "Saham Indonesia, saham US, atau crypto", icon: <ChartLine className="size-4" />, onSelect: onAddInvestment },
         { label: "Rekening", description: "Bank, e-wallet, atau tunai", icon: <Wallet className="size-4" />, onSelect: onAddAccount },
         { label: "Anggaran", description: "Batas pengeluaran per kategori", icon: <Target className="size-4" />, onSelect: onAddBudget },

@@ -3,8 +3,8 @@
 import React, { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Alert, Button, PasswordField, SegmentedControl, SelectField, TextField } from "../common/ui";
-import { verifyPassword, type DebtDirection, type DebtNote, type DebtNoteInput } from "@/lib/api";
-import { CATEGORIES, DEBT_CATEGORY, categoryLabel, TX_TYPE_LABEL, type TxType } from "@/lib/format";
+import { verifyPassword } from "@/lib/api";
+import { CATEGORIES, categoryLabel, TX_TYPE_LABEL, type TxType } from "@/lib/format";
 
 // ---------- Shared shell ----------
 
@@ -108,7 +108,7 @@ export function UnlockDialog({ what, onClose, onUnlocked }: { what: string; onCl
 const toDigits = (v: string) => v.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
 const showDigits = (digits: string) => (digits ? Number(digits).toLocaleString("id-ID") : "");
 
-function AmountField({ label, digits, onChange, error, hint, allowNegative }: {
+export function AmountField({ label, digits, onChange, error, hint, allowNegative }: {
   label: string;
   digits: string;
   onChange: (digits: string) => void;
@@ -261,72 +261,13 @@ export function BudgetDialog({ budget, categories, onClose, onSave, onDelete }: 
         <SelectField label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)}
           disabled={!!budget} error={errors.category}>
           <option value="">Pilih kategori</option>
-          {categories.filter((c) => c !== "INCOME" && c !== DEBT_CATEGORY).map((c) => (
+          {categories.filter((c) => c !== "INCOME").map((c) => (
             <option key={c} value={c}>{categoryLabel(c)}</option>
           ))}
         </SelectField>
         <AmountField label="Batas per bulan" digits={limit} onChange={setLimit} error={errors.limit} />
         <DialogActions>
           {budget && onDelete && (
-            <Button variant="danger" onClick={onDelete} className="sm:mr-auto" disabled={busy}>Hapus</Button>
-          )}
-          <Button variant="secondary" onClick={onClose} disabled={busy}>Batal</Button>
-          <Button type="submit" loading={busy}>Simpan</Button>
-        </DialogActions>
-      </form>
-    </AppDialog>
-  );
-}
-
-// ---------- Utang-piutang note ----------
-
-export function DebtNoteDialog({ note, onClose, onSave, onDelete }: {
-  note: DebtNote | null;
-  onClose: () => void;
-  onSave: (input: DebtNoteInput) => Promise<void>;
-  onDelete?: () => void;
-}) {
-  const [direction, setDirection] = useState<DebtDirection>(note?.direction ?? "THEY_OWE");
-  const [person, setPerson] = useState(note?.person ?? "");
-  const [amount, setAmount] = useState(note ? String(Math.round(note.amount)) : "");
-  const [paid, setPaid] = useState(note?.paid ? String(Math.round(note.paid)) : "");
-  const [text, setText] = useState(note?.note ?? "");
-  const [errors, setErrors] = useState<{ person?: string; amount?: string; paid?: string }>({});
-  const { busy, error, submit } = useSubmit();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const errs: typeof errors = {};
-    if (!person.trim()) errs.person = "Isi nama orangnya.";
-    if (!Number(amount)) errs.amount = "Masukkan jumlah lebih dari 0.";
-    if (Number(paid) > Number(amount)) errs.paid = "Tidak boleh lebih dari jumlahnya.";
-    setErrors(errs);
-    if (Object.keys(errs).length) return;
-    const ok = await submit(() => onSave({ person: person.trim(), direction, amount: Number(amount), paid: Number(paid) || 0, note: text.trim() }));
-    if (ok) onClose();
-  };
-
-  return (
-    <AppDialog open onClose={onClose} title={note ? "Ubah catatan" : "Catat utang-piutang"}
-      description="Hanya catatan: saldo rekening tidak berubah.">
-      <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        {error && <Alert>{error}</Alert>}
-        <SegmentedControl<DebtDirection>
-          label="Siapa utang ke siapa"
-          value={direction}
-          onChange={setDirection}
-          className="flex w-full"
-          options={[{ value: "THEY_OWE", label: "Dia utang ke aku" }, { value: "I_OWE", label: "Aku utang ke dia" }]}
-        />
-        <TextField label="Nama orang" value={person} onChange={(e) => setPerson(e.target.value)} maxLength={60}
-          placeholder="Budi" autoComplete="off" error={errors.person} />
-        <AmountField label="Jumlah" digits={amount} onChange={setAmount} error={errors.amount} />
-        <TextField label="Keterangan (opsional)" value={text} onChange={(e) => setText(e.target.value)} maxLength={200}
-          placeholder="Talangin bakmi acet" />
-        <AmountField label="Sudah dibayar (opsional)" digits={paid} onChange={setPaid} error={errors.paid}
-          hint="Isi kalau sudah dibayar sebagian. Kalau sudah lunas, cukup centang di daftar." />
-        <DialogActions>
-          {note && onDelete && (
             <Button variant="danger" onClick={onDelete} className="sm:mr-auto" disabled={busy}>Hapus</Button>
           )}
           <Button variant="secondary" onClick={onClose} disabled={busy}>Batal</Button>
@@ -344,8 +285,6 @@ export interface TransactionInput {
   amount: number;
   category: string;
   subcategory?: string;
-  /** Person of a lending/debt transaction */
-  counterparty?: string;
   fromAccountId: string | null;
   toAccountId: string | null;
   createdAt: string;
@@ -357,44 +296,30 @@ export interface TransactionLike {
   amount: number;
   category: string;
   subcategory?: string | null;
-  counterparty?: string | null;
   fromAccountId?: string | null;
   toAccountId?: string | null;
   createdAt: string;
 }
 
-/** Prefill for a new lending/debt entry, e.g. "Budi paid back" from the Utang page. */
-export interface DebtPreset {
-  type?: "EXPENSE" | "INCOME";
-  counterparty?: string;
-  amount?: number;
-  description?: string;
-}
-
 /** "2026-11-05T14:30" in local time, for <input type="datetime-local"> */
-const toLocalInput = (date: Date) => {
+export const toLocalInput = (date: Date) => {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
 /** Create (transaction = null) or edit. Mount only while open so fields start fresh. */
-export function TransactionDialog({ transaction, debt: debtPreset, accounts, categories, onClose, onSave, onAddAccount }: {
+export function TransactionDialog({ transaction, accounts, categories, onClose, onSave, onAddAccount }: {
   transaction: TransactionLike | null;
-  /** New lending/debt entry: category fixed to DEBT, money out or in instead of the three types. */
-  debt?: boolean | DebtPreset;
   accounts: AccountLike[];
   categories: string[];
   onClose: () => void;
   onSave: (data: TransactionInput) => Promise<void>;
   onAddAccount: () => void;
 }) {
-  const debt = !!debtPreset;
-  const preset: DebtPreset = typeof debtPreset === "object" ? debtPreset : {};
-  const [type, setType] = useState<TxType>(transaction?.type ?? preset.type ?? "EXPENSE");
-  const [amount, setAmount] = useState(transaction ? String(Math.round(transaction.amount)) : preset.amount ? String(Math.round(preset.amount)) : "");
-  const [category, setCategory] = useState(transaction?.category ?? (debt ? DEBT_CATEGORY : ""));
-  const [description, setDescription] = useState(transaction?.subcategory ?? preset.description ?? "");
-  const [person, setPerson] = useState(transaction?.counterparty ?? preset.counterparty ?? "");
+  const [type, setType] = useState<TxType>(transaction?.type ?? "EXPENSE");
+  const [amount, setAmount] = useState(transaction ? String(Math.round(transaction.amount)) : "");
+  const [category, setCategory] = useState(transaction?.category ?? "");
+  const [description, setDescription] = useState(transaction?.subcategory ?? "");
   const [fromAccountId, setFromAccountId] = useState(transaction?.fromAccountId ?? "");
   const [toAccountId, setToAccountId] = useState(transaction?.toAccountId ?? "");
   const [when, setWhen] = useState(toLocalInput(transaction ? new Date(transaction.createdAt) : new Date()));
@@ -403,7 +328,6 @@ export function TransactionDialog({ transaction, debt: debtPreset, accounts, cat
 
   const needsFrom = type !== "INCOME";
   const needsTo = type !== "EXPENSE";
-  const isDebtEntry = type !== "TRANSFER" && category === DEBT_CATEGORY;
 
   if (accounts.length === 0) {
     return (
@@ -434,7 +358,6 @@ export function TransactionDialog({ transaction, debt: debtPreset, accounts, cat
         amount: Number(amount),
         category: category || (type === "INCOME" ? "INCOME" : "UNCATEGORIZED"),
         subcategory: description.trim() || undefined,
-        counterparty: isDebtEntry ? person.trim() : undefined,
         fromAccountId: needsFrom ? fromAccountId : null,
         toAccountId: needsTo ? toAccountId : null,
         createdAt: new Date(when).toISOString(),
@@ -449,7 +372,7 @@ export function TransactionDialog({ transaction, debt: debtPreset, accounts, cat
     <AppDialog
       open
       onClose={onClose}
-      title={transaction ? "Ubah transaksi" : debt ? "Catat utang-piutang" : "Tambah transaksi"}
+      title={transaction ? "Ubah transaksi" : "Tambah transaksi"}
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && <Alert>{error}</Alert>}
@@ -458,12 +381,10 @@ export function TransactionDialog({ transaction, debt: debtPreset, accounts, cat
           value={type}
           onChange={setType}
           className="flex w-full"
-          options={debt
-            ? [{ value: "EXPENSE", label: "Uang keluar" }, { value: "INCOME", label: "Uang masuk" }]
-            : (["EXPENSE", "INCOME", "TRANSFER"] as TxType[]).map((t) => ({ value: t, label: TX_TYPE_LABEL[t] }))}
+          options={(["EXPENSE", "INCOME", "TRANSFER"] as TxType[]).map((t) => ({ value: t, label: TX_TYPE_LABEL[t] }))}
         />
         <AmountField label="Jumlah" digits={amount} onChange={setAmount} error={errors.amount} />
-        {type !== "TRANSFER" && !debt && (
+        {type !== "TRANSFER" && (
           <SelectField label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)}>
             <option value="">{type === "INCOME" ? "Pemasukan" : "Tanpa kategori"}</option>
             {categories.filter((c) => (type === "INCOME" ? true : c !== "INCOME")).map((c) => (
@@ -471,20 +392,8 @@ export function TransactionDialog({ transaction, debt: debtPreset, accounts, cat
             ))}
           </SelectField>
         )}
-        {type !== "TRANSFER" && category === DEBT_CATEGORY && (
-          <p className="-mt-2 text-xs text-muted-foreground">
-            {type === "INCOME"
-              ? "Uang yang dibayar balik atau dipinjam. Saldo bertambah, tapi tidak dihitung sebagai pemasukan."
-              : "Talangan, uang yang dipinjamkan, atau bayar utang. Saldo berkurang, tapi tidak dihitung sebagai pengeluaran."}
-          </p>
-        )}
-        {isDebtEntry && (
-          <TextField label="Nama orang" value={person} onChange={(e) => setPerson(e.target.value)} maxLength={60}
-            placeholder="Budi" autoComplete="off"
-            hint="Teman yang kamu talangi, yang membayar balik, atau yang meminjamkan." />
-        )}
         <TextField label="Keterangan (opsional)" value={description} onChange={(e) => setDescription(e.target.value)}
-          placeholder={debt ? (type === "INCOME" ? "Budi bayar utang" : "Talangin makan Budi") : "Makan siang, bensin, gaji"} maxLength={100} />
+          placeholder="Makan siang, bensin, gaji" maxLength={100} />
         <div className={type === "TRANSFER" ? "grid gap-4 sm:grid-cols-2" : "space-y-4"}>
           {needsFrom && (
             <SelectField label={type === "TRANSFER" ? "Dari rekening" : "Rekening"} value={fromAccountId}
@@ -506,6 +415,9 @@ export function TransactionDialog({ transaction, debt: debtPreset, accounts, cat
           <Button variant="secondary" onClick={onClose} disabled={busy}>Batal</Button>
           <Button type="submit" loading={busy}>{transaction ? "Simpan" : "Tambah transaksi"}</Button>
         </DialogActions>
+        {!transaction && (
+          <p className="text-xs text-muted-foreground">Menalangi teman atau berutang? Catat di halaman Utang-piutang supaya tidak dihitung sebagai pengeluaran sebelum selesai.</p>
+        )}
       </form>
     </AppDialog>
   );

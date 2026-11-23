@@ -35,7 +35,6 @@ export const CATEGORIES: Record<string, string> = {
   HEALTH: "Kesehatan",
   ENTERTAINMENT: "Hiburan",
   INCOME: "Pemasukan",
-  DEBT: "Utang-piutang",
   OTHER: "Lainnya",
   UNCATEGORIZED: "Tanpa kategori",
 };
@@ -46,12 +45,14 @@ export const categoryLabel = (code: string | null | undefined) => {
   return CATEGORIES[upper] ?? upper.charAt(0) + upper.slice(1).toLowerCase();
 };
 
+/** Categories an expense can have, e.g. the real expense of a settled talangan (everything but INCOME). */
+export const SPENDING_CATEGORIES = ["FOOD", "TRANSPORT", "SHOPPING", "BILLS", "HEALTH", "ENTERTAINMENT", "OTHER"];
+
 /**
- * Lending and debt (paying for a friend, being paid back, borrowing, repaying). Balances change, but it
- * is not real income or spending, so totals, charts and budgets leave it out.
+ * Counted in income/expense totals, charts and budgets. Talangan and debt payments move money (balances
+ * change) but are not income or spending until their Utang-piutang record is settled.
  */
-export const DEBT_CATEGORY = "DEBT";
-export const isDebt = (category: string | null | undefined) => category?.toUpperCase() === DEBT_CATEGORY;
+export const inReports = (t: { inReports?: boolean }) => t.inReports !== false;
 
 export type TxType = "EXPENSE" | "INCOME" | "TRANSFER";
 
