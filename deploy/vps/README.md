@@ -239,6 +239,7 @@ For the Android app later, the API address is `https://80-43-0-155.sslip.io/api`
 | Free disk / RAM | `df -h` · `free -h` |
 | **Update the app** after new commits | Commit and push, then **on the laptop**: `deploy/vps/release.sh` |
 | Back up now | `/opt/whatsmontrack/deploy/vps/backup.sh` |
+| **Start over with an empty database** | `bash /opt/whatsmontrack/deploy/vps/reset-data.sh` (see below) |
 | List backups | `ls -lh /opt/whatsmontrack/backups` |
 | Change / unlink the bot number | Web: **Bot WhatsApp** → *Ganti nomor bot* / *Cabut nomor bot* (unlinked stays off across restarts; *Hubungkan bot* turns it back on) |
 | Reset the bot session (if the dashboard is unreachable) | `dc exec -T postgres psql -U whatsmon -d whatsmon -c 'DELETE FROM "WhatsAppAuth";' && dc restart api`, then scan the QR from `dc logs -f api` |
@@ -253,6 +254,20 @@ A backup on the same disk does **not** protect you if the VPS itself is lost. Co
 ```powershell
 scp root@80.43.0.155:/opt/whatsmontrack/backups/*.sql.gz .
 ```
+
+### Starting over with an empty database
+`reset-data.sh` deletes **all data**: every user, account, transaction, budget, Utang-piutang record, investment, chat and the WhatsApp bot session. The tables and the migration history stay, so the app works like a fresh install.
+
+```bash
+cd /opt/whatsmontrack
+bash deploy/vps/reset-data.sh
+```
+
+1. It makes a backup first (`backups/whatsmon-<date>.sql.gz`), so it can be undone with *Restoring a backup* below.
+2. It asks you to type `HAPUS SEMUA`; anything else cancels.
+3. It empties every table except `_prisma_migrations`, then restarts the API so the bot forgets its old session.
+
+Afterwards: register again on the web with the admin email (`ADMIN_EMAILS` in `.env.prod`), open **Bot WhatsApp** and scan the QR, then link your number again.
 
 ### Restoring a backup
 ```bash
