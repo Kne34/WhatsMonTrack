@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { AssetType, Currency, Holding, MarketPrices, Trade, TradeSide } from './portfolio';
 
 // Since we setup rewrites in next.config.ts, we can just call /api/... directly
 const api = axios.create({
@@ -99,6 +100,32 @@ export const updateDebtNote = async (id: string, input: Partial<DebtNoteInput> &
 export const deleteDebtNote = async (id: string) => (await api.delete(`/debts/${id}`)).data;
 
 // Helper to fetch accounts
+// ---- Investasi (holdings, buy/sell history, live prices) ----
+
+export interface HoldingInput {
+  assetType: AssetType;
+  symbol: string;
+  name?: string;
+  coingeckoId?: string;
+  platform: string;
+  currency?: Currency;
+  quantity: number;
+  avgPrice: number;
+  note?: string;
+}
+
+export const fetchHoldings = async (): Promise<Holding[]> => (await api.get('/investments')).data;
+export const createHolding = async (input: HoldingInput): Promise<Holding> => (await api.post('/investments', input)).data;
+export const updateHolding = async (id: string, input: Partial<Omit<HoldingInput, 'assetType' | 'symbol'>>): Promise<Holding> =>
+  (await api.put(`/investments/${id}`, input)).data;
+export const deleteHolding = async (id: string) => (await api.delete(`/investments/${id}`)).data;
+export const fetchTrades = async (id: string): Promise<Trade[]> => (await api.get(`/investments/${id}/trades`)).data;
+export const addTrade = async (id: string, input: { side: TradeSide; quantity: number; price: number; tradedAt?: string; note?: string }) =>
+  (await api.post(`/investments/${id}/trades`, input)).data as { holding: Holding; trade: Trade };
+/** refresh: skip the server's 3-minute cache */
+export const fetchMarketPrices = async (refresh = false): Promise<MarketPrices> =>
+  (await api.get('/market/prices', { params: refresh ? { refresh: true } : {} })).data;
+
 export const fetchAccounts = async () => {
   const { data } = await api.get('/accounts');
   return data;

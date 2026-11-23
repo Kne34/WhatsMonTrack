@@ -28,7 +28,7 @@ export function AppDialog({ open, onClose, title, description, children }: {
   );
 }
 
-function DialogActions({ children }: { children: React.ReactNode }) {
+export function DialogActions({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">{children}</div>;
 }
 
@@ -39,7 +39,7 @@ function apiError(err: unknown, fallback: string) {
 }
 
 /** Runs an async save, keeps the dialog open and shows the error if it fails. */
-function useSubmit() {
+export function useSubmit() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submit = async (action: () => Promise<void>, fallback = "Gagal menyimpan. Coba lagi.") => {

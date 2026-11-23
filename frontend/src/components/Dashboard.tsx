@@ -6,7 +6,9 @@ import {
   confirmTransaction, createAccount, createDebtNote, createTransaction, deleteAccount, deleteBudget, deleteDebtNote, deleteTransaction,
   fetchAccounts, fetchBudgets, fetchDebtNotes, fetchPhoneStatus, fetchTransactions, fetchWhatsAppStatus, setBudget,
   updateAccount, updateDebtNote, updateTransaction, type DebtNote, type DebtNoteInput, type PhoneStatus, type WhatsAppStatus,
+  addTrade, createHolding, deleteHolding, fetchHoldings, fetchMarketPrices, updateHolding, type HoldingInput,
 } from "@/lib/api";
+import { currentPrice, type Holding, type MarketPrices, type TradeSide } from "@/lib/portfolio";
 import { categoryLabel, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useKeyboardOpen } from "@/lib/useKeyboardOpen";
@@ -17,6 +19,8 @@ import { AddMenu, BottomTabs, MobileAccountMenu, MonthSwitcher, NAV_ITEMS, Sideb
 import HomeView from "./dashboard/views/HomeView";
 import LedgerView, { type LedgerTx } from "./dashboard/views/LedgerView";
 import DebtsView from "./dashboard/views/DebtsView";
+import InvestmentsView from "./dashboard/views/InvestmentsView";
+import { InvestmentDialog, TradeDialog } from "./dashboard/investmentDialogs";
 import InboxView, { type ReviewTx } from "./dashboard/views/InboxView";
 import ChatView from "./dashboard/views/ChatView";
 import {
@@ -34,13 +38,17 @@ type DialogState =
   | { kind: "account"; account: AccountLike | null }
   | { kind: "transaction"; tx: TransactionLike | null; debt?: boolean | DebtPreset }
   | { kind: "debtNote"; note: DebtNote | null }
+  | { kind: "holding"; holding: Holding | null }
+  | { kind: "trade"; holding: Holding; side: TradeSide }
   | { kind: "budget"; budget: BudgetLike | null }
   | { kind: "confirm"; title: string; description: string; confirmLabel: string; action: () => Promise<void> }
   | { kind: "link" }
   | { kind: "bot" };
 
-const PAGE_TITLES: Record<Tab, string> = { dashboard: "Dashboard", transactions: "Transaksi", debts: "Utang-piutang", chat: "Chat", inbox: "Perlu ditinjau" };
+const PAGE_TITLES: Record<Tab, string> = { dashboard: "Dashboard", transactions: "Transaksi", debts: "Utang-piutang", investments: "Investasi", chat: "Chat", inbox: "Perlu ditinjau" };
 const REFRESH_MS = 15_000;
+/** Prices on the Investasi page; the server caches them for 3 minutes anyway */
+const PRICES_REFRESH_MS = 3 * 60_000;
 
 export default function Dashboard({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   const router = useRouter();
@@ -67,6 +75,9 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   const [hasAnyTransaction, setHasAnyTransaction] = useState(false);
   const knownHasTx = useRef(false);
   const [debtNotes, setDebtNotes] = useState<DebtNote[] | null>(null);
+  const [holdings, setHoldings] = useState<Holding[] | null>(null);
+  const [prices, setPrices] = useState<MarketPrices | null>(null);
+  const [pricesLoading, setPricesLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // Filters the data on screen belongs to. While they differ from the selected filters,
@@ -137,6 +148,63 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       window.removeEventListener("focus", onFocus);
     };
   }, [loadData, month, year, selectedDay, page, limit, filterKey]);
+
+  // ---------- Investasi: holdings, and live prices while the page is open ----------
+  const loadHoldings = useCallback(async () => {
+    try {
+      setHoldings(await fetchHoldings());
+    } catch {
+      setHoldings((h) => h ?? []);
+    }
+  }, []);
+  const loadPrices = useCallback(async (refresh = false) => {
+    setPricesLoading(true);
+    try {
+      setPrices(await fetchMarketPrices(refresh));
+    } catch {
+      if (refresh) notify("Gagal mengambil harga. Coba lagi sebentar lagi.");
+    } finally {
+      setPricesLoading(false);
+    }
+  }, [notify]);
+  useEffect(() => {
+    if (activeTab !== "investments") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch when the page opens, then poll the prices
+    loadHoldings();
+    loadPrices();
+    const interval = setInterval(() => loadPrices(), PRICES_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [activeTab, loadHoldings, loadPrices]);
+
+  const saveHolding = (holding: Holding | null) => async (input: HoldingInput) => {
+    if (holding) {
+      const { name, platform, currency, quantity, avgPrice, coingeckoId, note } = input;
+      await updateHolding(holding.id, { name, platform, currency, quantity, avgPrice, coingeckoId, note });
+    } else {
+      await createHolding(input);
+    }
+    await loadHoldings();
+    // A new ticker needs its price
+    if (!holding) loadPrices();
+    notify(holding ? `${holding.symbol} diperbarui` : `${input.symbol.toUpperCase()} ditambahkan`);
+  };
+  const saveTrade = (holding: Holding) => async (input: Parameters<typeof addTrade>[1]) => {
+    await addTrade(holding.id, input);
+    await loadHoldings();
+    notify(`${input.side === "BUY" ? "Pembelian" : "Penjualan"} ${holding.symbol} dicatat`);
+  };
+  const askDeleteHolding = (holding: Holding) =>
+    setDialog({
+      kind: "confirm",
+      title: `Hapus ${holding.symbol} di ${holding.platform}?`,
+      description: "Aset ini dan seluruh riwayat beli/jualnya dihapus. Saldo rekening tidak berubah.",
+      confirmLabel: "Hapus aset",
+      action: async () => {
+        await deleteHolding(holding.id);
+        await loadHoldings();
+        notify(`${holding.symbol} dihapus`);
+      },
+    });
 
   // Month/year changed: every page shows other data. Day/page/size changed: only the ledger list.
   const monthPending = !shown || shown.month !== month || shown.year !== year;
@@ -309,9 +377,13 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     onLogout,
   };
 
+  /** Pages that show one month at a time (with the month switcher) */
+  const monthly = activeTab === "dashboard" || activeTab === "transactions" || activeTab === "inbox";
+
   const addActions = {
     onAddTransaction: () => setDialog({ kind: "transaction", tx: null }),
     onAddDebt: () => setDialog({ kind: "transaction", tx: null, debt: true }),
+    onAddInvestment: () => setDialog({ kind: "holding", holding: null }),
     onAddAccount: () => setDialog({ kind: "account", account: null }),
     onAddBudget: () => setDialog({ kind: "budget", budget: null }),
   };
@@ -338,9 +410,9 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
           <header className={cn("mb-6 flex flex-wrap items-center justify-between gap-3", activeTab === "chat" && "max-md:hidden")}>
             <h1 className="font-heading text-2xl font-semibold tracking-tight">{PAGE_TITLES[activeTab]}</h1>
             {/* Phones: month switcher left, add button right (its menu opens leftwards and stays on screen) */}
-            <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
-              {/* The chat is not tied to a month */}
-              {activeTab !== "chat" && activeTab !== "debts" && <MonthSwitcher month={month} year={year} onChange={changeMonth} />}
+            {/* Pages not tied to a month have no switcher: the add button then sits next to the title */}
+            <div className={cn("flex items-center justify-between gap-2 sm:w-auto sm:justify-end", monthly && "w-full")}>
+              {monthly && <MonthSwitcher month={month} year={year} onChange={changeMonth} />}
               <AddMenu {...addActions} />
             </div>
           </header>
@@ -366,6 +438,17 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
                     notify("Riwayat chat dihapus");
                   },
                 })}
+            />
+          ) : activeTab === "investments" ? (
+            // Not tied to a month; loads its own data (see loadHoldings/loadPrices)
+            <InvestmentsView
+              holdings={holdings}
+              prices={prices}
+              pricesLoading={pricesLoading}
+              onRefresh={() => loadPrices(true)}
+              onAdd={addActions.onAddInvestment}
+              onEdit={(holding) => setDialog({ kind: "holding", holding })}
+              onTrade={(holding, side) => setDialog({ kind: "trade", holding, side })}
             />
           ) : !loaded || monthPending ? (
             <PageSkeleton tab={activeTab} />
@@ -461,6 +544,24 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
           onClose={closeDialog}
           onSave={saveDebtNote(dialog.note)}
           onDelete={dialog.note ? () => askDeleteDebtNote(dialog.note!) : undefined}
+        />
+      )}
+      {dialog.kind === "holding" && (
+        <InvestmentDialog
+          holding={dialog.holding}
+          platforms={[...new Set((holdings ?? []).map((h) => h.platform))]}
+          onClose={closeDialog}
+          onSave={saveHolding(dialog.holding)}
+          onDelete={dialog.holding ? () => askDeleteHolding(dialog.holding!) : undefined}
+        />
+      )}
+      {dialog.kind === "trade" && (
+        <TradeDialog
+          holding={dialog.holding}
+          initialSide={dialog.side}
+          livePrice={currentPrice(dialog.holding, prices?.prices[dialog.holding.priceKey], prices?.fx?.price ?? null)}
+          onClose={closeDialog}
+          onSave={saveTrade(dialog.holding)}
         />
       )}
       {dialog.kind === "budget" && (

@@ -18,10 +18,15 @@ export const PRIVACY_SECTIONS = {
   debt: { key: "wmt.hideDebt", label: "utang-piutang bulan ini" },
   debtSummary: { key: "wmt.hideDebtSummary", label: "total utang-piutang" },
   debtList: { key: "wmt.hideDebtList", label: "daftar utang-piutang" },
+  portfolio: { key: "wmt.hidePortfolio", label: "ringkasan investasi" },
+  allocation: { key: "wmt.hideAllocation", label: "alokasi investasi" },
+  holdings: { key: "wmt.hideHoldings", label: "daftar investasi" },
 } as const;
 export type PrivacySection = keyof typeof PRIVACY_SECTIONS;
 
 export const MASK = "Rp ••••••";
+/** Mask for amounts that are not rupiah (US$ prices, quantities) */
+export const MASK_PLAIN = "••••••";
 
 export function usePrivacy<K extends PrivacySection>(sections: readonly K[]) {
   const [hidden, setHidden] = useState<Partial<Record<K, boolean>>>({});

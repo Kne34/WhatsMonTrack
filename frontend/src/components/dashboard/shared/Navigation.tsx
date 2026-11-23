@@ -1,18 +1,19 @@
 "use client";
 
 import React from "react";
-import { ChevronLeft, ChevronRight, Handshake, Inbox, LayoutGrid, LogOut, MessageCircle, MessagesSquare, Plus, ReceiptText, Smartphone, Target, User, Wallet } from "lucide-react";
+import { ChartLine, ChevronLeft, ChevronRight, Handshake, Inbox, LayoutGrid, LogOut, MessageCircle, MessagesSquare, Plus, ReceiptText, Smartphone, Target, User, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMonth, formatPhone } from "@/lib/format";
 import { Button, IconButton, Menu, focusRing, type MenuItem } from "../../common/ui";
 import { ThemeSwitcher } from "../../theme";
 
-export type Tab = "dashboard" | "transactions" | "debts" | "chat" | "inbox";
+export type Tab = "dashboard" | "transactions" | "debts" | "investments" | "chat" | "inbox";
 
 export const NAV_ITEMS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
   { id: "transactions", label: "Transaksi", icon: ReceiptText },
   { id: "debts", label: "Utang-piutang", icon: Handshake },
+  { id: "investments", label: "Investasi", icon: ChartLine },
   { id: "chat", label: "Chat", icon: MessagesSquare },
   { id: "inbox", label: "Perlu ditinjau", icon: Inbox },
 ];
@@ -164,24 +165,24 @@ export function MobileAccountMenu(status: StatusProps) {
   );
 }
 
-/** Bottom tab bar for phones: 5 equal destinations within thumb reach. */
+/** Bottom tab bar for phones: 6 equal destinations within thumb reach. */
 export function BottomTabs({ active, onNavigate, reviewCount }: { active: Tab; onNavigate: (tab: Tab) => void; reviewCount: number }) {
   return (
     <nav aria-label="Navigasi utama"
       // Hidden while the keyboard is open (see useKeyboardOpen): it shrinks the page, the tabs would sit on top of it
       className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden [html[data-keyboard=open]_&]:hidden">
-      <div className="grid grid-cols-5">
+      <div className="grid grid-cols-6">
         {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
           const current = active === id;
           return (
             <button key={id} type="button" onClick={() => onNavigate(id)} aria-current={current ? "page" : undefined}
-              className={cn("flex h-16 flex-col items-center justify-center gap-1 text-xs transition-colors", focusRing,
+              className={cn("flex h-16 min-w-0 flex-col items-center justify-center gap-1 text-[11px] tracking-tight transition-colors max-[359px]:text-[10px] max-[359px]:tracking-tighter", focusRing,
                 current ? "font-medium text-foreground" : "text-muted-foreground")}>
               <span className="relative">
                 <Icon className="size-5" aria-hidden strokeWidth={current ? 2.25 : 1.75} />
                 {id === "inbox" && <CountBadge count={reviewCount} className="absolute -top-1.5 left-3.5" />}
               </span>
-              {id === "inbox" ? "Tinjau" : id === "debts" ? "Utang" : label}
+              {id === "inbox" ? "Tinjau" : id === "debts" ? "Utang" : id === "investments" ? "Investasi" : label}
             </button>
           );
         })}
@@ -216,9 +217,10 @@ export function MonthSwitcher({ month, year, onChange }: { month: number; year: 
 }
 
 /** Single primary action, with the three things a user can add. */
-export function AddMenu({ onAddTransaction, onAddDebt, onAddAccount, onAddBudget }: {
+export function AddMenu({ onAddTransaction, onAddDebt, onAddInvestment, onAddAccount, onAddBudget }: {
   onAddTransaction: () => void;
   onAddDebt: () => void;
+  onAddInvestment: () => void;
   onAddAccount: () => void;
   onAddBudget: () => void;
 }) {
@@ -227,6 +229,7 @@ export function AddMenu({ onAddTransaction, onAddDebt, onAddAccount, onAddBudget
       items={[
         { label: "Transaksi", description: "Pengeluaran, pemasukan, atau transfer", icon: <ReceiptText className="size-4" />, onSelect: onAddTransaction },
         { label: "Utang-piutang", description: "Talangan, pinjaman, atau dibayar balik", icon: <Handshake className="size-4" />, onSelect: onAddDebt },
+        { label: "Aset investasi", description: "Saham Indonesia, saham US, atau crypto", icon: <ChartLine className="size-4" />, onSelect: onAddInvestment },
         { label: "Rekening", description: "Bank, e-wallet, atau tunai", icon: <Wallet className="size-4" />, onSelect: onAddAccount },
         { label: "Anggaran", description: "Batas pengeluaran per kategori", icon: <Target className="size-4" />, onSelect: onAddBudget },
       ]}
