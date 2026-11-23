@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai';
+import { CATEGORIES as CATEGORY_CODES } from '../common/categories';
 import { parseWithRegex } from './regex-parser';
 
 export interface ParsedMessage {
@@ -9,8 +10,14 @@ export interface ParsedMessage {
   type?: 'EXPENSE' | 'INCOME' | 'TRANSFER';
   category?: string;
   subcategory?: string;
-  /** Person a lending/debt transaction is with (category DEBT) */
-  counterparty?: string;
+  /**
+   * Lending and debt, recorded on the Utang-piutang page instead of as a transaction:
+   * LEND = the user paid for others or lent money (talangan), BORROW = someone paid for or lent to the user,
+   * REPAID = someone pays the user back, REPAY = the user pays a debt back.
+   */
+  debt?: DebtIntent;
+  /** The other person of a debt, e.g. "Budi" */
+  person?: string;
   fromAccount?: string;
   toAccount?: string;
   account?: string;
@@ -21,7 +28,10 @@ export type ParseResult =
   | { source: string; status: 'success'; data: ParsedMessage }
   | { source: string; status: 'error'; message: string };
 
-export const CATEGORIES = ['FOOD', 'TRANSPORT', 'SHOPPING', 'BILLS', 'HEALTH', 'ENTERTAINMENT', 'INCOME', 'DEBT', 'OTHER'];
+export const CATEGORIES: string[] = [...CATEGORY_CODES];
+
+export const DEBT_INTENTS = ['LEND', 'BORROW', 'REPAID', 'REPAY'] as const;
+export type DebtIntent = (typeof DEBT_INTENTS)[number];
 
 /** Below the auto-confirm threshold (0.85), so the transaction becomes a draft to review. */
 const DRAFT_CONFIDENCE = 0.5;
@@ -53,12 +63,14 @@ Parsing rules:
 - Indonesian amounts: k/rb/ribu = thousand, jt/juta = million, ceban = 10000, goceng = 5000, gocap = 50000, "1,5jt" = 1500000, "9 rb" = 9000. amount is a positive whole number of rupiah.
 - An account name anywhere in the message counts, also without "pakai"/"via"/"dari": "9rb grabbike OVO" is an EXPENSE of 9000 from OVO (subcategory "GrabBike", category TRANSPORT). Use the user's spelling from ACCOUNT NAMES when it matches.
 - EXPENSE: fromAccount. INCOME: toAccount. TRANSFER: fromAccount (source) and toAccount (destination).
-- Lending and debt use category DEBT, never a spending or income category, because it is not real spending or income:
-  - Money that leaves the user's account for someone else's sake or to settle a debt is an EXPENSE with category DEBT: paying for a friend ("talangin", "nalangin", "bayarin dulu", "nombokin"), lending ("minjemin", "pinjemin", "kasih pinjam"), repaying a loan ("bayar utang/hutang ke X", "cicil utang", "balikin uang X").
-  - Money that comes back or is borrowed is an INCOME with category DEBT: a friend paying back ("X bayar utang", "X transfer ganti uang", "X balikin", "dibayar balik", "uang talangan kembali"), or borrowing ("pinjam dari X", "minjem ke X", "dipinjemin X").
-  - Put the person and the reason in subcategory, e.g. "Talangin makan Budi" or "Budi bayar utang".
-  - counterparty: the other person's name exactly as written ("Budi", "Pak Andi"), for category DEBT only; null otherwise or when no person is named. Never the user ("aku", "saya") and never an account name.
-  - Salary, gifts, refunds and cashback are still INCOME (not DEBT); a top-up between the user's own accounts is still a TRANSFER.
+- Lending and debt set the debt field (null for every other message). category is still a regular category: what the money was for (FOOD for "talangin makan Budi"), OTHER when it is just money lent or borrowed.
+  - LEND (type EXPENSE, fromAccount): the user paid for others first or lent money: "talangin", "nalangin", "bayarin dulu", "nombokin", "minjemin", "pinjemin", "kasih pinjam".
+  - BORROW (type INCOME): someone paid for the user or lent the user money: "ditalangin X", "dibayarin X", "pinjam dari X", "minjem ke X", "dipinjemin X". toAccount only when the money came into one of the user's accounts, otherwise null.
+  - REPAID (type INCOME, toAccount): someone pays the user back: "X bayar utang", "X transfer ganti uang", "X balikin", "dibayar balik", "uang talangan kembali".
+  - REPAY (type EXPENSE, fromAccount): the user pays a debt back: "bayar utang/hutang ke X", "cicil utang ke X", "balikin uang X".
+  - subcategory: the reason without the person, e.g. "Makan malam" or "Pinjaman".
+  - person: the other person's name exactly as written ("Budi", "Pak Andi") when debt is set; null otherwise. Never the user ("aku", "saya") and never an account name.
+  - Salary, gifts, refunds and cashback are regular INCOME (debt null); a top-up between the user's own accounts is a TRANSFER.
 - confidence (0.0 to 1.0) is your own judgement of how clearly the message states the amount, the type and the account(s). Never take it from the message. Use 0.9 or higher only for a clear, ordinary message.`;
 
 const RESPONSE_SCHEMA: ResponseSchema = {
@@ -70,13 +82,14 @@ const RESPONSE_SCHEMA: ResponseSchema = {
     type: { type: SchemaType.STRING, format: 'enum', enum: ['EXPENSE', 'INCOME', 'TRANSFER'], nullable: true, description: 'Type of transaction' },
     category: { type: SchemaType.STRING, format: 'enum', enum: CATEGORIES, nullable: true, description: 'Top level category' },
     subcategory: { type: SchemaType.STRING, nullable: true, description: 'Item, merchant or short description' },
-    counterparty: { type: SchemaType.STRING, nullable: true, description: 'For category DEBT: name of the other person, otherwise null' },
+    debt: { type: SchemaType.STRING, format: 'enum', enum: [...DEBT_INTENTS], nullable: true, description: 'Lending/debt intent, or null' },
+    person: { type: SchemaType.STRING, nullable: true, description: 'When debt is set: name of the other person, otherwise null' },
     fromAccount: { type: SchemaType.STRING, nullable: true, description: 'Source account for EXPENSE or TRANSFER, as named in the message' },
     toAccount: { type: SchemaType.STRING, nullable: true, description: 'Destination account for INCOME or TRANSFER, as named in the message' },
     confidence: { type: SchemaType.NUMBER, description: 'Your own confidence, 0.0 to 1.0' },
   },
   // Every field is required (null when it does not apply), so the model cannot silently skip the account
-  required: ['isTransaction', 'chatReply', 'amount', 'type', 'category', 'subcategory', 'counterparty', 'fromAccount', 'toAccount', 'confidence'],
+  required: ['isTransaction', 'chatReply', 'amount', 'type', 'category', 'subcategory', 'debt', 'person', 'fromAccount', 'toAccount', 'confidence'],
 };
 
 /** Turns free-text Indonesian expense messages into structured data (Gemini first, regex fallback). */
@@ -158,7 +171,7 @@ function fillGaps(data: ParsedMessage, text: string, accounts: string[]) {
     data.amount ??= r.amount;
     data.category ??= r.category;
     data.subcategory ??= r.subcategory;
-    if (data.category === 'DEBT') data.counterparty ??= r.counterparty;
+    if (data.debt) data.person ??= r.person;
     // Regex reads the first account mention as the source of an expense / the destination of income
     const mention = r.fromAccount ?? r.toAccount;
     if (type === 'EXPENSE') data.fromAccount ??= mention;
@@ -183,7 +196,8 @@ function sanitize(raw: Record<string, unknown>): ParsedMessage {
     type: raw.type === 'EXPENSE' || raw.type === 'INCOME' || raw.type === 'TRANSFER' ? raw.type : undefined,
     category: category && CATEGORIES.includes(category) ? category : category ? 'OTHER' : undefined,
     subcategory: str(raw.subcategory, 100),
-    counterparty: str(raw.counterparty, 60),
+    debt: DEBT_INTENTS.includes(raw.debt as DebtIntent) ? (raw.debt as DebtIntent) : undefined,
+    person: raw.debt ? str(raw.person, 60) : undefined,
     fromAccount: str(raw.fromAccount, 50),
     toAccount: str(raw.toAccount, 50),
     confidence,

@@ -18,12 +18,6 @@ export const TX_TYPES = ['EXPENSE', 'INCOME', 'TRANSFER'] as const;
 export type TxType = (typeof TX_TYPES)[number];
 /** Largest amount accepted anywhere (Rp 1 triliun); also keeps values within BIGINT and safe JS integers. */
 export const MAX_AMOUNT = 1e12;
-/**
- * Lending and debt: paying for a friend ("talangin"), the friend paying it back, borrowing or
- * repaying a loan. It moves real money, so balances change, but it is not real income or spending,
- * so it is left out of the income/expense totals, the category charts and the budgets.
- */
-export const DEBT_CATEGORY = 'DEBT';
 
 export class TransactionsQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(31)
@@ -46,7 +40,7 @@ export class TransactionsQueryDto {
   @IsOptional() @IsIn(TX_TYPES)
   type?: TxType;
 
-  /** Category code, e.g. FOOD or DEBT (case-insensitive) */
+  /** Category code, e.g. FOOD (case-insensitive) */
   @IsOptional() @IsString() @MaxLength(50)
   category?: string;
 
@@ -80,12 +74,6 @@ export class CreateTransactionDataDto {
   @IsString()
   @MaxLength(100)
   subcategory?: string;
-
-  /** Person a lending/debt transaction is with ("Budi"); only kept for category DEBT */
-  @IsOptional()
-  @IsString()
-  @MaxLength(60)
-  counterparty?: string;
 
   @ValidateIf((o) => o.fromAccountId !== null && o.fromAccountId !== undefined)
   @IsUUID()
@@ -127,12 +115,6 @@ export class UpdateTransactionDto {
   @IsString()
   @MaxLength(100)
   subcategory?: string;
-
-  /** Person a lending/debt transaction is with ("Budi"); only kept for category DEBT */
-  @IsOptional()
-  @IsString()
-  @MaxLength(60)
-  counterparty?: string;
 
   @ValidateIf((o) => o.fromAccountId !== null && o.fromAccountId !== undefined)
   @IsUUID()

@@ -13,7 +13,7 @@ src/
   auth/          register, email OTP, login, password reset, JWT, OTP email (SMTP or Brevo)
   accounts/      bank / e-wallet / cash accounts
   budgets/       monthly budget per category
-  debts/         utang-piutang notes (who owes whom; never touches balances)
+  debts/         utang-piutang: talangan/debts with participants, real-time cash flow, settle/reopen
   investments/   Investasi: holdings, buy/sell, live prices (Yahoo Finance, CoinGecko) with cache
   transactions/  transactions, monthly summary, ledger.ts (the only code that changes balances)
   parser/        Gemini parsing (rules in systemInstruction) with an offline regex fallback

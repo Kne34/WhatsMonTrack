@@ -34,7 +34,7 @@ model User {
   transactions       Transaction[]
   budgets            Budget[]
   chatMessages       ChatMessage[]
-  debtNotes          DebtNote[]
+  debtRecords        DebtRecord[]
   investments        Investment[]
 }
 
@@ -60,6 +60,8 @@ model Account {
   user             User          @relation(fields: [userId], references: [id])
   transactionsFrom Transaction[] @relation("FromAccount")
   transactionsTo   Transaction[] @relation("ToAccount")
+  debtRecords      DebtRecord[]
+  debtPayments     DebtParticipant[]
 }
 
 model Transaction {
@@ -69,8 +71,6 @@ model Transaction {
   amount          BigInt
   category        String
   subcategory     String?
-  /// Person a lending/debt transaction (category DEBT) is with, e.g. "Budi"
-  counterparty    String?
   fromAccountId   String?
   toAccountId     String?
   rawText         String?
@@ -79,12 +79,20 @@ model Transaction {
   confidenceScore Float             @default(1.0)
   status          TransactionStatus @default(CONFIRMED)
   createdAt       DateTime          @default(now())
+  /// false: shown in reports only; the money already moved (expense/income recorded when a debt is settled)
+  affectsBalance  Boolean           @default(true)
+  /// false: moves money but is left out of income/expense totals, charts and budgets (talangan, debt payments)
+  inReports       Boolean           @default(true)
+  /// Created by this Utang-piutang record; such transactions are managed from that page only
+  debtRecordId    String?
 
   user            User      @relation(fields: [userId], references: [id])
+  debtRecord      DebtRecord? @relation(fields: [debtRecordId], references: [id], onDelete: SetNull)
   fromAccount     Account?  @relation("FromAccount", fields: [fromAccountId], references: [id])
   toAccount       Account?  @relation("ToAccount", fields: [toAccountId], references: [id])
 
   @@index([userId, category])
+  @@index([debtRecordId])
 }
 
 model Budget {
@@ -117,24 +125,67 @@ model ChatMessage {
   @@index([userId, createdAt])
 }
 
-/// Utang-piutang page: a to-do style list of who owes whom. Notes only; it never changes balances.
-model DebtNote {
-  id        String   @id @default(uuid())
-  userId    String
-  /// The other person, e.g. "Budi"
-  person    String
-  /// THEY_OWE: the person owes the user. I_OWE: the user owes the person.
-  direction String
-  amount    BigInt
-  /// Paid back so far; settled when paid >= amount
-  paid      BigInt   @default(0)
-  note      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+/// Utang-piutang: money paid for others (RECEIVABLE, talangan) or owed to others (PAYABLE).
+/// Balances move right away through transactions with inReports = false; the real expense only reaches
+/// the reports when the record is settled (a transaction with affectsBalance = false).
+model DebtRecord {
+  id                  String   @id @default(uuid())
+  userId              String
+  title               String
+  /// RECEIVABLE: I paid first, others pay me back. PAYABLE: I owe others.
+  type                String
+  totalAmount         BigInt
+  /// Regular category (FOOD, TRANSPORT, ...) of the expense recorded when settling
+  category            String
+  /// Main account: where the talangan left from, or where a borrowed amount came in (PAYABLE, optional)
+  accountId           String?
+  /// PAYABLE: the borrowed money came into `accountId`
+  addToBalance        Boolean  @default(false)
+  /// PAYABLE: record what I paid as an expense when settling
+  recordExpense       Boolean  @default(true)
+  /// OPEN | SETTLED
+  status              String   @default("OPEN")
+  date                DateTime @default(now())
+  notes               String?
+  settledAt           DateTime?
+  /// Total minus paid at the moment it was settled
+  settledDifference   BigInt?
+  /// The cash movement made when the record was created (none for a PAYABLE without addToBalance)
+  initialCashflowTxId String?
+  /// The expense/income made when settling (removed again by reopen)
+  linkedTransactionId String?
+  /// WhatsApp message it was recorded from: a re-delivered message is not recorded twice
+  sourceMessageId     String?  @unique
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account             Account?          @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  participants        DebtParticipant[]
+  transactions        Transaction[]
 
-  @@index([userId])
+  @@index([userId, status])
+}
+
+/// A person on a debt record, with what they are expected to pay and what they paid.
+model DebtParticipant {
+  id                   String     @id @default(uuid())
+  debtRecordId         String
+  personName           String
+  expectedAmount       BigInt     @default(0)
+  paidAmount           BigInt     @default(0)
+  /// Account the payment went into (RECEIVABLE) or left from (PAYABLE)
+  paidAccountId        String?
+  paymentCashflowTxId  String?
+  isPaid               Boolean    @default(false)
+  paidAt               DateTime?
+  /// Order in the list
+  position             Int        @default(0)
+
+  debtRecord           DebtRecord @relation(fields: [debtRecordId], references: [id], onDelete: Cascade)
+  paidAccount          Account?   @relation(fields: [paidAccountId], references: [id], onDelete: Restrict)
+
+  @@index([debtRecordId])
 }
 
 /// Investasi page: one row per asset the user holds on a platform (e.g. BBCA on Stockbit).

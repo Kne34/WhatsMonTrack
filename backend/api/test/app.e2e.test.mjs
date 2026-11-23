@@ -28,6 +28,7 @@ const { BotService } = require('../dist/whatsapp/bot.service');
 const { ParserService } = require('../dist/parser/parser.service');
 const { PrismaService } = require('../dist/database/prisma.service');
 const { MarketService, SymbolNotFoundError } = require('../dist/investments/market.service');
+const { TransactionsService } = require('../dist/transactions/transactions.service');
 const { useDatabaseAuthState, clearDatabaseAuthState, isBotStopped, setBotStopped } = require('../dist/whatsapp/db-auth-state');
 
 // ---- fakes ----
@@ -362,70 +363,24 @@ describe('money, time zones and the WhatsApp bot (real database)', () => {
     const add = (data) => http().post('/api/transactions/manual').set(auth(token))
       .send({ data: { createdAt: '2026-12-05T05:00:00.000Z', ...data } }).expect(201);
     await add({ type: 'EXPENSE', amount: 40000, category: 'FOOD', subcategory: 'Bakmi Acet', fromAccountId: ovo.id });
-    await add({ type: 'EXPENSE', amount: 161500, category: 'DEBT', subcategory: 'Talangin bakmi acet', fromAccountId: ovo.id });
-    await add({ type: 'INCOME', amount: 29000, category: 'DEBT', subcategory: 'Elbert bayar utang', toAccountId: account.id });
+    await add({ type: 'EXPENSE', amount: 161500, category: 'SHOPPING', subcategory: 'Oleh-oleh bakmi acet', fromAccountId: ovo.id });
+    await add({ type: 'INCOME', amount: 29000, category: 'SHOPPING', subcategory: 'Refund', toAccountId: account.id });
     await add({ type: 'TRANSFER', amount: 10000, fromAccountId: account.id, toAccountId: ovo.id });
 
     const list = async (params) => (await http().get('/api/transactions').query({ month: 12, year: 2026, ...params }).set(auth(token)).expect(200)).body;
     assert.equal((await list({})).total, 4);
     assert.equal((await list({ type: 'EXPENSE' })).total, 2);
-    assert.equal((await list({ category: 'debt' })).total, 2); // case-insensitive
+    assert.equal((await list({ category: 'shopping' })).total, 2); // case-insensitive
     assert.equal((await list({ accountId: ovo.id })).total, 3); // out of OVO, and the transfer into it
     assert.equal((await list({ q: 'ACET' })).total, 2);
-    const combined = await list({ type: 'EXPENSE', category: 'DEBT', accountId: ovo.id, q: 'bakmi', limit: 1 });
+    const combined = await list({ type: 'EXPENSE', category: 'SHOPPING', accountId: ovo.id, q: 'bakmi', limit: 1 });
     assert.equal(combined.total, 1);
     assert.equal(combined.totalPages, 1);
-    assert.equal(combined.data[0].subcategory, 'Talangin bakmi acet');
+    assert.equal(combined.data[0].subcategory, 'Oleh-oleh bakmi acet');
     assert.equal((await list({ status: 'NEEDS_REVIEW' })).total, 0);
 
     await http().get('/api/transactions?type=LOAN').set(auth(token)).expect(400);
     await http().get('/api/transactions?accountId=not-a-uuid').set(auth(token)).expect(400);
-  });
-
-  test('a person is only kept on lending/debt transactions', async () => {
-    const add = (data) => http().post('/api/transactions/manual').set(auth(token)).send({ data }).expect(201);
-    const debt = await add({ type: 'EXPENSE', amount: 1000, category: 'DEBT', counterparty: ' Elbert ', fromAccountId: account.id });
-    const food = await add({ type: 'EXPENSE', amount: 1000, category: 'FOOD', counterparty: 'Ignored', fromAccountId: account.id });
-    assert.equal(debt.body.transaction.counterparty, 'Elbert');
-    assert.equal(food.body.transaction.counterparty, null);
-    const id = debt.body.transaction.id;
-    await http().put(`/api/transactions/${id}`).set(auth(token)).send({ category: 'FOOD' }).expect(200);
-    assert.equal((await prisma.transaction.findUnique({ where: { id } })).counterparty, null);
-  });
-
-  test('utang-piutang notes: create, partial payment, checkbox, ownership, open first', async () => {
-    const other = (await http().post('/api/auth/login').send({ email: 'alice@test.com', password: 'password123' }).expect(201)).body.token;
-    const a = (await http().post('/api/debts').set(auth(token))
-      .send({ person: ' Budi ', direction: 'THEY_OWE', amount: 150000, note: 'Bakmi acet' }).expect(201)).body;
-    assert.equal(a.person, 'Budi');
-    assert.equal(a.amount, 150000);
-    assert.equal(a.paid, 0);
-    const b = (await http().post('/api/debts').set(auth(token))
-      .send({ person: 'Sinta', direction: 'I_OWE', amount: 50000, paid: 999999 }).expect(201)).body;
-    assert.equal(b.paid, 50000, 'paid is capped at the amount');
-
-    // Partial payment, then the checkbox
-    assert.equal((await http().put(`/api/debts/${a.id}`).set(auth(token)).send({ paid: 100000 }).expect(200)).body.paid, 100000);
-    assert.equal((await http().put(`/api/debts/${a.id}`).set(auth(token)).send({ settled: true }).expect(200)).body.paid, 150000);
-    assert.equal((await http().put(`/api/debts/${a.id}`).set(auth(token)).send({ settled: false }).expect(200)).body.paid, 0);
-
-    // Open notes come before settled ones (Sinta is settled)
-    const list = (await http().get('/api/debts').set(auth(token)).expect(200)).body;
-    assert.deepEqual(list.map((n) => n.person), ['Budi', 'Sinta']);
-
-    // Notes never change balances
-    const before = Number((await prisma.account.findUnique({ where: { id: account.id } })).balance);
-    await http().post('/api/debts').set(auth(token)).send({ person: 'X', direction: 'THEY_OWE', amount: 1 }).expect(201);
-    assert.equal(Number((await prisma.account.findUnique({ where: { id: account.id } })).balance), before);
-
-    // Validation and ownership
-    await http().post('/api/debts').set(auth(token)).send({ person: 'Y', direction: 'LENT', amount: 1 }).expect(400);
-    await http().post('/api/debts').set(auth(token)).send({ person: '', direction: 'I_OWE', amount: 1 }).expect(400);
-    assert.deepEqual((await http().get('/api/debts').set(auth(other)).expect(200)).body, []);
-    await http().put(`/api/debts/${a.id}`).set(auth(other)).send({ settled: true }).expect(404);
-    await http().delete(`/api/debts/${a.id}`).set(auth(other)).expect(404);
-    await http().delete(`/api/debts/${a.id}`).set(auth(token)).expect(200);
-    await http().get('/api/debts').expect(401);
   });
 });
 
@@ -650,5 +605,166 @@ describe('investments (Investasi page)', () => {
     const h = (await create(bob, { assetType: 'US_STOCK', symbol: 'VOO', platform: 'Pluang', quantity: 1, avgPrice: 500 }).expect(201)).body;
     await http().post(`/api/investments/${h.id}/trades`).set(auth(bob)).send({ side: 'SELL', quantity: 1, price: 550 }).expect(201);
     assert.deepEqual(await prisma.account.findMany({ select: { id: true, balance: true }, orderBy: { id: 'asc' } }), before);
+  });
+});
+
+describe('utang-piutang with real-time cash flow', () => {
+  let bob, alice, bca, gopay;
+  const balance = async (id) => Number((await prisma.account.findUnique({ where: { id } })).balance);
+  const balances = async () => [await balance(bca.id), await balance(gopay.id)];
+  const debts = () => http();
+  const create = (data, token = bob) => debts().post('/api/debts').set(auth(token)).send(data);
+  const pay = (r, i, amount, accountId) => debts().post(`/api/debts/${r.id}/participants/${r.participants[i].id}/pay`).set(auth(bob)).send({ amount, accountId });
+  const unpay = (r, i) => debts().delete(`/api/debts/${r.id}/participants/${r.participants[i].id}/pay`).set(auth(bob));
+  const reports = async () => {
+    const userId = (await prisma.user.findUnique({ where: { email: 'admin@test.com' } })).id;
+    return app.get(TransactionsService).monthlySummary(userId, new Date('2026-11-20T05:00:00Z'));
+  };
+
+  before(async () => {
+    const login = async (email) => (await http().post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.token;
+    bob = await login('admin@test.com');
+    alice = await login('alice@test.com');
+    const account = async (name, initialBalance) => (await http().post('/api/accounts').set(auth(bob)).send({ name, initialBalance }).expect(201)).body;
+    bca = await account('BCA Debt', 1000000);
+    gopay = await account('GoPay Debt', 100000);
+  });
+
+  test('talangan: the money leaves now, payments come in per account, settling records only my share', async () => {
+    const before = await reports();
+    let r = (await create({
+      title: 'Makan malam', type: 'RECEIVABLE', totalAmount: 400000, category: 'food', accountId: bca.id, date: '2026-11-20T12:00:00.000Z',
+      participants: [{ personName: ' Andi ', expectedAmount: 100000 }, { personName: 'Budi', expectedAmount: 100000 }, { personName: 'Citra', expectedAmount: 100000 }],
+    }).expect(201)).body;
+    assert.equal(r.status, 'OPEN');
+    assert.equal(r.category, 'FOOD');
+    assert.equal(r.participants[0].personName, 'Andi');
+    assert.deepEqual(await balances(), [600000, 100000], 'the talangan leaves BCA right away');
+    assert.equal((await reports()).totalExpense, before.totalExpense, 'but it is not spending');
+
+    // Andi pays to GoPay, Budi to BCA; unticking Budi gives BCA its balance back
+    r = (await pay(r, 0, 100000, gopay.id).expect(200)).body;
+    r = (await pay(r, 1, 90000, bca.id).expect(200)).body;
+    assert.deepEqual(await balances(), [690000, 200000]);
+    r = (await unpay(r, 1).expect(200)).body;
+    assert.deepEqual(await balances(), [600000, 200000]);
+    assert.equal(r.participants[1].isPaid, false);
+    r = (await pay(r, 1, 100000, bca.id).expect(200)).body;
+    // Paying again replaces the earlier payment instead of adding to it
+    r = (await pay(r, 1, 100000, bca.id).expect(200)).body;
+    assert.deepEqual(await balances(), [700000, 200000]);
+    assert.deepEqual(r.progress, { total: 400000, paid: 200000, expected: 300000, remaining: 100000, difference: 200000 });
+
+    // Editing the amount and the account moves the talangan; moving it back restores everything
+    await debts().put(`/api/debts/${r.id}`).set(auth(bob)).send({ totalAmount: 450000, accountId: gopay.id }).expect(200);
+    assert.deepEqual(await balances(), [1100000, -250000]);
+    await debts().put(`/api/debts/${r.id}`).set(auth(bob)).send({ totalAmount: 400000, accountId: bca.id }).expect(200);
+    assert.deepEqual(await balances(), [700000, 200000]);
+
+    // Its transactions show on the Transaksi page but are managed from the Utang-piutang page only
+    const movement = await prisma.transaction.findFirst({ where: { debtRecordId: r.id, inReports: false } });
+    await http().put(`/api/transactions/${movement.id}`).set(auth(bob)).send({ amount: 1 }).expect(409);
+    await http().delete(`/api/transactions/${movement.id}`).set(auth(bob)).expect(409);
+    const listed = (await http().get('/api/transactions').query({ month: 11, year: 2026 }).set(auth(bob)).expect(200)).body.data;
+    assert.ok(listed.some((t) => t.debtRecord?.id === r.id && t.inReports === false));
+
+    const summary = (await debts().get('/api/debts/summary').set(auth(bob)).expect(200)).body;
+    assert.deepEqual(summary, { receivable: 100000, payable: 0, openCount: 1 });
+
+    // Settle: total 400k, paid 200k -> 200k expense on FOOD, dated on the record, no balance change
+    r = (await debts().post(`/api/debts/${r.id}/settle`).set(auth(bob)).send({}).expect(200)).body;
+    assert.equal(r.status, 'SETTLED');
+    assert.equal(r.settledDifference, 200000);
+    assert.deepEqual(await balances(), [700000, 200000]);
+    const expense = await prisma.transaction.findUnique({ where: { id: r.linkedTransactionId } });
+    assert.deepEqual([expense.type, Number(expense.amount), expense.category, expense.affectsBalance, expense.inReports], ['EXPENSE', 200000, 'FOOD', false, true]);
+    assert.equal(expense.createdAt.toISOString(), '2026-11-20T12:00:00.000Z');
+    const after = await reports();
+    assert.equal(after.totalExpense - before.totalExpense, 200000);
+    assert.equal((after.expenseByCategory.FOOD ?? 0) - (before.expenseByCategory.FOOD ?? 0), 200000);
+    // The report-only expense is also managed from the page
+    await http().delete(`/api/transactions/${expense.id}`).set(auth(bob)).expect(409);
+
+    // A settled record is locked until reopened
+    await debts().put(`/api/debts/${r.id}`).set(auth(bob)).send({ title: 'x' }).expect(409);
+    await pay(r, 2, 100000, bca.id).expect(409);
+    await debts().delete(`/api/debts/${r.id}`).set(auth(bob)).expect(409);
+
+    // Reopen removes the expense (no balance change); deleting the open record undoes every movement
+    r = (await debts().post(`/api/debts/${r.id}/reopen`).set(auth(bob)).expect(200)).body;
+    assert.equal(r.status, 'OPEN');
+    assert.equal(await prisma.transaction.count({ where: { id: expense.id } }), 0);
+    assert.equal((await reports()).totalExpense, before.totalExpense);
+    assert.deepEqual(await balances(), [700000, 200000]);
+    await debts().delete(`/api/debts/${r.id}`).set(auth(bob)).expect(200);
+    assert.deepEqual(await balances(), [1000000, 100000], 'back to where it started');
+    assert.equal(await prisma.transaction.count({ where: { debtRecordId: r.id } }), 0);
+  });
+
+  test('overpaid talangan: the excess can be recorded as income, without touching balances', async () => {
+    let r = (await create({ title: 'Patungan', type: 'RECEIVABLE', totalAmount: 100000, category: 'ENTERTAINMENT', accountId: bca.id, participants: [{ personName: 'Dodi' }] }).expect(201)).body;
+    r = (await pay(r, 0, 120000, bca.id).expect(200)).body;
+    assert.equal(await balance(bca.id), 1020000);
+    r = (await debts().post(`/api/debts/${r.id}/settle`).set(auth(bob)).send({ recordExcessAsIncome: true }).expect(200)).body;
+    const income = await prisma.transaction.findUnique({ where: { id: r.linkedTransactionId } });
+    assert.deepEqual([income.type, Number(income.amount), income.affectsBalance], ['INCOME', 20000, false]);
+    assert.equal(await balance(bca.id), 1020000);
+    // Exactly paid: nothing to record
+    let even = (await create({ title: 'Pas', type: 'RECEIVABLE', totalAmount: 50000, category: 'FOOD', accountId: bca.id, participants: [{ personName: 'Eko' }] }).expect(201)).body;
+    even = (await pay(even, 0, 50000, bca.id).expect(200)).body;
+    even = (await debts().post(`/api/debts/${even.id}/settle`).set(auth(bob)).send({}).expect(200)).body;
+    assert.equal(even.linkedTransactionId, null);
+  });
+
+  test('utang: covered by a friend (no balance change) or a cash loan (comes into the account)', async () => {
+    const start = await balances();
+    let covered = (await create({ title: 'Ditalangin tiket', type: 'PAYABLE', totalAmount: 75000, category: 'ENTERTAINMENT', participants: [{ personName: 'Fani', expectedAmount: 75000 }] }).expect(201)).body;
+    assert.deepEqual(await balances(), start);
+    assert.equal(covered.recordExpense, true);
+    covered = (await pay(covered, 0, 75000, bca.id).expect(200)).body;
+    assert.deepEqual(await balances(), [start[0] - 75000, start[1]], 'paying her back leaves BCA');
+    covered = (await debts().post(`/api/debts/${covered.id}/settle`).set(auth(bob)).send({}).expect(200)).body;
+    const spent = await prisma.transaction.findUnique({ where: { id: covered.linkedTransactionId } });
+    assert.deepEqual([spent.type, Number(spent.amount), spent.affectsBalance], ['EXPENSE', 75000, false]);
+    assert.deepEqual(await balances(), [start[0] - 75000, start[1]]);
+
+    let loan = (await create({ title: 'Pinjam', type: 'PAYABLE', totalAmount: 500000, category: 'OTHER', accountId: bca.id, addToBalance: true, participants: [{ personName: 'Gita' }] }).expect(201)).body;
+    assert.equal(loan.recordExpense, false, 'repaying a cash loan is not spending');
+    assert.equal(await balance(bca.id), start[0] - 75000 + 500000);
+    loan = (await pay(loan, 0, 500000, gopay.id).expect(200)).body;
+    loan = (await debts().post(`/api/debts/${loan.id}/settle`).set(auth(bob)).send({}).expect(200)).body;
+    assert.equal(loan.linkedTransactionId, null);
+    assert.deepEqual(await balances(), [start[0] - 75000 + 500000, start[1] - 500000]);
+  });
+
+  test('filters, validation, the removed DEBT category, and ownership', async () => {
+    const open = (await debts().get('/api/debts').query({ status: 'OPEN' }).set(auth(bob)).expect(200)).body;
+    assert.ok(open.records.every((r) => r.status === 'OPEN'));
+    const settled = (await debts().get('/api/debts').query({ status: 'SETTLED', type: 'PAYABLE' }).set(auth(bob)).expect(200)).body;
+    assert.deepEqual(settled.records.map((r) => r.title).sort(), ['Ditalangin tiket', 'Pinjam']);
+    const byPerson = (await debts().get('/api/debts').query({ q: 'gita' }).set(auth(bob)).expect(200)).body;
+    assert.deepEqual(byPerson.records.map((r) => r.title), ['Pinjam']);
+
+    await create({ title: 'No account', type: 'RECEIVABLE', totalAmount: 1000, category: 'FOOD' }).expect(400);
+    await create({ title: 'Old category', type: 'RECEIVABLE', totalAmount: 1000, category: 'DEBT', accountId: bca.id }).expect(400);
+    await create({ title: 'Income category', type: 'RECEIVABLE', totalAmount: 1000, category: 'INCOME', accountId: bca.id }).expect(400);
+    await create({ title: 'Loan without account', type: 'PAYABLE', totalAmount: 1000, category: 'OTHER', addToBalance: true }).expect(400);
+    await create({ title: 'Not my account', type: 'RECEIVABLE', totalAmount: 1000, category: 'FOOD', accountId: bca.id }, alice).expect(404);
+    await http().post('/api/transactions/manual').set(auth(bob)).send({ data: { type: 'EXPENSE', amount: 1000, category: 'debt', fromAccountId: bca.id } }).expect(400);
+
+    // A paid person can't be dropped from the list; the account can't be deleted while records use it
+    let r = (await create({ title: 'Bensin', type: 'RECEIVABLE', totalAmount: 60000, category: 'TRANSPORT', accountId: bca.id, participants: [{ personName: 'Hadi' }, { personName: 'Ina' }] }).expect(201)).body;
+    r = (await pay(r, 0, 30000, bca.id).expect(200)).body;
+    await debts().put(`/api/debts/${r.id}`).set(auth(bob)).send({ participants: [{ id: r.participants[1].id, personName: 'Ina' }] }).expect(400);
+    r = (await debts().put(`/api/debts/${r.id}`).set(auth(bob)).send({ participants: [{ id: r.participants[0].id, personName: 'Hadi' }, { personName: 'Joko', expectedAmount: 20000 }] }).expect(200)).body;
+    assert.deepEqual(r.participants.map((p) => p.personName), ['Hadi', 'Joko']);
+    const del = await http().delete(`/api/accounts/${bca.id}?withTransactions=true`).set(auth(bob)).expect(409);
+    assert.match(del.body.message, /Utang-piutang/);
+
+    assert.deepEqual((await debts().get('/api/debts').set(auth(alice)).expect(200)).body.records, []);
+    await debts().get(`/api/debts/${r.id}`).set(auth(alice)).expect(404);
+    await debts().post(`/api/debts/${r.id}/settle`).set(auth(alice)).send({}).expect(404);
+    await debts().delete(`/api/debts/${r.id}`).set(auth(alice)).expect(404);
+    await debts().get('/api/debts').expect(401);
   });
 });

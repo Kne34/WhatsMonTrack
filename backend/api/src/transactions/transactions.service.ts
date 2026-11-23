@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { applyToBalances } from './ledger';
 import { DEFAULT_TIMEZONE, dayRange, monthRange, zonedParts } from '../common/time';
-import { CreateTransactionDataDto, DEBT_CATEGORY, TransactionsQueryDto, TxType, UpdateTransactionDto } from './transactions.dto';
+import { REMOVED_DEBT_CATEGORY } from '../common/categories';
+import { CreateTransactionDataDto, TransactionsQueryDto, TxType, UpdateTransactionDto } from './transactions.dto';
 
 /** Below this AI confidence a transaction is saved as a draft (NEEDS_REVIEW) without touching balances. */
 const AUTO_CONFIRM_CONFIDENCE = 0.85;
@@ -14,7 +15,6 @@ export interface NewTransaction {
   amount: number;
   category?: string | null;
   subcategory?: string | null;
-  counterparty?: string | null;
   fromAccountId?: string | null;
   toAccountId?: string | null;
   rawText?: string | null;
@@ -24,10 +24,18 @@ export interface NewTransaction {
   sourceMessageId?: string | null;
 }
 
-/** The person is only kept for lending/debt; trimmed, empty becomes null. */
-function personFor(category: string | null | undefined, person: string | null | undefined) {
-  if (category?.toUpperCase() !== DEBT_CATEGORY) return null;
-  return person?.trim().slice(0, 60) || null;
+/** Lending and debt have their own page now; the old category would not be counted anywhere. */
+function rejectDebtCategory(category: string | null | undefined) {
+  if (category?.trim().toUpperCase() === REMOVED_DEBT_CATEGORY) {
+    throw new BadRequestException('Kategori Utang-piutang sudah tidak dipakai. Catat talangan atau utang di halaman Utang-piutang.');
+  }
+}
+
+/** Transactions made by an Utang-piutang record change together with it, never on their own. */
+function rejectDebtManaged(transaction: { debtRecordId: string | null }) {
+  if (transaction.debtRecordId) {
+    throw new ConflictException('Transaksi ini bagian dari catatan Utang-piutang. Ubah atau hapus dari halaman Utang-piutang.');
+  }
 }
 
 @Injectable()
@@ -70,7 +78,7 @@ export class TransactionsService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
-        include: { fromAccount: true, toAccount: true },
+        include: { fromAccount: true, toAccount: true, debtRecord: { select: { id: true, title: true, type: true, status: true } } },
       }),
       this.prisma.transaction.count({ where }),
     ]);
@@ -94,7 +102,6 @@ export class TransactionsService {
           amount: input.amount,
           category: input.category || 'UNCATEGORIZED',
           subcategory: input.subcategory || null,
-          counterparty: personFor(input.category, input.counterparty),
           fromAccountId: input.fromAccountId || null,
           toAccountId: input.toAccountId || null,
           rawText: input.rawText ?? null,
@@ -118,6 +125,7 @@ export class TransactionsService {
   }
 
   async createManual(userId: string, dto: CreateTransactionDataDto) {
+    rejectDebtCategory(dto.category);
     await this.accounts.assertOwned(userId, [dto.fromAccountId, dto.toAccountId]);
     const { transaction } = await this.create(userId, {
       ...dto,
@@ -130,6 +138,7 @@ export class TransactionsService {
 
   async confirm(userId: string, id: string) {
     const transaction = await this.findOwned(userId, id);
+    rejectDebtManaged(transaction);
     if (transaction.status === 'CONFIRMED') {
       return { success: false, message: 'Transaction already confirmed' };
     }
@@ -143,6 +152,8 @@ export class TransactionsService {
 
   async update(userId: string, id: string, dto: UpdateTransactionDto) {
     const transaction = await this.findOwned(userId, id);
+    rejectDebtManaged(transaction);
+    rejectDebtCategory(dto.category);
     await this.accounts.assertOwned(userId, [dto.fromAccountId, dto.toAccountId]);
 
     await this.prisma.$transaction(async (tx) => {
@@ -157,10 +168,6 @@ export class TransactionsService {
           amount: dto.amount ?? transaction.amount,
           category: dto.category ?? transaction.category,
           subcategory: dto.subcategory !== undefined ? dto.subcategory : transaction.subcategory,
-          counterparty: personFor(
-            dto.category ?? transaction.category,
-            dto.counterparty !== undefined ? dto.counterparty : transaction.counterparty,
-          ),
           fromAccountId: dto.fromAccountId !== undefined ? dto.fromAccountId : transaction.fromAccountId,
           toAccountId: dto.toAccountId !== undefined ? dto.toAccountId : transaction.toAccountId,
           createdAt: dto.createdAt ? new Date(dto.createdAt) : transaction.createdAt,
@@ -176,6 +183,7 @@ export class TransactionsService {
 
   async remove(userId: string, id: string) {
     const transaction = await this.findOwned(userId, id);
+    rejectDebtManaged(transaction);
 
     await this.prisma.$transaction(async (tx) => {
       if (transaction.status === 'CONFIRMED') {
@@ -186,41 +194,43 @@ export class TransactionsService {
     return { success: true };
   }
 
-  /** Confirmed income/expense totals (lending/debt kept apart) for the calendar month (in the user's zone) containing `date`. */
+  /**
+   * Confirmed income/expense totals for the calendar month (in the user's zone) containing `date`.
+   * Only transactions in the reports: talangan and debt payments move money but are not income or spending
+   * until their record is settled.
+   */
   async monthlySummary(userId: string, date = new Date()) {
     const tz = await this.timezoneOf(userId);
     const { year, month } = zonedParts(date, tz);
     const { start, end } = monthRange(year, month, tz);
 
     const transactions = await this.prisma.transaction.findMany({
-      where: { userId, status: 'CONFIRMED', createdAt: { gte: start, lt: end } },
+      where: { userId, status: 'CONFIRMED', inReports: true, createdAt: { gte: start, lt: end } },
       select: { type: true, amount: true, category: true },
     });
 
     let totalIncome = 0;
     let totalExpense = 0;
-    // Lending/debt is tracked on its own: money lent or repaid (out) and money paid back or borrowed (in)
-    let debtOut = 0;
-    let debtIn = 0;
     const expenseByCategory: Record<string, number> = {};
     for (const t of transactions) {
       const amount = Number(t.amount);
-      if (t.category?.toUpperCase() === DEBT_CATEGORY) {
-        if (t.type === 'EXPENSE') debtOut += amount;
-        else if (t.type === 'INCOME') debtIn += amount;
-      } else if (t.type === 'INCOME') {
+      if (t.type === 'INCOME') {
         totalIncome += amount;
       } else if (t.type === 'EXPENSE') {
         totalExpense += amount;
         expenseByCategory[t.category] = (expenseByCategory[t.category] || 0) + amount;
       }
     }
-    return { totalIncome, totalExpense, expenseByCategory, debtOut, debtIn, year, month, timezone: tz };
+    return { totalIncome, totalExpense, expenseByCategory, year, month, timezone: tz };
   }
 
-  /** Has a transaction already been recorded from this WhatsApp message? */
+  /** Has a transaction (or an Utang-piutang record) already been recorded from this WhatsApp message? */
   async existsForMessage(sourceMessageId: string) {
-    return (await this.prisma.transaction.count({ where: { sourceMessageId } })) > 0;
+    const [transactions, debts] = await Promise.all([
+      this.prisma.transaction.count({ where: { sourceMessageId } }),
+      this.prisma.debtRecord.count({ where: { sourceMessageId } }),
+    ]);
+    return transactions + debts > 0;
   }
 
   private async timezoneOf(userId: string) {

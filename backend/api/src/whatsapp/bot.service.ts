@@ -3,8 +3,10 @@ import { PrismaService } from '../database/prisma.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { BudgetsService } from '../budgets/budgets.service';
 import { TransactionsService } from '../transactions/transactions.service';
-import { DEBT_CATEGORY, MAX_AMOUNT, TX_TYPES, TxType } from '../transactions/transactions.dto';
-import { ParserService } from '../parser/parser.service';
+import { MAX_AMOUNT, TX_TYPES, TxType } from '../transactions/transactions.dto';
+import { ParserService, type ParsedMessage } from '../parser/parser.service';
+import { DebtsService } from '../debts/debts.service';
+import { SPENDING_CATEGORIES } from '../common/categories';
 import { formatIDR } from '../common/format';
 import { normalizePhone } from '../common/phone';
 import { DEFAULT_TIMEZONE } from '../common/time';
@@ -29,6 +31,7 @@ export class BotService {
     private readonly transactions: TransactionsService,
     private readonly parser: ParserService,
     private readonly phoneLink: PhoneLinkService,
+    private readonly debts: DebtsService,
   ) {}
 
   /** Avoids spamming unknown numbers (and the WhatsApp ban risk that comes with it). */
@@ -118,7 +121,9 @@ export class BotService {
     if (type === 'TRANSFER' && (!parsed.fromAccount || !parsed.toAccount)) {
       return this.ask(userId, text, 'Tolong sebutkan rekening sumber dan tujuan untuk transfer ini (contoh: dari BCA ke OVO).');
     }
-    if (type === 'INCOME' && !parsed.toAccount && !parsed.account) {
+    // Borrowing needs no account (someone paid for me), a repayment can go to the record's own account
+    const debtWithoutAccount = parsed.debt === 'BORROW' || parsed.debt === 'REPAID';
+    if (type === 'INCOME' && !debtWithoutAccount && !parsed.toAccount && !parsed.account) {
       return this.ask(userId, text, 'Masuk ke rekening mana? Balas dengan nama rekeningnya (contoh: BCA, OVO, Cash).');
     }
     if (type === 'EXPENSE' && !parsed.fromAccount && !parsed.account) {
@@ -147,6 +152,16 @@ export class BotService {
       return `Rekening sumber dan tujuan transfer sama (${from.name}). Sebutkan dua rekening yang berbeda (contoh: Transfer 50k dari BCA ke OVO).`;
     }
 
+    // Lending and debt go to the Utang-piutang page, not into the transactions
+    if (parsed.debt && type !== 'TRANSFER') {
+      try {
+        return await this.recordDebt(userId, parsed, amount, from, to, messageId);
+      } catch (err) {
+        if (isUniqueViolation(err)) return null; // same WhatsApp message delivered twice
+        throw err;
+      }
+    }
+
     // 5. Save (low confidence => draft that must be confirmed on the dashboard)
     let created: Awaited<ReturnType<TransactionsService['create']>>;
     try {
@@ -155,7 +170,6 @@ export class BotService {
         amount,
         category: parsed.category,
         subcategory: parsed.subcategory,
-        counterparty: parsed.counterparty,
         fromAccountId: from?.id,
         toAccountId: to?.id,
         rawText: text,
@@ -175,7 +189,6 @@ export class BotService {
     const tz = await this.timezoneOf(userId);
     const amountText = formatIDR(amount);
     const item = parsed.subcategory || parsed.category;
-    const isDebt = parsed.category?.toUpperCase() === DEBT_CATEGORY && type !== 'TRANSFER';
     const fromLabel = from?.name;
     const toLabel = to?.name;
     const at = transaction.createdAt;
@@ -193,24 +206,85 @@ export class BotService {
     if (type === 'TRANSFER') {
       return `Berhasil! Transfer ${amountText} dari ${fromLabel} ke ${toLabel} telah dicatat.\nSisa saldo ${fromLabel}: ${fromBal}\nSisa saldo ${toLabel}: ${toBal}${timestamp}`;
     }
-    if (isDebt) {
-      const label = type === 'INCOME' ? `masuk ke ${toLabel}` : `keluar dari ${fromLabel}`;
-      const account = type === 'INCOME' ? toLabel : fromLabel;
-      const balance = type === 'INCOME' ? toBal : fromBal;
-      const who = parsed.counterparty ? ` dengan ${parsed.counterparty}` : '';
-      return `Berhasil! Utang-piutang${who} ${amountText} (${item}) ${label}.\nTidak dihitung sebagai ${type === 'INCOME' ? 'pemasukan' : 'pengeluaran'}, tapi saldo tetap berubah.\nSisa saldo ${account}: ${balance}${timestamp}`;
-    }
     if (type === 'INCOME') {
       return `Berhasil! Pemasukan ${amountText} untuk ${item} telah ditambahkan ke ${toLabel}.\nSisa saldo ${toLabel}: ${toBal}${timestamp}`;
     }
     return `Berhasil! ${amountText} untuk ${item} telah dicatat dari rekening ${fromLabel}.\nSisa saldo ${fromLabel}: ${fromBal}${timestamp}`;
   }
 
+  /**
+   * Lending and debt from a chat message:
+   * - LEND ("talangin makan Budi 150rb BCA"): a new talangan, the money leaves the account now.
+   * - BORROW ("ditalangin Budi 50rb", "pinjam dari Sinta 500rb ke BCA"): a new debt.
+   * - REPAID / REPAY ("Budi bayar utang 50rb ke GoPay", "bayar utang ke Sinta 100rb BCA"): ticks the person
+   *   on their only open record; with none or several, the user is sent to the page instead.
+   * Nothing counts as spending until the record is settled on the web.
+   */
+  private async recordDebt(
+    userId: string,
+    parsed: ParsedMessage,
+    amount: number,
+    from: { id: string; name: string } | null,
+    to: { id: string; name: string } | null,
+    messageId?: string,
+  ): Promise<string> {
+    const person = parsed.person?.trim();
+    const title = (parsed.subcategory || (parsed.debt === 'LEND' ? 'Talangan' : 'Pinjaman')).slice(0, 100);
+    const category = (SPENDING_CATEGORIES as readonly string[]).includes(parsed.category ?? '') ? parsed.category! : 'OTHER';
+    const page = 'Lihat dan selesaikan di halaman Utang-piutang di web.';
+    const balanceOf = async (id: string) => formatIDR((await this.accounts.list(userId)).find((a) => a.id === id)?.balance ?? 0);
+
+    if (parsed.debt === 'LEND' || parsed.debt === 'BORROW') {
+      const lend = parsed.debt === 'LEND';
+      const account = lend ? from : to;
+      await this.debts.create(
+        userId,
+        {
+          title,
+          type: lend ? 'RECEIVABLE' : 'PAYABLE',
+          totalAmount: amount,
+          category,
+          accountId: account?.id ?? null,
+          addToBalance: !lend && !!account,
+          participants: person ? [{ personName: person, expectedAmount: amount }] : [],
+        },
+        { sourceMessageId: messageId ?? null },
+      );
+      const who = person ? (lend ? ` untuk ${person}` : ` ke ${person}`) : '';
+      if (lend) {
+        return `Tercatat sebagai talangan${who}: ${formatIDR(amount)} (${title}) dari ${account!.name}.\nSisa saldo ${account!.name}: ${await balanceOf(account!.id)}\nBelum dihitung sebagai pengeluaran. ${page}`;
+      }
+      const moved = account ? `Masuk ke ${account.name}. Sisa saldo ${account.name}: ${await balanceOf(account.id)}` : 'Saldo rekening tidak berubah.';
+      return `Tercatat sebagai utang${who}: ${formatIDR(amount)} (${title}).\n${moved}\n${page}`;
+    }
+
+    // A payment: find the one open record this person has not paid on yet
+    const theyPay = parsed.debt === 'REPAID';
+    if (!person) return `Siapa yang ${theyPay ? 'membayar' : 'kamu bayar'}? Sebutkan namanya, misalnya: *Budi bayar utang 50rb ke GoPay*. Atau centang langsung di halaman Utang-piutang.`;
+    const matches = await this.debts.findUnpaid(userId, theyPay ? 'RECEIVABLE' : 'PAYABLE', person);
+    if (matches.length === 0) {
+      return `Tidak ada catatan ${theyPay ? `talangan untuk ${person}` : `utang ke ${person}`} yang belum dibayar, jadi tidak ada yang dicatat. Buat catatannya dulu di halaman Utang-piutang.`;
+    }
+    if (matches.length > 1) {
+      return `${person} ada di ${matches.length} catatan yang belum dibayar (${matches.map((m) => m.record.title).join(', ')}). Centang pembayarannya di halaman Utang-piutang supaya masuk ke catatan yang benar.`;
+    }
+    const { record, participant } = matches[0];
+    const accountId = (theyPay ? to?.id : from?.id) ?? record.accountId;
+    if (!accountId) return `${theyPay ? 'Masuk ke' : 'Dibayar pakai'} rekening apa? Kirim ulang dengan nama rekeningnya.`;
+    const view = await this.debts.pay(userId, record.id, participant.id, { amount, accountId }, { sourceMessageId: messageId ?? null });
+    const accountName = (await this.accounts.list(userId)).find((a) => a.id === accountId)?.name ?? '';
+    const progress = `Terbayar ${formatIDR(view.progress.paid)} dari ${formatIDR(view.progress.total)}.`;
+    return theyPay
+      ? `Berhasil! ${participant.personName} membayar ${formatIDR(amount)} untuk "${record.title}" ke ${accountName}.\nSisa saldo ${accountName}: ${await balanceOf(accountId)}\n${progress} ${page}`
+      : `Berhasil! Kamu membayar ${formatIDR(amount)} ke ${participant.personName} untuk "${record.title}" dari ${accountName}.\nSisa saldo ${accountName}: ${await balanceOf(accountId)}\n${progress} ${page}`;
+  }
+
   private async recap(userId: string): Promise<string> {
-    const [summary, accounts, budgets] = await Promise.all([
+    const [summary, accounts, budgets, debts] = await Promise.all([
       this.transactions.monthlySummary(userId, new Date()),
       this.accounts.list(userId),
       this.budgets.list(userId),
+      this.debts.summary(userId),
     ]);
     // Month in the user's zone (the summary already used it for the boundaries)
     const monthName = new Date(Date.UTC(summary.year, summary.month - 1, 15)).toLocaleDateString('id-ID', {
@@ -230,10 +304,10 @@ export class BotService {
       : accounts.map((a) => `- ${a.name}: ${formatIDR(a.balance)}\n`).join('');
     recap += `\n`;
 
-    if (summary.debtOut > 0 || summary.debtIn > 0) {
-      recap += `🤝 *Utang-piutang* (tidak termasuk pemasukan/pengeluaran):\n`;
-      recap += `- Keluar (talangan, pinjamkan, bayar utang): ${formatIDR(summary.debtOut)}\n`;
-      recap += `- Masuk (dibayar balik, pinjam): ${formatIDR(summary.debtIn)}\n\n`;
+    if (debts.openCount > 0) {
+      recap += `🤝 *Utang-piutang belum selesai* (${debts.openCount} catatan):\n`;
+      recap += `- Orang utang ke kamu: ${formatIDR(debts.receivable)}\n`;
+      recap += `- Kamu utang: ${formatIDR(debts.payable)}\n\n`;
     }
 
     recap += `🎯 *Status Anggaran (Budget)*:\n`;

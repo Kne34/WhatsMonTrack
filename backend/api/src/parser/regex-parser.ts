@@ -22,10 +22,14 @@ const SLANG_AMOUNTS: Record<string, number> = { gocap: 50_000, ceban: 10_000, go
 const TRANSFER_WORDS = /\b(transfer|tf|trf|top ?up|topup|isi saldo|pindah(?:kan)? (?:dana|uang|saldo))\b/i;
 // "masuk" alone is ambiguous ("masuk review", "masuk angin"); only "masuk ke/di <account>" means income
 const INCOME_WORDS = /\b(gaji|gajian|terima|diterima|nerima|pemasukan|pendapatan|bonus|thr|cashback|refund|dikasih|dapat uang|dapet uang)\b|\bmasuk\s+(ke|di)\b/i;
-// Lending/debt (category DEBT). Money coming back or borrowed is income, everything else (paying for a
-// friend, lending, repaying) leaves the account.
-const DEBT_WORDS = /\b(talangin|talangan|nalangin|nombokin|bayarin|minjemin|pinjemin|pinjamin|pinjam|pinjem|minjem|meminjam|utang|hutang|ngutang|kasbon|piutang|ganti uang|ganti duit)\b/i;
-const DEBT_IN_WORDS = /\b(dibayar|dibalikin|dikembalikan|kembali|(?:balikin|ngembaliin) ke (?:aku|saya|gue|gw)|pinjam dari|pinjem dari|minjem (?:dari|ke)|dipinjemin|dipinjami|ganti uang|ganti duit)\b|\bbayar\s+(?:utang|hutang)\b(?!\s+ke\s+(?!(?:aku|saya|gue|gw)\b))/i;
+// Lending/debt (recorded on the Utang-piutang page). Money coming back or borrowed is income, everything
+// else (paying for a friend, lending, repaying) leaves the account.
+const DEBT_WORDS = /\b(talangin|talangan|nalangin|ditalangin|nombokin|bayarin|dibayarin|minjemin|pinjemin|pinjamin|pinjam|pinjem|minjem|meminjam|utang|hutang|ngutang|kasbon|piutang|ganti uang|ganti duit)\b/i;
+// Someone paid for or lent to the user (as opposed to paying the user back)
+const BORROW_WORDS = /\b(ditalangin|dibayarin|pinjam dari|pinjem dari|minjem (?:dari|ke)|dipinjemin|dipinjami|ngutang)\b/i;
+// The user pays a debt back (as opposed to lending or paying for a friend)
+const REPAY_WORDS = /\b(bayar (?:utang|hutang)|cicil (?:utang|hutang)|balikin uang|ngembaliin uang)\b/i;
+const DEBT_IN_WORDS = /\b(dibayar|dibalikin|dikembalikan|kembali|(?:balikin|ngembaliin) ke (?:aku|saya|gue|gw)|pinjam dari|pinjem dari|minjem (?:dari|ke)|dipinjemin|dipinjami|ditalangin|dibayarin|ganti uang|ganti duit)\b|\bbayar\s+(?:utang|hutang)\b(?!\s+ke\s+(?!(?:aku|saya|gue|gw)\b))/i;
 const FROM_MARKERS = new Set(['dari', 'pakai', 'pake', 'via', 'from', 'lewat']);
 const TO_MARKERS = new Set(['ke', 'to', 'up', 'topup', 'isi']);
 const FILLER = new Set(['pakai', 'pake', 'via', 'dari', 'ke', 'lewat', 'dengan', 'from', 'to', 'rp', 'sebesar', 'senilai', 'saldo', 'rekening']);
@@ -103,7 +107,7 @@ function findAmount(words: string[]): { amount: number; index: number } | null {
 }
 
 const PERSON_MARKERS = new Set(['ke', 'dari', 'buat', 'untuk', 'sama', 'utk']);
-const NOT_A_PERSON = /^(aku|saya|gue|gw|ku|kamu|teman|temen|uang|duit|rekening|saldo|utang|hutang|bayar|talangin|talangan|nalangin|bayarin|minjemin|pinjemin|pinjam|pinjem|minjem|ganti|balik|dibalikin|kembali|masuk|transfer|tf|pakai|pake|via|lewat|makan|beli)$/i;
+const NOT_A_PERSON = /^(aku|saya|gue|gw|ku|kamu|teman|temen|uang|duit|rekening|saldo|utang|hutang|bayar|talangin|talangan|nalangin|ditalangin|bayarin|dibayarin|minjemin|pinjemin|pinjam|pinjem|minjem|ganti|balik|dibalikin|kembali|masuk|transfer|tf|pakai|pake|via|lewat|makan|beli)$/i;
 
 function findPerson(words: string[], mentions: Mention[], amountIndex: number): string | undefined {
   const isAccount = (i: number) => mentions.some((m) => i >= m.start && i < m.end);
@@ -116,6 +120,8 @@ function findPerson(words: string[], mentions: Mention[], amountIndex: number): 
   }
   return words.find((w, i) => ok(i) && /^\p{Lu}/u.test(w)); // a capitalised name anywhere
 }
+
+const spendingCategory = (text: string) => CATEGORY_WORDS.find(([, re]) => re.test(text))?.[0] ?? 'OTHER';
 
 export function parseWithRegex(text: string, accountNames: string[] = []): ParseResult {
   const words = text.replace(/[^\p{L}\p{N}.,\s-]/gu, ' ').split(/\s+/).filter(Boolean);
@@ -148,15 +154,18 @@ export function parseWithRegex(text: string, accountNames: string[] = []): Parse
     data.category = 'OTHER';
   } else if (type === 'INCOME') {
     data.toAccount = (mentions.find((m) => TO_MARKERS.has(before(m))) ?? mentions[0])?.name;
-    data.category = debt ? 'DEBT' : 'INCOME';
+    data.category = debt ? spendingCategory(text) : 'INCOME';
   } else {
     data.fromAccount = (mentions.find((m) => FROM_MARKERS.has(before(m))) ?? mentions[0])?.name;
-    data.category = debt ? 'DEBT' : (CATEGORY_WORDS.find(([, re]) => re.test(text))?.[0] ?? 'OTHER');
+    data.category = spendingCategory(text);
   }
 
-  // Lending/debt: the person is the word after "ke/dari/buat/sama" ("bayar utang ke Sinta", "pinjam dari
-  // Sinta"), otherwise a capitalised name ("Budi bayar utang", "talangin makan Budi")
-  if (debt) data.counterparty = findPerson(words, mentions, amount.index);
+  // Lending/debt: what kind, and the person: the word after "ke/dari/buat/sama" ("bayar utang ke Sinta",
+  // "pinjam dari Sinta"), otherwise a capitalised name ("Budi bayar utang", "talangin makan Budi")
+  if (debt) {
+    data.debt = type === 'INCOME' ? (BORROW_WORDS.test(text) ? 'BORROW' : 'REPAID') : REPAY_WORDS.test(text) ? 'REPAY' : 'LEND';
+    data.person = findPerson(words, mentions, amount.index);
+  }
 
   // What is left after removing the amount, account names and filler words describes the item
   const used = new Set<number>([amount.index]);

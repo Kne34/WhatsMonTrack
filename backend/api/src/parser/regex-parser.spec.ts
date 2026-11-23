@@ -45,21 +45,27 @@ describe('parseWithRegex', () => {
     expect(data.toAccount).toBeUndefined(); // the bot then asks for both accounts
   });
 
-  it('files lending and debt under DEBT, out or in depending on who pays', () => {
-    const out = ['talangin makan Budi 150rb pakai BCA', 'minjemin Andi 200rb dari gopay', 'bayar utang ke Sinta 100rb pakai BCA', 'bayarin tiket Rani 300rb BCA'];
-    for (const text of out) expect(parse(text)).toMatchObject({ type: 'EXPENSE', category: 'DEBT', fromAccount: expect.any(String) });
-    const back = ['Budi bayar utang 150rb ke BCA', 'Andi transfer ganti uang 50rb ke gopay', 'uang talangan Rani kembali 300rb masuk ke BCA', 'pinjam dari Sinta 500rb masuk BCA', 'Budi bayar utang ke aku 75rb BCA'];
-    for (const text of back) expect(parse(text)).toMatchObject({ type: 'INCOME', category: 'DEBT', toAccount: expect.any(String) });
-    expect(parse('talangin makan Budi 150rb pakai BCA').subcategory).toBe('talangin makan Budi');
+  it('recognises the four kinds of lending/debt, keeping a regular category', () => {
+    const lend = ['talangin makan Budi 150rb pakai BCA', 'minjemin Andi 200rb dari gopay', 'bayarin tiket Rani 300rb BCA'];
+    for (const text of lend) expect(parse(text)).toMatchObject({ type: 'EXPENSE', debt: 'LEND', fromAccount: expect.any(String) });
+    expect(parse('bayar utang ke Sinta 100rb pakai BCA')).toMatchObject({ type: 'EXPENSE', debt: 'REPAY', fromAccount: 'BCA' });
+    const repaid = ['Budi bayar utang 150rb ke BCA', 'Andi transfer ganti uang 50rb ke gopay', 'uang talangan Rani kembali 300rb masuk ke BCA', 'Budi bayar utang ke aku 75rb BCA'];
+    for (const text of repaid) expect(parse(text)).toMatchObject({ type: 'INCOME', debt: 'REPAID', toAccount: expect.any(String) });
+    expect(parse('pinjam dari Sinta 500rb masuk BCA')).toMatchObject({ type: 'INCOME', debt: 'BORROW', toAccount: 'BCA' });
+    expect(parse('ditalangin Budi makan 50rb')).toMatchObject({ debt: 'BORROW', person: 'Budi' });
+    // The old DEBT category is gone: the category says what the money was for
+    expect(parse('talangin makan Budi 150rb pakai BCA').category).toBe('FOOD');
+    expect(parse('minjemin Andi 200rb dari gopay').category).toBe('OTHER');
+    expect(parse('makan siang 25rb pakai BCA').debt).toBeUndefined();
   });
 
   it('finds the person of a lending/debt message', () => {
-    expect(parse('talangin makan Budi 150rb pakai BCA').counterparty).toBe('Budi');
-    expect(parse('Budi bayar utang 150rb ke BCA').counterparty).toBe('Budi');
-    expect(parse('bayar utang ke Sinta 100rb pakai BCA').counterparty).toBe('Sinta');
-    expect(parse('pinjam dari sinta 500rb masuk BCA').counterparty).toBe('sinta');
-    expect(parse('talangin makan teman 200rb BCA').counterparty).toBeUndefined();
-    expect(parse('makan siang 25rb pakai BCA').counterparty).toBeUndefined(); // not lending/debt
+    expect(parse('talangin makan Budi 150rb pakai BCA').person).toBe('Budi');
+    expect(parse('Budi bayar utang 150rb ke BCA').person).toBe('Budi');
+    expect(parse('bayar utang ke Sinta 100rb pakai BCA').person).toBe('Sinta');
+    expect(parse('pinjam dari sinta 500rb masuk BCA').person).toBe('sinta');
+    expect(parse('talangin makan teman 200rb BCA').person).toBeUndefined();
+    expect(parse('makan siang 25rb pakai BCA').person).toBeUndefined(); // not lending/debt
   });
 
   it('keeps a transfer between two own accounts a transfer, even with debt words', () => {

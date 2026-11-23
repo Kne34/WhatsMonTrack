@@ -52,4 +52,13 @@ describe('applyToBalances', () => {
     await applyToBalances(tx, { ...base, type: 'DEBT_OUT' }, 1);
     expect(update).not.toHaveBeenCalled();
   });
+
+  it('report-only records (affectsBalance false) never touch balances, in either direction', async () => {
+    const { tx, update } = mockTx();
+    for (const type of ['EXPENSE', 'INCOME', 'TRANSFER']) {
+      await applyToBalances(tx, { ...base, type, affectsBalance: false }, 1);
+      await applyToBalances(tx, { ...base, type, affectsBalance: false }, -1);
+    }
+    expect(update).not.toHaveBeenCalled();
+  });
 });

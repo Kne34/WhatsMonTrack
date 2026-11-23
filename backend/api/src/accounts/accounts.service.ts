@@ -77,6 +77,17 @@ export class AccountsService {
     const account = await this.findOwned(userId, id);
     const used = { userId, OR: [{ fromAccountId: id }, { toAccountId: id }] };
 
+    const debts = await this.prisma.debtRecord.count({
+      where: { userId, OR: [{ accountId: id }, { participants: { some: { paidAccountId: id } } }] },
+    });
+    if (debts > 0) {
+      throw new ConflictException({
+        statusCode: 409,
+        message: `Rekening "${account.name}" dipakai ${debts} catatan Utang-piutang. Hapus atau ubah catatannya terlebih dahulu.`,
+        debtCount: debts,
+      });
+    }
+
     try {
       return await this.prisma.$transaction(async (tx) => {
         const transactions = await tx.transaction.findMany({ where: used });
