@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { AccountsModule } from './accounts/accounts.module';
 import { BudgetsModule } from './budgets/budgets.module';
 import { DebtsModule } from './debts/debts.module';
+import { InvestmentsModule } from './investments/investments.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { ParserModule } from './parser/parser.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
@@ -32,6 +33,7 @@ import { HealthController } from './health.controller';
     AccountsModule,
     BudgetsModule,
     DebtsModule,
+    InvestmentsModule,
     TransactionsModule,
     ParserModule,
     WhatsAppModule,

@@ -14,6 +14,7 @@ src/
   accounts/      bank / e-wallet / cash accounts
   budgets/       monthly budget per category
   debts/         utang-piutang notes (who owes whom; never touches balances)
+  investments/   Investasi: holdings, buy/sell, live prices (Yahoo Finance, CoinGecko) with cache
   transactions/  transactions, monthly summary, ledger.ts (the only code that changes balances)
   parser/        Gemini parsing (rules in systemInstruction) with an offline regex fallback
   whatsapp/      Baileys socket (link / change / unlink the bot), bot conversation logic,

@@ -35,6 +35,7 @@ model User {
   budgets            Budget[]
   chatMessages       ChatMessage[]
   debtNotes          DebtNote[]
+  investments        Investment[]
 }
 
 enum TransactionType {
@@ -134,4 +135,67 @@ model DebtNote {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// Investasi page: one row per asset the user holds on a platform (e.g. BBCA on Stockbit).
+/// Separate from accounts and transactions: buying or selling here never changes balances.
+model Investment {
+  id          String   @id @default(uuid())
+  userId      String
+  /// IDX_STOCK | US_STOCK | CRYPTO
+  assetType   String
+  /// As the user types it, upper case: BBCA, AAPL, BTC (no .JK suffix)
+  symbol      String
+  name        String?
+  /// CoinGecko coin id for crypto, e.g. "bitcoin"
+  coingeckoId String?
+  /// Free text: Stockbit, Pluang, Bibit, ...
+  platform    String
+  /// Currency of the buy price: IDR or USD (IDX stocks are always IDR)
+  currency    String
+  /// IDX stocks: lots (1 lot = 100 shares). US stocks and crypto: units, fractions allowed.
+  quantity    Decimal  @db.Decimal(30, 10)
+  /// Average buy price per share/unit, in `currency`
+  avgPrice    Decimal  @db.Decimal(30, 10)
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trades      InvestmentTrade[]
+
+  @@index([userId])
+}
+
+/// Buy/sell history of a holding. Buys recompute the average price; sells record the realized P&L.
+model InvestmentTrade {
+  id           String     @id @default(uuid())
+  investmentId String
+  /// BUY | SELL
+  side         String
+  /// Same unit as Investment.quantity (lots for IDX stocks)
+  quantity     Decimal    @db.Decimal(30, 10)
+  /// Price per share/unit, in the holding's currency
+  price        Decimal    @db.Decimal(30, 10)
+  /// Sells only: (price - average price) x shares, in the holding's currency
+  realizedPnl  Decimal?   @db.Decimal(30, 10)
+  note         String?
+  tradedAt     DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+
+  investment   Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+
+  @@index([investmentId, tradedAt])
+}
+
+/// Last known market prices, shared by all users. The fallback when Yahoo Finance or CoinGecko fail.
+model MarketPrice {
+  /// e.g. "IDX:BBCA", "US:AAPL", "CRYPTO:bitcoin", "FX:USDIDR"
+  key       String   @id
+  price     Decimal  @db.Decimal(30, 10)
+  /// Currency of `price`: IDR or USD. Crypto rows keep the IDR price in `priceIdr` too.
+  currency  String
+  priceIdr  Decimal? @db.Decimal(30, 10)
+  name      String?
+  updatedAt DateTime @updatedAt
 }

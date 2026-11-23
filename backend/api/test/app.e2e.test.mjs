@@ -27,6 +27,7 @@ const { MailService } = require('../dist/auth/mail.service');
 const { BotService } = require('../dist/whatsapp/bot.service');
 const { ParserService } = require('../dist/parser/parser.service');
 const { PrismaService } = require('../dist/database/prisma.service');
+const { MarketService, SymbolNotFoundError } = require('../dist/investments/market.service');
 const { useDatabaseAuthState, clearDatabaseAuthState, isBotStopped, setBotStopped } = require('../dist/whatsapp/db-auth-state');
 
 // ---- fakes ----
@@ -59,6 +60,21 @@ const fakeParser = {
   },
 };
 
+/** Stand-in for Yahoo Finance / CoinGecko: fixed prices, no network. */
+const fakeMarket = {
+  async lookup(type, symbol) {
+    if (symbol === 'NOPE') throw new SymbolNotFoundError();
+    if (type === 'CRYPTO') return { name: 'Bitcoin', coingeckoId: 'bitcoin' };
+    return { name: `${symbol} Corp` };
+  },
+  async quotes(sources, force) {
+    this.lastForce = force;
+    const at = '2026-11-23T09:00:00.000Z';
+    const prices = Object.fromEntries(sources.map((s) => [s.key, { price: 9000, currency: s.key.startsWith('IDX') ? 'IDR' : 'USD', updatedAt: at, stale: false }]));
+    return { prices, fx: { price: 16000, currency: 'IDR', updatedAt: at, stale: false } };
+  },
+};
+
 const lastMailCode = (to) => mailOutbox.filter((m) => m.to === to).at(-1).code;
 
 let app, http, prisma;
@@ -68,6 +84,7 @@ before(async () => {
     .overrideProvider(WhatsAppService).useValue(fakeWhatsApp)
     .overrideProvider(MailService).useValue(fakeMail)
     .overrideProvider(ParserService).useValue(fakeParser)
+    .overrideProvider(MarketService).useValue(fakeMarket)
     .compile();
   app = configureApp(moduleRef.createNestApplication());
   await app.init();
@@ -557,5 +574,81 @@ describe('deleting an account together with its transactions', () => {
   test('an unused account is deleted directly', async () => {
     const res = await http().delete(`/api/accounts/${cash.id}`).set(auth(bob)).expect(200);
     assert.deepEqual(res.body, { success: true, deletedTransactions: 0 });
+  });
+});
+
+describe('investments (Investasi page)', () => {
+  let bob, alice;
+  const create = (token, data) => http().post('/api/investments').set(auth(token)).send(data);
+
+  before(async () => {
+    const login = async (email) => (await http().post('/api/auth/login').send({ email, password: 'password123' }).expect(201)).body.token;
+    bob = await login('admin@test.com');
+    alice = await login('alice@test.com');
+  });
+
+  test('IDX stocks: lots, no .JK, IDR, name found automatically, first buy in the history', async () => {
+    const res = await create(bob, { assetType: 'IDX_STOCK', symbol: 'bbca.jk', platform: 'Stockbit', quantity: 10, avgPrice: 9000, currency: 'USD' }).expect(201);
+    assert.equal(res.body.symbol, 'BBCA');
+    assert.equal(res.body.currency, 'IDR', 'IDX stocks are always IDR');
+    assert.equal(res.body.name, 'BBCA Corp');
+    assert.equal(res.body.quantity, 10);
+    assert.equal(res.body.priceKey, 'IDX:BBCA');
+    const trades = (await http().get(`/api/investments/${res.body.id}/trades`).set(auth(bob)).expect(200)).body;
+    assert.deepEqual(trades.map((t) => [t.side, t.quantity, t.price]), [['BUY', 10, 9000]]);
+
+    await create(bob, { assetType: 'IDX_STOCK', symbol: 'TLKM', platform: 'Stockbit', quantity: 1.5, avgPrice: 3000 }).expect(400);
+    // The same ticker on the same platform: use "Beli" instead
+    await create(bob, { assetType: 'IDX_STOCK', symbol: 'BBCA', platform: 'stockbit', quantity: 1, avgPrice: 9000 }).expect(409);
+    // On another platform it is a separate holding
+    await create(bob, { assetType: 'IDX_STOCK', symbol: 'BBCA', platform: 'Ajaib', quantity: 1, avgPrice: 9000 }).expect(201);
+  });
+
+  test('buy recomputes the average, sell keeps it and records the realized P&L', async () => {
+    const h = (await create(bob, { assetType: 'CRYPTO', symbol: 'btc', platform: 'Pluang', quantity: 0.1, avgPrice: 60000 }).expect(201)).body;
+    assert.equal(h.coingeckoId, 'bitcoin');
+    assert.equal(h.priceKey, 'CRYPTO:bitcoin');
+    assert.equal(h.currency, 'USD');
+
+    const trade = (data) => http().post(`/api/investments/${h.id}/trades`).set(auth(bob)).send(data);
+    let r = (await trade({ side: 'BUY', quantity: 0.2, price: 30000 }).expect(201)).body;
+    assert.deepEqual([r.holding.quantity, r.holding.avgPrice], [0.3, 40000]);
+    r = (await trade({ side: 'SELL', quantity: 0.1, price: 50000 }).expect(201)).body;
+    assert.deepEqual([r.holding.quantity, r.holding.avgPrice, r.trade.realizedPnl], [0.2, 40000, 1000]);
+    await trade({ side: 'SELL', quantity: 1, price: 50000 }).expect(400);
+    await trade({ side: 'HOLD', quantity: 1, price: 1 }).expect(400);
+    assert.equal((await http().get(`/api/investments/${h.id}/trades`).set(auth(bob)).expect(200)).body.length, 3);
+  });
+
+  test('unknown tickers are refused; corrections and deletes; private per user', async () => {
+    await create(bob, { assetType: 'US_STOCK', symbol: 'NOPE', platform: 'Pluang', quantity: 1, avgPrice: 1 }).expect(400);
+    const h = (await create(bob, { assetType: 'US_STOCK', symbol: 'nvda', platform: 'Pluang', quantity: 1.54, avgPrice: 120.5, currency: 'USD' }).expect(201)).body;
+    const fixed = (await http().put(`/api/investments/${h.id}`).set(auth(bob)).send({ quantity: 2, avgPrice: 100, note: 'koreksi' }).expect(200)).body;
+    assert.deepEqual([fixed.quantity, fixed.avgPrice, fixed.note, fixed.symbol], [2, 100, 'koreksi', 'NVDA']);
+    await http().put(`/api/investments/${h.id}`).set(auth(bob)).send({ symbol: 'AAPL' }).expect(400);
+
+    assert.deepEqual((await http().get('/api/investments').set(auth(alice)).expect(200)).body, []);
+    await http().put(`/api/investments/${h.id}`).set(auth(alice)).send({ quantity: 1 }).expect(404);
+    await http().post(`/api/investments/${h.id}/trades`).set(auth(alice)).send({ side: 'BUY', quantity: 1, price: 1 }).expect(404);
+    await http().delete(`/api/investments/${h.id}`).set(auth(alice)).expect(404);
+    await http().delete(`/api/investments/${h.id}`).set(auth(bob)).expect(200);
+    await http().get('/api/investments').expect(401);
+  });
+
+  test('prices: only the tickers of this user plus USD/IDR; refresh is passed through', async () => {
+    const res = (await http().get('/api/market/prices?refresh=true').set(auth(bob)).expect(200)).body;
+    assert.deepEqual(Object.keys(res.prices).sort(), ['CRYPTO:bitcoin', 'IDX:BBCA']);
+    assert.equal(res.fx.price, 16000);
+    assert.equal(fakeMarket.lastForce, true);
+    await http().get('/api/market/prices').set(auth(bob)).expect(200);
+    assert.equal(fakeMarket.lastForce, false);
+    assert.deepEqual((await http().get('/api/market/prices').set(auth(alice)).expect(200)).body.prices, {});
+  });
+
+  test('buying or selling never changes account balances', async () => {
+    const before = await prisma.account.findMany({ select: { id: true, balance: true }, orderBy: { id: 'asc' } });
+    const h = (await create(bob, { assetType: 'US_STOCK', symbol: 'VOO', platform: 'Pluang', quantity: 1, avgPrice: 500 }).expect(201)).body;
+    await http().post(`/api/investments/${h.id}/trades`).set(auth(bob)).send({ side: 'SELL', quantity: 1, price: 550 }).expect(201);
+    assert.deepEqual(await prisma.account.findMany({ select: { id: true, balance: true }, orderBy: { id: 'asc' } }), before);
   });
 });
