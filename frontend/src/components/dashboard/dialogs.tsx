@@ -176,6 +176,8 @@ export interface AccountLike {
   balance: number;
   /** Transactions that use this account (as source or destination) */
   transactionCount?: number;
+  /** Utang-piutang records that use this account (main account or where a payment went) */
+  debtCount?: number;
 }
 
 /** Create (account = null) or edit an account. Mount only while open so fields start fresh. */

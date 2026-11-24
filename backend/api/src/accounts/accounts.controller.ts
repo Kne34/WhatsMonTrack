@@ -21,7 +21,7 @@ import { AccountsService } from './accounts.service';
 export class AccountsController {
   constructor(private readonly accounts: AccountsService) {}
 
-  /** Accounts with `transactionCount`: how many transactions use each one. */
+  /** Accounts with `transactionCount` and `debtCount`: how many transactions and Utang-piutang records use each one. */
   @Get()
   list(@CurrentUser() user: JwtUser) {
     return this.accounts.listWithUsage(user.id);
@@ -41,7 +41,7 @@ export class AccountsController {
     return this.accounts.update(user.id, id, body);
   }
 
-  /** 409 while transactions use the account, unless `?withTransactions=true` deletes them too. */
+  /** 409 while transactions or Utang-piutang records use the account, unless `?withTransactions=true` deletes them too. */
   @Delete(':id')
   remove(
     @CurrentUser() user: JwtUser,

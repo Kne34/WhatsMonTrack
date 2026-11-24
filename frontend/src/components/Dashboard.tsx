@@ -260,18 +260,35 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     notify(account ? "Rekening diperbarui" : "Rekening ditambahkan");
   };
 
-  /** Asks first; an account that transactions use can only go together with all of them. */
-  const askDeleteAccount = (account: AccountLike, transactionCount = account.transactionCount ?? 0) => {
-    if (transactionCount > 0) {
+  /** Asks first; an account that transactions or Utang-piutang records use can only go together with all of them. */
+  const askDeleteAccount = (
+    account: AccountLike,
+    transactionCount = account.transactionCount ?? 0,
+    debtCount = account.debtCount ?? 0,
+  ) => {
+    if (transactionCount > 0 || debtCount > 0) {
+      const parts = [
+        transactionCount > 0 ? `${transactionCount} transaksi` : null,
+        debtCount > 0 ? `${debtCount} catatan utang-piutang` : null,
+      ].filter(Boolean).join(" dan ");
       setDialog({
         kind: "confirm",
-        title: `Hapus rekening ${account.name} beserta transaksinya?`,
-        description: `Rekening ini dipakai ${transactionCount} transaksi. Semuanya ikut dihapus. Untuk transfer dari atau ke rekening lain, saldo rekening tersebut ikut dikembalikan. Tindakan ini tidak bisa dibatalkan.`,
-        confirmLabel: `Hapus rekening & ${transactionCount} transaksi`,
+        title: `Hapus rekening ${account.name} beserta ${parts}?`,
+        description: [
+          `Rekening ini dipakai ${parts}. Semuanya ikut dihapus.`,
+          transactionCount > 0 ? "Untuk transfer dari atau ke rekening lain, saldo rekening tersebut ikut dikembalikan." : "",
+          debtCount > 0 ? "Catatan utang-piutang dihapus utuh: pembayaran yang masuk ke rekening lain juga dibatalkan dari saldonya, dan pengeluaran yang sudah dicatat ke laporan ikut hilang." : "",
+          "Tindakan ini tidak bisa dibatalkan.",
+        ].filter(Boolean).join(" "),
+        confirmLabel: `Hapus rekening & ${parts}`,
         action: async () => {
           const res = await deleteAccount(account.id, true);
-          await loadData();
-          notify(`Rekening ${account.name} dan ${res.deletedTransactions} transaksi dihapus`);
+          await Promise.all([loadData(), res.deletedDebts > 0 ? loadDebts() : null]);
+          const done = [
+            res.deletedTransactions > 0 ? `${res.deletedTransactions} transaksi` : null,
+            res.deletedDebts > 0 ? `${res.deletedDebts} catatan utang-piutang` : null,
+          ].filter(Boolean).join(" dan ");
+          notify(done ? `Rekening ${account.name} dan ${done} dihapus` : `Rekening ${account.name} dihapus`);
         },
       });
       return;
@@ -285,10 +302,10 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
         try {
           await deleteAccount(account.id);
         } catch (err) {
-          // Transactions were added since the list was loaded: offer to delete them too
-          const count = (err as { response?: { status?: number; data?: { transactionCount?: number } } }).response;
-          if (count?.status === 409 && count.data?.transactionCount) {
-            askDeleteAccount(account, count.data.transactionCount);
+          // Transactions or records were added since the list was loaded: offer to delete them too
+          const count = (err as { response?: { status?: number; data?: { transactionCount?: number; debtCount?: number } } }).response;
+          if (count?.status === 409 && (count.data?.transactionCount || count.data?.debtCount)) {
+            askDeleteAccount(account, count.data.transactionCount ?? 0, count.data.debtCount ?? 0);
             await loadData();
           }
           throw err;
@@ -358,7 +375,9 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     setDialog({
       kind: "confirm",
       title: `Hapus "${record.title}"?`,
-      description: "Semua pergerakan saldonya dibatalkan: talangan dan pembayaran dikembalikan ke rekening masing-masing.",
+      description: record.status === "OPEN"
+        ? "Semua pergerakan saldonya dibatalkan: talangan dan pembayaran dikembalikan ke rekening masing-masing."
+        : "Semua pergerakan saldonya dibatalkan: talangan dan pembayaran dikembalikan ke rekening masing-masing, dan pengeluaran atau pemasukan yang dicatat saat diselesaikan ikut dihapus dari laporan.",
       confirmLabel: "Hapus catatan",
       action: async () => {
         await deleteDebt(record.id);

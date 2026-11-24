@@ -525,7 +525,7 @@ describe('deleting an account together with its transactions', () => {
   test('withTransactions deletes all of them and gives transfers back to the other account', async () => {
     assert.equal(await balanceOf(gopay.id), 380000); // 100k + 300k transfer − 20k
     const res = await http().delete(`/api/accounts/${bca.id}?withTransactions=true`).set(auth(bob)).expect(200);
-    assert.deepEqual(res.body, { success: true, deletedTransactions: 3 });
+    assert.deepEqual(res.body, { success: true, deletedTransactions: 3, deletedDebts: 0 });
     assert.equal(await prisma.account.findUnique({ where: { id: bca.id } }), null);
     assert.equal(await balanceOf(gopay.id), 80000); // the transfer from BCA is undone; GoPay's own expense stays
     const left = (await http().get('/api/transactions').set(auth(bob)).expect(200)).body.data;
@@ -534,7 +534,7 @@ describe('deleting an account together with its transactions', () => {
 
   test('an unused account is deleted directly', async () => {
     const res = await http().delete(`/api/accounts/${cash.id}`).set(auth(bob)).expect(200);
-    assert.deepEqual(res.body, { success: true, deletedTransactions: 0 });
+    assert.deepEqual(res.body, { success: true, deletedTransactions: 0, deletedDebts: 0 });
   });
 });
 
@@ -703,10 +703,9 @@ describe('utang-piutang with real-time cash flow', () => {
     // The report-only expense is also managed from the page
     await http().delete(`/api/transactions/${expense.id}`).set(auth(bob)).expect(409);
 
-    // A settled record is locked until reopened
+    // A settled record can't be edited until reopened (it can be deleted: see below)
     await debts().put(`/api/debts/${r.id}`).set(auth(bob)).send({ title: 'x' }).expect(409);
     await pay(r, 2, 100000, bca.id).expect(409);
-    await debts().delete(`/api/debts/${r.id}`).set(auth(bob)).expect(409);
 
     // Reopen removes the expense (no balance change); deleting the open record undoes every movement
     r = (await debts().post(`/api/debts/${r.id}/reopen`).set(auth(bob)).expect(200)).body;
@@ -776,13 +775,55 @@ describe('utang-piutang with real-time cash flow', () => {
     await debts().put(`/api/debts/${r.id}`).set(auth(bob)).send({ participants: [{ id: r.participants[1].id, personName: 'Ina' }] }).expect(400);
     r = (await debts().put(`/api/debts/${r.id}`).set(auth(bob)).send({ participants: [{ id: r.participants[0].id, personName: 'Hadi' }, { personName: 'Joko', expectedAmount: 20000 }] }).expect(200)).body;
     assert.deepEqual(r.participants.map((p) => p.personName), ['Hadi', 'Joko']);
-    const del = await http().delete(`/api/accounts/${bca.id}?withTransactions=true`).set(auth(bob)).expect(409);
+    const del = await http().delete(`/api/accounts/${bca.id}`).set(auth(bob)).expect(409);
     assert.match(del.body.message, /Utang-piutang/);
+    assert.ok(del.body.debtCount > 0);
 
     assert.deepEqual((await debts().get('/api/debts').set(auth(alice)).expect(200)).body.records, []);
     await debts().get(`/api/debts/${r.id}`).set(auth(alice)).expect(404);
     await debts().post(`/api/debts/${r.id}/settle`).set(auth(alice)).send({}).expect(404);
     await debts().delete(`/api/debts/${r.id}`).set(auth(alice)).expect(404);
     await debts().get('/api/debts').expect(401);
+  });
+
+  test('a settled record is deleted directly: its report entry goes and every movement is undone', async () => {
+    const before = await reports();
+    const start = await balances();
+    let r = (await create({ title: 'Tiket', type: 'RECEIVABLE', totalAmount: 100000, category: 'TRANSPORT', accountId: bca.id, date: '2026-11-20T12:00:00.000Z', participants: [{ personName: 'Nina', expectedAmount: 50000 }] }).expect(201)).body;
+    r = (await pay(r, 0, 50000, gopay.id).expect(200)).body;
+    r = (await debts().post(`/api/debts/${r.id}/settle`).set(auth(bob)).send({}).expect(200)).body;
+    assert.equal(r.status, 'SETTLED');
+    assert.equal((await reports()).totalExpense - before.totalExpense, 50000);
+    await debts().delete(`/api/debts/${r.id}`).set(auth(bob)).expect(200);
+    assert.deepEqual(await balances(), start);
+    assert.equal((await reports()).totalExpense, before.totalExpense);
+    assert.equal(await prisma.transaction.count({ where: { debtRecordId: r.id } }), 0);
+  });
+
+  test('deleting an account deletes the records that use it and undoes their money on other accounts', async () => {
+    const account = async (name, initialBalance) => (await http().post('/api/accounts').set(auth(bob)).send({ name, initialBalance }).expect(201)).body;
+    const ovo = await account('OVO Debt', 500000);
+    const dana = await account('DANA Debt', 200000);
+    // Talangan from OVO, one person pays back into DANA; a loan only touching DANA stays
+    let r = (await create({ title: 'Kado', type: 'RECEIVABLE', totalAmount: 90000, category: 'OTHER', accountId: ovo.id, participants: [{ personName: 'Lia' }, { personName: 'Mira' }] }).expect(201)).body;
+    r = (await pay(r, 0, 30000, dana.id).expect(200)).body;
+    const kept = (await create({ title: 'Pinjam DANA', type: 'PAYABLE', totalAmount: 50000, category: 'OTHER', accountId: dana.id, addToBalance: true }).expect(201)).body;
+    assert.equal(await balance(dana.id), 280000);
+
+    const listed = (await http().get('/api/accounts').set(auth(bob)).expect(200)).body;
+    assert.equal(listed.find((a) => a.id === ovo.id).debtCount, 1);
+    assert.equal(listed.find((a) => a.id === dana.id).debtCount, 2);
+
+    const refused = await http().delete(`/api/accounts/${ovo.id}`).set(auth(bob)).expect(409);
+    assert.equal(refused.body.debtCount, 1);
+    assert.equal(refused.body.transactionCount, 1);
+    const res = (await http().delete(`/api/accounts/${ovo.id}?withTransactions=true`).set(auth(bob)).expect(200)).body;
+    assert.equal(res.deletedDebts, 1);
+    assert.equal(await prisma.account.findUnique({ where: { id: ovo.id } }), null);
+    await debts().get(`/api/debts/${r.id}`).set(auth(bob)).expect(404);
+    assert.equal(await prisma.transaction.count({ where: { debtRecordId: r.id } }), 0);
+    assert.equal(await prisma.debtParticipant.count({ where: { debtRecordId: r.id } }), 0);
+    assert.equal(await balance(dana.id), 250000, 'the payment into DANA is undone, the loan stays');
+    await debts().get(`/api/debts/${kept.id}`).set(auth(bob)).expect(200);
   });
 });

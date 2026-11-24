@@ -170,10 +170,12 @@ export class DebtsService {
     return this.get(userId, id);
   }
 
-  /** Deleting an open record undoes every balance change it made. A settled one must be reopened first. */
+  /**
+   * Deleting a record undoes every balance change it made. A settled one goes the same way: its
+   * expense/income in the reports never moved a balance (affectsBalance: false) and is deleted with it.
+   */
   async remove(userId: string, id: string) {
-    const record = await this.own(userId, id);
-    if (record.status !== 'OPEN') throw new ConflictException('Buka kembali catatan ini dulu sebelum menghapusnya.');
+    await this.own(userId, id);
     await this.prisma.$transaction(async (tx) => {
       const movements = await tx.transaction.findMany({ where: { debtRecordId: id } });
       for (const t of movements) {

@@ -151,12 +151,8 @@ function RecordCard({ record: r, money, onEdit, onDelete, onPay, onUnpay, onSett
         <div className="flex shrink-0 items-start gap-0.5">
           {/* Phones: the total is in the progress line, so the title keeps its width */}
           <span className="hidden pt-1.5 pr-1 text-sm font-semibold tabular-nums text-foreground sm:inline">{money(total)}</span>
-          {open && (
-            <>
-              <IconButton label={`Ubah ${r.title}`} onClick={() => onEdit(r)} className="size-8"><Pencil className="size-4" /></IconButton>
-              <IconButton label={`Hapus ${r.title}`} onClick={() => onDelete(r)} className="size-8 hover:text-destructive"><Trash2 className="size-4" /></IconButton>
-            </>
-          )}
+          {open && <IconButton label={`Ubah ${r.title}`} onClick={() => onEdit(r)} className="size-8"><Pencil className="size-4" /></IconButton>}
+          <IconButton label={`Hapus ${r.title}`} onClick={() => onDelete(r)} className="size-8 hover:text-destructive"><Trash2 className="size-4" /></IconButton>
         </div>
       </div>
 

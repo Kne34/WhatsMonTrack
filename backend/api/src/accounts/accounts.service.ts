@@ -29,7 +29,7 @@ export class AccountsService {
     });
   }
 
-  /** Accounts with the number of transactions that use each (as source or destination). */
+  /** Accounts with the number of transactions (as source or destination) and Utang-piutang records using each. */
   async listWithUsage(userId: string) {
     const [accounts, usage] = await Promise.all([
       this.list(userId),
@@ -41,9 +41,27 @@ export class AccountsService {
         GROUP BY a."id"`,
     ]);
     const counts = new Map(usage.map((u) => [u.id, Number(u.count)]));
+    const debts = await this.prisma.debtRecord.findMany({
+      where: { userId },
+      select: {
+        accountId: true,
+        participants: { select: { paidAccountId: true } },
+      },
+    });
+    const debtCounts = new Map<string, number>();
+    for (const d of debts) {
+      const ids = new Set(
+        [d.accountId, ...d.participants.map((p) => p.paidAccountId)].filter(
+          (x): x is string => !!x,
+        ),
+      );
+      for (const accountId of ids)
+        debtCounts.set(accountId, (debtCounts.get(accountId) ?? 0) + 1);
+    }
     return accounts.map((a) => ({
       ...a,
       transactionCount: counts.get(a.id) ?? 0,
+      debtCount: debtCounts.get(a.id) ?? 0,
     }));
   }
 
@@ -73,42 +91,66 @@ export class AccountsService {
    * all of them (`withTransactions`): each confirmed one is reversed first, so transfers give the other
    * account its balance back, exactly as if every transaction had been deleted one by one.
    */
+  /**
+   * Deletes an account. Refused (409 with `transactionCount` and `debtCount`) while transactions or
+   * Utang-piutang records use it, unless `withTransactions` deletes those too. A record goes whole:
+   * every cash movement it made is undone, on this account and on any other one a payment went to.
+   */
   async remove(userId: string, id: string, withTransactions = false) {
     const account = await this.findOwned(userId, id);
     const used = { userId, OR: [{ fromAccountId: id }, { toAccountId: id }] };
 
-    const debts = await this.prisma.debtRecord.count({
-      where: { userId, OR: [{ accountId: id }, { participants: { some: { paidAccountId: id } } }] },
-    });
-    if (debts > 0) {
-      throw new ConflictException({
-        statusCode: 409,
-        message: `Rekening "${account.name}" dipakai ${debts} catatan Utang-piutang. Hapus atau ubah catatannya terlebih dahulu.`,
-        debtCount: debts,
-      });
-    }
-
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const transactions = await tx.transaction.findMany({ where: used });
-        if (transactions.length > 0 && !withTransactions) {
+        const debts = await tx.debtRecord.findMany({
+          where: {
+            userId,
+            OR: [
+              { accountId: id },
+              { participants: { some: { paidAccountId: id } } },
+            ],
+          },
+          select: { id: true },
+        });
+        const debtIds = debts.map((d) => d.id);
+        const onAccount = await tx.transaction.count({ where: used });
+        if ((onAccount > 0 || debtIds.length > 0) && !withTransactions) {
+          const parts = [
+            onAccount > 0 ? `${onAccount} transaksi` : null,
+            debtIds.length > 0
+              ? `${debtIds.length} catatan Utang-piutang`
+              : null,
+          ].filter(Boolean);
           throw new ConflictException({
             statusCode: 409,
-            message: `Rekening "${account.name}" masih dipakai ${transactions.length} transaksi. Hapus rekening beserta transaksinya, atau hapus transaksinya terlebih dahulu.`,
-            transactionCount: transactions.length,
+            message: `Rekening "${account.name}" masih dipakai ${parts.join(' dan ')}. Hapus rekening beserta semuanya, atau hapus atau ubah yang memakainya terlebih dahulu.`,
+            transactionCount: onAccount,
+            debtCount: debtIds.length,
           });
         }
+        const transactions = await tx.transaction.findMany({
+          where:
+            debtIds.length > 0
+              ? { OR: [used, { userId, debtRecordId: { in: debtIds } }] }
+              : used,
+        });
         for (const t of transactions) {
           if (t.status === 'CONFIRMED') await applyToBalances(tx, t, -1);
         }
         await tx.transaction.deleteMany({
           where: { id: { in: transactions.map((t) => t.id) } },
         });
+        // Participants go with their record (onDelete: Cascade)
+        await tx.debtRecord.deleteMany({ where: { id: { in: debtIds } } });
         await tx.account.delete({ where: { id } });
-        return { success: true, deletedTransactions: transactions.length };
+        return {
+          success: true,
+          deletedTransactions: onAccount,
+          deletedDebts: debtIds.length,
+        };
       });
     } catch (err) {
-      // A transaction was recorded on this account at the same moment: nothing was deleted
+      // A transaction or record was added on this account at the same moment: nothing was deleted
       if ((err as { code?: string }).code === 'P2003') {
         throw new ConflictException(
           'Ada transaksi baru di rekening ini. Muat ulang, lalu coba lagi.',
