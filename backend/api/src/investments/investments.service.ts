@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { CreateInvestmentDto, CreateTradeDto, UpdateInvestmentDto } from './investments.dto';
-import { MarketService, SymbolNotFoundError, sourceFor, type ChartRange } from './market.service';
+import { MarketService, SymbolNotFoundError, sourceFor, type ChartInterval } from './market.service';
 import { applyBuy, applySell, normalizeSymbol, SellTooLargeError, type AssetType, type Currency } from './portfolio';
 
 const NOT_FOUND = 'Aset tidak ditemukan';
@@ -39,10 +39,16 @@ export class InvestmentsService {
   }
 
   /** Price history of one of the user's holdings, for the chart */
-  async chart(userId: string, id: string, range: ChartRange) {
+  async chart(userId: string, id: string, interval: ChartInterval) {
     const row = await this.own(userId, id);
-    const chart = await this.market.chart(sourceFor(row.assetType, row.symbol, row.coingeckoId), range);
+    const chart = await this.market.chart(sourceFor(row.assetType, row.symbol, row.coingeckoId), interval);
     return chart ?? { currency: row.assetType === 'IDX_STOCK' ? 'IDR' : 'USD', candles: [], source: null };
+  }
+
+  /** Key facts about one of the user's holdings for the chart page */
+  async profile(userId: string, id: string) {
+    const row = await this.own(userId, id);
+    return this.market.profile(sourceFor(row.assetType, row.symbol, row.coingeckoId));
   }
 
   async create(userId: string, dto: CreateInvestmentDto) {

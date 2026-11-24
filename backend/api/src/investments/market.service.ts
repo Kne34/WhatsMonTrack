@@ -23,9 +23,9 @@ export type PriceSource =
 
 export class SymbolNotFoundError extends Error {}
 
-/** Chart ranges, as the buttons on the chart: 1 day, 5 days, 1/3 months, 1/5 years */
-export const CHART_RANGES = ['1D', '5D', '1M', '3M', '1Y', '5Y'] as const;
-export type ChartRange = (typeof CHART_RANGES)[number];
+/** Bar intervals of the chart, as on TradingView: minutes, hours, day, week, month */
+export const CHART_INTERVALS = ['5m', '15m', '1h', '4h', '1D', '1W', '1M'] as const;
+export type ChartInterval = (typeof CHART_INTERVALS)[number];
 
 export interface Candle {
   /** Unix seconds (UTC) */
@@ -40,6 +40,37 @@ export interface Chart {
   currency: string;
   candles: Candle[];
   source: string;
+}
+
+/** Facts about an asset for the chart page's side panel. Every field may be null when the source doesn't give it. */
+export interface AssetProfile {
+  name: string | null;
+  /** e.g. "Jakarta", "NasdaqGS", "Binance" */
+  exchange: string | null;
+  currency: string;
+  /** OPEN or CLOSED for stocks (regular session), ALWAYS for crypto; null when unknown */
+  market: 'OPEN' | 'CLOSED' | 'ALWAYS' | null;
+  /** Today's (or the next) regular session, Unix seconds */
+  session: { start: number; end: number; timezone: string } | null;
+  previousClose: number | null;
+  dayHigh: number | null;
+  dayLow: number | null;
+  /** In shares/coins */
+  volume: number | null;
+  /** 24-hour turnover in USD (crypto) */
+  turnover: number | null;
+  yearHigh: number | null;
+  yearLow: number | null;
+  marketCap: number | null;
+  rank: number | null;
+  circulatingSupply: number | null;
+  maxSupply: number | null;
+  allTimeHigh: number | null;
+  allTimeHighDate: string | null;
+  description: string | null;
+  homepage: string | null;
+  categories: string[];
+  sources: string[];
 }
 
 const YAHOO = 'https://query1.finance.yahoo.com/v8/finance';
@@ -63,24 +94,29 @@ const SPARK_BATCH = 20;
 /** Binance's list of trading pairs changes rarely */
 const PAIRS_TTL_MS = 6 * 60 * 60_000;
 
-const CHART_YAHOO: Record<ChartRange, { range: string; interval: string }> = {
-  '1D': { range: '1d', interval: '5m' },
-  '5D': { range: '5d', interval: '30m' },
-  '1M': { range: '1mo', interval: '60m' },
-  '3M': { range: '3mo', interval: '1d' },
-  '1Y': { range: '1y', interval: '1d' },
-  '5Y': { range: '5y', interval: '1wk' },
+/**
+ * How much history each interval loads (the chart scrolls back through all of it). Yahoo keeps
+ * 5/15-minute bars for 60 days and hourly bars for 2 years; it has no 4-hour bars, so those are
+ * built from hourly ones.
+ */
+const CHART_YAHOO: Record<ChartInterval, { range: string; interval: string; group?: number }> = {
+  '5m': { range: '1mo', interval: '5m' },
+  '15m': { range: '1mo', interval: '15m' },
+  '1h': { range: '6mo', interval: '60m' },
+  '4h': { range: '1y', interval: '60m', group: 4 * 3600 },
+  '1D': { range: '10y', interval: '1d' },
+  // range=max turns weekly bars into monthly ones
+  '1W': { range: '20y', interval: '1wk' },
+  '1M': { range: 'max', interval: '1mo' },
 };
-const CHART_BINANCE: Record<ChartRange, { interval: string; limit: number }> = {
-  '1D': { interval: '5m', limit: 288 },
-  '5D': { interval: '30m', limit: 240 },
-  '1M': { interval: '2h', limit: 360 },
-  '3M': { interval: '1d', limit: 90 },
-  '1Y': { interval: '1d', limit: 365 },
-  '5Y': { interval: '1w', limit: 260 },
-};
-/** Intraday charts move; long ranges barely do */
-const chartTtl = (range: ChartRange) => (range === '1D' || range === '5D' ? 30_000 : 5 * 60_000);
+/** Binance gives at most 1000 bars per request */
+const CHART_BINANCE: Record<ChartInterval, string> = { '5m': '5m', '15m': '15m', '1h': '1h', '4h': '4h', '1D': '1d', '1W': '1w', '1M': '1M' };
+const BINANCE_LIMIT = 1000;
+/** Intraday charts move; daily and longer barely do */
+const chartTtl = (interval: ChartInterval) => (interval.endsWith('m') || interval.endsWith('h') ? 30_000 : 5 * 60_000);
+const PROFILE_TTL_MS = 60_000;
+/** CoinGecko's free tier is rate limited; market cap and supply change slowly */
+const COIN_INFO_TTL_MS = 60 * 60_000;
 
 /** Where an asset's price comes from: IDX gets the ".JK" suffix on Yahoo; crypto tries Binance, then CoinGecko, then Yahoo. */
 export function sourceFor(type: string, symbol: string, coingeckoId?: string | null): PriceSource {
@@ -99,11 +135,28 @@ type CryptoSource = { key: string; crypto: { symbol: string; coingecko: string |
 interface YahooChart {
   chart?: {
     result?: {
-      meta?: { regularMarketPrice?: number; currency?: string; longName?: string; shortName?: string };
+      meta?: YahooMeta;
       timestamp?: number[];
       indicators?: { quote?: { open?: (number | null)[]; high?: (number | null)[]; low?: (number | null)[]; close?: (number | null)[]; volume?: (number | null)[] }[] };
     }[];
   };
+}
+interface YahooMeta {
+  regularMarketPrice?: number;
+  currency?: string;
+  longName?: string;
+  shortName?: string;
+  fullExchangeName?: string;
+  exchangeName?: string;
+  chartPreviousClose?: number;
+  previousClose?: number;
+  regularMarketDayHigh?: number;
+  regularMarketDayLow?: number;
+  regularMarketVolume?: number;
+  fiftyTwoWeekHigh?: number;
+  fiftyTwoWeekLow?: number;
+  timezone?: string;
+  currentTradingPeriod?: { regular?: { start?: number; end?: number; timezone?: string } };
 }
 type YahooSpark = Record<string, { close?: (number | null)[]; fulldayPrice?: number; previousClose?: number | null; chartPreviousClose?: number } | undefined>;
 interface CoinGeckoSearch {
@@ -111,6 +164,22 @@ interface CoinGeckoSearch {
 }
 type CoinGeckoPrices = Record<string, { usd?: number; idr?: number; usd_24h_change?: number } | undefined>;
 type BinanceMini = { symbol: string; lastPrice: string; openPrice: string }[];
+type BinanceTicker = { lastPrice: string; prevClosePrice: string; highPrice: string; lowPrice: string; volume: string; quoteVolume: string };
+interface CoinGeckoCoin {
+  name?: string;
+  market_cap_rank?: number | null;
+  categories?: (string | null)[];
+  description?: { en?: string };
+  links?: { homepage?: string[] };
+  market_data?: {
+    market_cap?: { usd?: number };
+    circulating_supply?: number | null;
+    max_supply?: number | null;
+    ath?: { usd?: number };
+    ath_date?: { usd?: string };
+  };
+}
+type CoinInfo = Pick<AssetProfile, 'name' | 'marketCap' | 'rank' | 'circulatingSupply' | 'maxSupply' | 'allTimeHigh' | 'allTimeHighDate' | 'description' | 'homepage' | 'categories'>;
 type BinanceKline = [number, string, string, string, string, string, ...unknown[]];
 
 /**
@@ -130,6 +199,8 @@ export class MarketService {
   /** Concurrent requests for the same prices share one fetch */
   private readonly inflight = new Map<string, Promise<unknown>>();
   private readonly charts = new Map<string, { chart: Chart; at: number }>();
+  private readonly profiles = new Map<string, { profile: AssetProfile; at: number }>();
+  private readonly coins = new Map<string, { info: CoinInfo | null; at: number }>();
   private binancePairs: { pairs: Set<string>; at: number } | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
@@ -182,14 +253,23 @@ export class MarketService {
   }
 
   /** Price history for the chart. null when no source has it. */
-  async chart(source: PriceSource, range: ChartRange): Promise<Chart | null> {
-    const id = `${source.key}:${range}`;
+  async chart(source: PriceSource, interval: ChartInterval): Promise<Chart | null> {
+    const id = `${source.key}:${interval}`;
     const hit = this.charts.get(id);
-    if (hit && Date.now() - hit.at < chartTtl(range)) return hit.chart;
-    const chart = (await this.once(`chart:${id}`, () => this.fetchChart(source, range))) as Chart | null;
+    if (hit && Date.now() - hit.at < chartTtl(interval)) return hit.chart;
+    const chart = (await this.once(`chart:${id}`, () => this.fetchChart(source, interval))) as Chart | null;
     if (chart) this.charts.set(id, { chart, at: Date.now() });
     // A failed fetch keeps showing the previous chart
     return chart ?? hit?.chart ?? null;
+  }
+
+  /** Day range, 52-week range, volume, session; for crypto also market cap and supply (CoinGecko). Never throws. */
+  async profile(source: PriceSource): Promise<AssetProfile> {
+    const hit = this.profiles.get(source.key);
+    if (hit && Date.now() - hit.at < PROFILE_TTL_MS) return hit.profile;
+    const profile = (await this.once(`profile:${source.key}`, () => this.fetchProfile(source))) as AssetProfile;
+    if (profile.sources.length) this.profiles.set(source.key, { profile, at: Date.now() });
+    return profile.sources.length || !hit ? profile : hit.profile;
   }
 
   /**
@@ -314,13 +394,12 @@ export class MarketService {
 
   // ---------------------------------------------------------------- charts
 
-  private async fetchChart(source: PriceSource, range: ChartRange): Promise<Chart | null> {
+  private async fetchChart(source: PriceSource, interval: ChartInterval): Promise<Chart | null> {
     if ('crypto' in source) {
       const pair = `${source.crypto.symbol}USDT`;
       const pairs = await this.binanceListed();
       if (pairs?.has(pair)) {
-        const { interval, limit } = CHART_BINANCE[range];
-        const rows = await this.get<BinanceKline[]>('binance', `${BINANCE}/klines?symbol=${pair}&interval=${interval}&limit=${limit}`);
+        const rows = await this.get<BinanceKline[]>('binance', `${BINANCE}/klines?symbol=${pair}&interval=${CHART_BINANCE[interval]}&limit=${BINANCE_LIMIT}`);
         if (Array.isArray(rows) && rows.length) {
           const candles = rows
             .map((k) => ({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5] }))
@@ -328,14 +407,14 @@ export class MarketService {
           return { currency: 'USD', candles, source: PROVIDERS.binance };
         }
       }
-      return this.fetchYahooChart(`${source.crypto.symbol}-USD`, range, 'USD');
+      return this.fetchYahooChart(`${source.crypto.symbol}-USD`, interval, 'USD');
     }
-    return this.fetchYahooChart(source.yahoo, range, source.key.startsWith('US:') ? 'USD' : 'IDR');
+    return this.fetchYahooChart(source.yahoo, interval, source.key.startsWith('US:') ? 'USD' : 'IDR');
   }
 
-  private async fetchYahooChart(symbol: string, range: ChartRange, currency: string): Promise<Chart | null> {
-    const { range: r, interval } = CHART_YAHOO[range];
-    const data = await this.get<YahooChart>('yahoo', `${YAHOO}/chart/${encodeURIComponent(symbol)}?range=${r}&interval=${interval}`);
+  private async fetchYahooChart(symbol: string, chartInterval: ChartInterval, currency: string): Promise<Chart | null> {
+    const { range, interval, group } = CHART_YAHOO[chartInterval];
+    const data = await this.get<YahooChart>('yahoo', `${YAHOO}/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`);
     const result = data?.chart?.result?.[0];
     const q = result?.indicators?.quote?.[0];
     if (!result?.timestamp?.length || !q) return null;
@@ -347,7 +426,83 @@ export class MarketService {
     });
     // The last bar can repeat the previous timestamp; the chart library needs strictly increasing times
     const unique = candles.filter((c, i) => i === candles.length - 1 || c.time < candles[i + 1].time);
-    return unique.length ? { currency: String(result.meta?.currency ?? currency).toUpperCase(), candles: unique, source: PROVIDERS.yahoo } : null;
+    const bars = group ? groupCandles(unique, group) : unique;
+    return bars.length ? { currency: String(result.meta?.currency ?? currency).toUpperCase(), candles: bars, source: PROVIDERS.yahoo } : null;
+  }
+
+  // ---------------------------------------------------------------- profile
+
+  private async fetchProfile(source: PriceSource): Promise<AssetProfile> {
+    const profile: AssetProfile = {
+      name: null, exchange: null, currency: 'USD', market: null, session: null, previousClose: null, dayHigh: null, dayLow: null,
+      volume: null, turnover: null, yearHigh: null, yearLow: null, marketCap: null, rank: null, circulatingSupply: null,
+      maxSupply: null, allTimeHigh: null, allTimeHighDate: null, description: null, homepage: null, categories: [], sources: [],
+    };
+    if ('yahoo' in source) {
+      profile.currency = source.key.startsWith('US:') ? 'USD' : 'IDR';
+      const meta = await this.yahooMetaOf(source.yahoo);
+      if (meta) applyYahooMeta(profile, meta);
+      return profile;
+    }
+
+    profile.market = 'ALWAYS';
+    const pair = `${source.crypto.symbol}USDT`;
+    const [pairs, coin] = await Promise.all([this.binanceListed(), source.crypto.coingecko ? this.coinInfo(source.crypto.coingecko) : null]);
+    const ticker = pairs?.has(pair) ? await this.get<BinanceTicker>('binance', `${BINANCE}/ticker/24hr?symbol=${pair}`) : null;
+    if (ticker) {
+      Object.assign(profile, {
+        exchange: PROVIDERS.binance,
+        previousClose: positive(ticker.prevClosePrice),
+        dayHigh: positive(ticker.highPrice),
+        dayLow: positive(ticker.lowPrice),
+        volume: positive(ticker.volume),
+        turnover: positive(ticker.quoteVolume),
+      });
+      profile.sources.push(PROVIDERS.binance);
+    } else {
+      const meta = await this.yahooMetaOf(`${source.crypto.symbol}-USD`);
+      if (meta) {
+        applyYahooMeta(profile, meta);
+        profile.market = 'ALWAYS';
+        profile.session = null;
+      }
+    }
+    if (coin) {
+      Object.assign(profile, coin, { name: coin.name ?? profile.name });
+      profile.sources.push(PROVIDERS.coingecko);
+    }
+    return profile;
+  }
+
+  private async yahooMetaOf(symbol: string): Promise<YahooMeta | null> {
+    const data = await this.get<YahooChart>('yahoo', `${YAHOO}/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`);
+    return data?.chart?.result?.[0]?.meta ?? null;
+  }
+
+  /** Market cap, supply, all-time high and a short description; cached for an hour */
+  private async coinInfo(id: string): Promise<CoinInfo | null> {
+    const hit = this.coins.get(id);
+    if (hit && Date.now() - hit.at < COIN_INFO_TTL_MS) return hit.info;
+    const c = await this.get<CoinGeckoCoin>(
+      'coingecko',
+      `${COINGECKO}/coins/${encodeURIComponent(id)}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false`,
+    );
+    if (!c) return hit?.info ?? null;
+    const m = c.market_data ?? {};
+    const info: CoinInfo = {
+      name: c.name ?? null,
+      marketCap: positive(m.market_cap?.usd),
+      rank: c.market_cap_rank ?? null,
+      circulatingSupply: positive(m.circulating_supply),
+      maxSupply: positive(m.max_supply),
+      allTimeHigh: positive(m.ath?.usd),
+      allTimeHighDate: m.ath_date?.usd ?? null,
+      description: shortDescription(c.description?.en),
+      homepage: c.links?.homepage?.find((u) => /^https?:\/\//.test(u ?? '')) ?? null,
+      categories: (c.categories ?? []).filter((x): x is string => !!x).slice(0, 4),
+    };
+    this.coins.set(id, { info, at: Date.now() });
+    return info;
   }
 
   /** Name and existence of a Yahoo ticker. Throws SymbolNotFoundError when Yahoo doesn't know it, null when unreachable. */
@@ -416,6 +571,63 @@ function dedupe(sources: PriceSource[]) {
 function lastNumber(values?: (number | null)[]) {
   for (let i = (values?.length ?? 0) - 1; i >= 0; i--) if (values![i] != null) return values![i]!;
   return NaN;
+}
+
+/** Merges bars into buckets of `seconds` (e.g. hourly into 4-hour bars) */
+export function groupCandles(candles: Candle[], seconds: number): Candle[] {
+  const out: Candle[] = [];
+  for (const c of candles) {
+    const time = Math.floor(c.time / seconds) * seconds;
+    const last = out.at(-1);
+    if (last && last.time === time) {
+      last.high = Math.max(last.high, c.high);
+      last.low = Math.min(last.low, c.low);
+      last.close = c.close;
+      last.volume += c.volume;
+    } else {
+      out.push({ ...c, time });
+    }
+  }
+  return out;
+}
+
+function positive(v: unknown): number | null {
+  const n = Number(v);
+  return v != null && Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function applyYahooMeta(p: AssetProfile, m: YahooMeta) {
+  const regular = m.currentTradingPeriod?.regular;
+  const now = Date.now() / 1000;
+  Object.assign(p, {
+    name: m.longName ?? m.shortName ?? null,
+    exchange: m.fullExchangeName ?? m.exchangeName ?? null,
+    currency: String(m.currency ?? p.currency).toUpperCase(),
+    previousClose: positive(m.chartPreviousClose ?? m.previousClose),
+    dayHigh: positive(m.regularMarketDayHigh),
+    dayLow: positive(m.regularMarketDayLow),
+    volume: positive(m.regularMarketVolume),
+    yearHigh: positive(m.fiftyTwoWeekHigh),
+    yearLow: positive(m.fiftyTwoWeekLow),
+  });
+  if (regular?.start && regular.end) {
+    p.session = { start: regular.start, end: regular.end, timezone: regular.timezone ?? m.timezone ?? '' };
+    p.market = now >= regular.start && now < regular.end ? 'OPEN' : 'CLOSED';
+  }
+  p.sources.push(PROVIDERS.yahoo);
+}
+
+/** CoinGecko's description is long HTML: plain text, the first sentences only */
+function shortDescription(html?: string): string | null {
+  const text = (html ?? '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  const sentences = text.match(/[^.!?]+[.!?]+(\s|$)/g) ?? [text];
+  let out = '';
+  for (const s of sentences) {
+    if (out && (out + s).length > 420) break;
+    out += s;
+  }
+  return out.trim().slice(0, 600);
 }
 
 function validCandle(c: Candle) {

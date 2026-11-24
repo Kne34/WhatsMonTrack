@@ -68,9 +68,12 @@ const fakeMarket = {
     if (type === 'CRYPTO') return { name: 'Bitcoin', coingeckoId: 'bitcoin' };
     return { name: `${symbol} Corp` };
   },
-  async chart(source, range) {
-    this.lastChart = { key: source.key, range };
+  async chart(source, interval) {
+    this.lastChart = { key: source.key, interval };
     return { currency: 'IDR', source: 'Yahoo Finance', candles: [{ time: 1, open: 1, high: 2, low: 1, close: 2, volume: 3 }] };
+  },
+  async profile(source) {
+    return { name: `${source.key} profile`, market: 'OPEN', sources: ['Yahoo Finance'] };
   },
   async quotes(sources) {
     const at = '2026-11-23T09:00:00.000Z';
@@ -601,15 +604,18 @@ describe('investments (Investasi page)', () => {
     assert.deepEqual((await http().get('/api/market/prices').set(auth(alice)).expect(200)).body.prices, {});
   });
 
-  test('chart: only for own holdings, range validated', async () => {
+  test('chart and profile: only for own holdings, interval validated', async () => {
     const h = (await http().get('/api/investments').set(auth(bob)).expect(200)).body.find((x) => x.symbol === 'BBCA');
-    const res = (await http().get(`/api/investments/${h.id}/chart?range=1Y`).set(auth(bob)).expect(200)).body;
+    const res = (await http().get(`/api/investments/${h.id}/chart?interval=4h`).set(auth(bob)).expect(200)).body;
     assert.equal(res.candles.length, 1);
-    assert.deepEqual(fakeMarket.lastChart, { key: 'IDX:BBCA', range: '1Y' });
+    assert.deepEqual(fakeMarket.lastChart, { key: 'IDX:BBCA', interval: '4h' });
     await http().get(`/api/investments/${h.id}/chart`).set(auth(bob)).expect(200);
-    assert.equal(fakeMarket.lastChart.range, '1D');
-    await http().get(`/api/investments/${h.id}/chart?range=2W`).set(auth(bob)).expect(400);
+    assert.equal(fakeMarket.lastChart.interval, '1D');
+    await http().get(`/api/investments/${h.id}/chart?interval=2W`).set(auth(bob)).expect(400);
     await http().get(`/api/investments/${h.id}/chart`).set(auth(alice)).expect(404);
+    const profile = (await http().get(`/api/investments/${h.id}/profile`).set(auth(bob)).expect(200)).body;
+    assert.equal(profile.name, 'IDX:BBCA profile');
+    await http().get(`/api/investments/${h.id}/profile`).set(auth(alice)).expect(404);
   });
 
   test('buying or selling never changes account balances', async () => {

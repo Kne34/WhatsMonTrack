@@ -42,7 +42,14 @@ export class InvestmentsController {
   @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @Get(':id/chart')
   chart(@CurrentUser() user: JwtUser, @Param('id', ParseUUIDPipe) id: string, @Query() query: ChartQueryDto) {
-    return this.investments.chart(user.id, id, query.range ?? '1D');
+    return this.investments.chart(user.id, id, query.interval ?? '1D');
+  }
+
+  // Day range, 52-week range, market cap: fetched on a cache miss
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @Get(':id/profile')
+  profile(@CurrentUser() user: JwtUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.investments.profile(user.id, id);
   }
 
   @Post(':id/trades')

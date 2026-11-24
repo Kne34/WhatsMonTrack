@@ -1,6 +1,6 @@
 jest.mock('../database/prisma.service', () => ({ PrismaService: class {} }));
 
-import { MarketService, SymbolNotFoundError, sourceFor } from './market.service';
+import { MarketService, SymbolNotFoundError, groupCandles, sourceFor } from './market.service';
 
 const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
 const failure = { ok: false, status: 503, json: async () => ({}) };
@@ -111,12 +111,42 @@ describe('MarketService', () => {
       }
       return failure;
     });
-    const crypto = await service.chart(btc, '1D');
+    const crypto = await service.chart(btc, '5m');
     expect(crypto).toMatchObject({ currency: 'USD', source: 'Binance' });
     expect(crypto!.candles[1]).toEqual({ time: 1_700_000_300, open: 2, high: 4, low: 1, close: 3, volume: 5 });
-    const stock = await service.chart(bbca, '1M');
+    const stock = await service.chart(bbca, '1D');
     expect(stock!.candles.map((c) => c.time)).toEqual([10, 30]);
     expect(stock!.currency).toBe('IDR');
+  });
+
+  test('chart: Yahoo has no 4-hour bars, they are built from hourly ones', () => {
+    const h = 3600;
+    const bars = [0, 1, 2, 3, 4].map((i) => ({ time: 4 * h * 10 + i * h, open: 10 + i, high: 20 + i, low: 5 - i, close: 11 + i, volume: 1 }));
+    expect(groupCandles(bars, 4 * h)).toEqual([
+      { time: 40 * h, open: 10, high: 23, low: 2, close: 14, volume: 4 },
+      { time: 44 * h, open: 14, high: 24, low: 1, close: 15, volume: 1 },
+    ]);
+  });
+
+  test('profile: stock ranges and session from Yahoo, coin facts from Binance and CoinGecko', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const { service } = setup((url) => {
+      if (url.includes('/chart/BBCA.JK')) {
+        return ok({ chart: { result: [{ meta: { currency: 'IDR', longName: 'Bank Central Asia', fullExchangeName: 'Jakarta', chartPreviousClose: 5675, regularMarketDayHigh: 5850, regularMarketDayLow: 5750, regularMarketVolume: 100, fiftyTwoWeekHigh: 8500, fiftyTwoWeekLow: 4740, currentTradingPeriod: { regular: { start: now - 60, end: now + 60, timezone: 'WIB' } } } }] } });
+      }
+      if (url.endsWith('/ticker/price')) return ok([{ symbol: 'BTCUSDT' }]);
+      if (url.includes('/ticker/24hr?symbol=BTCUSDT')) return ok({ lastPrice: '2', prevClosePrice: '1', highPrice: '3', lowPrice: '0.5', volume: '10', quoteVolume: '20' });
+      if (url.includes('/coins/bitcoin')) {
+        return ok({ name: 'Bitcoin', market_cap_rank: 1, categories: ['Layer 1 (L1)', null], description: { en: 'Bitcoin is <a href="x">the first</a> coin. It is old. ' + 'More. '.repeat(200) }, links: { homepage: ['', 'http://www.bitcoin.org'] }, market_data: { market_cap: { usd: 1e12 }, circulating_supply: 2e7, max_supply: 2.1e7, ath: { usd: 126080 }, ath_date: { usd: '2025-10-06T10:57:42.000Z' } } });
+      }
+      return failure;
+    });
+    const stock = await service.profile(bbca);
+    expect(stock).toMatchObject({ name: 'Bank Central Asia', exchange: 'Jakarta', currency: 'IDR', market: 'OPEN', previousClose: 5675, yearHigh: 8500, yearLow: 4740, sources: ['Yahoo Finance'] });
+    const coin = await service.profile(btc);
+    expect(coin).toMatchObject({ market: 'ALWAYS', exchange: 'Binance', dayHigh: 3, volume: 10, turnover: 20, rank: 1, marketCap: 1e12, maxSupply: 2.1e7, homepage: 'http://www.bitcoin.org', categories: ['Layer 1 (L1)'], sources: ['Binance', 'CoinGecko'] });
+    expect(coin.description).toMatch(/^Bitcoin is the first coin\. It is old\./);
+    expect(coin.description!.length).toBeLessThanOrEqual(600);
   });
 
   test('lookup: unknown tickers are reported, unreachable sources are not', async () => {
