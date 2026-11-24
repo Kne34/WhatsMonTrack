@@ -13,7 +13,8 @@ import {
 } from "@/lib/technicals";
 import { LiveBadge } from "../liveBadge";
 import { TV } from "./TradingChart";
-
+
+import { locale, tr } from "@/lib/i18n";
 const tone = (n: number | null | undefined) => (n == null || n === 0 ? "text-muted-foreground" : n > 0 ? "text-income" : "text-expense");
 /** Change in money from a percentage: price - price / (1 + pct) */
 const changeFromPct = (price: number, pct: number) => price - price / (1 + pct / 100);
@@ -53,8 +54,8 @@ export function Watchlist({ holdings, prices, activeId, onSelect }: {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-baseline justify-between px-4 pb-2 pt-3">
-        <h2 className="text-sm font-semibold">Daftar pantau</h2>
-        <span className="text-xs text-muted-foreground">{holdings.length} aset</span>
+        <h2 className="text-sm font-semibold">{tr("Daftar pantau")}</h2>
+        <span className="text-xs text-muted-foreground">{holdings.length} {tr("aset")}</span>
       </div>
       <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
         {ASSET_TYPES.map((type) => {
@@ -163,7 +164,7 @@ function Gauge({ title, rating, big }: { title: string; rating: Rating | null; b
   const needle = r - 10;
   return (
     <figure className="flex flex-col items-center" role="img"
-      aria-label={rating ? `${title}: ${RATING_TEXT[rating.label]}, ${rating.buy} beli, ${rating.neutral} netral, ${rating.sell} jual` : `${title}: data belum cukup`}>
+      aria-label={rating ? tr("{title}: {RATING_TEXT}, {buy} beli, {neutral} netral, {sell} jual", { title: title, RATING_TEXT: RATING_TEXT[rating.label], buy: rating.buy, neutral: rating.neutral, sell: rating.sell }) : tr("{title}: data belum cukup", { title: title })}>
       <figcaption className={cn("font-medium text-foreground", big ? "text-sm" : "text-xs")}>{title}</figcaption>
       <svg width={size} height={size / 2 + 10} viewBox={`0 0 ${size} ${size / 2 + 10}`} aria-hidden>
         {segments.map((s) => (
@@ -177,13 +178,13 @@ function Gauge({ title, rating, big }: { title: string; rating: Rating | null; b
         )}
       </svg>
       <p className={cn("-mt-1 font-semibold", big ? "text-lg" : "text-sm")} style={{ color: RATING_COLOR(rating) }}>
-        {rating ? RATING_TEXT[rating.label] : "Data kurang"}
+        {rating ? RATING_TEXT[rating.label] : tr("Data kurang")}
       </p>
       {rating && (
         <dl className="mt-1 grid grid-cols-3 gap-3 text-center text-[11px] tabular-nums">
-          <div><dt className="text-muted-foreground">Jual</dt><dd className="font-medium text-foreground">{rating.sell}</dd></div>
-          <div><dt className="text-muted-foreground">Netral</dt><dd className="font-medium text-foreground">{rating.neutral}</dd></div>
-          <div><dt className="text-muted-foreground">Beli</dt><dd className="font-medium text-foreground">{rating.buy}</dd></div>
+          <div><dt className="text-muted-foreground">{tr("Jual")}</dt><dd className="font-medium text-foreground">{rating.sell}</dd></div>
+          <div><dt className="text-muted-foreground">{tr("Netral")}</dt><dd className="font-medium text-foreground">{rating.neutral}</dd></div>
+          <div><dt className="text-muted-foreground">{tr("Beli")}</dt><dd className="font-medium text-foreground">{rating.buy}</dd></div>
         </dl>
       )}
     </figure>
@@ -191,11 +192,11 @@ function Gauge({ title, rating, big }: { title: string; rating: Rating | null; b
 }
 
 const TECH_INTERVALS: { value: ChartInterval; label: string }[] = [
-  { value: "1h", label: "1 jam" },
-  { value: "4h", label: "4 jam" },
-  { value: "1D", label: "1 hari" },
-  { value: "1W", label: "1 minggu" },
-  { value: "1M", label: "1 bulan" },
+  { value: "1h", get label() { return tr("1 jam"); } },
+  { value: "4h", get label() { return tr("4 jam"); } },
+  { value: "1D", get label() { return tr("1 hari"); } },
+  { value: "1W", get label() { return tr("1 minggu"); } },
+  { value: "1M", get label() { return tr("1 bulan"); } },
 ];
 
 function IndicatorTable({ title, rows, currency }: { title: string; rows: Technicals["oscillators"]; currency?: string }) {
@@ -204,7 +205,7 @@ function IndicatorTable({ title, rows, currency }: { title: string; rows: Techni
       <caption className="sr-only">{title}</caption>
       <thead>
         <tr className="text-left text-[11px] text-muted-foreground">
-          <th className="py-1 font-normal">{title}</th><th className="py-1 text-right font-normal">Nilai</th><th className="py-1 pl-3 text-right font-normal">Aksi</th>
+          <th className="py-1 font-normal">{title}</th><th className="py-1 text-right font-normal">{tr("Nilai")}</th><th className="py-1 pl-3 text-right font-normal">{tr("Aksi")}</th>
         </tr>
       </thead>
       <tbody>
@@ -267,7 +268,7 @@ export function Details({ holding, holdings, prices, profile, k, currency, live,
           </div>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          {[profile?.exchange, crypto ? "Spot crypto" : ASSET_TYPE_LABEL[holding.assetType], `di ${holding.platform}`].filter(Boolean).join(", ")}
+          {[profile?.exchange, crypto ? tr("Spot crypto") : ASSET_TYPE_LABEL[holding.assetType], tr("di {platform}", { platform: holding.platform })].filter(Boolean).join(", ")}
         </p>
         <p className="mt-3 flex items-baseline gap-1.5">
           <span className={cn("text-3xl font-semibold tracking-tight tabular-nums", tone(pct === 0 ? null : pct) === "text-muted-foreground" ? "text-foreground" : tone(pct))} aria-live="polite">
@@ -278,41 +279,41 @@ export function Details({ holding, holdings, prices, profile, k, currency, live,
         {live != null && pct != null && (
           <p className={cn("mt-0.5 text-sm font-medium tabular-nums", tone(pct))}>
             {signedPlain(changeFromPct(live, pct), currency)} {formatPercent(pct)}
-            <span className="ml-1 font-normal text-muted-foreground">{crypto ? "24 jam" : "hari ini"}</span>
+            <span className="ml-1 font-normal text-muted-foreground">{crypto ? tr("24 jam") : tr("hari ini")}</span>
           </p>
         )}
         <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           {market && (
             <span className={cn("inline-flex items-center gap-1.5", market === "CLOSED" ? "text-muted-foreground" : "text-income")}>
               <span className={cn("size-1.5 rounded-full", market === "CLOSED" ? "bg-muted-foreground" : "bg-income")} aria-hidden />
-              {market === "OPEN" ? "Pasar buka" : market === "ALWAYS" ? "Pasar buka 24 jam" : "Pasar tutup"}
+              {market === "OPEN" ? tr("Pasar buka") : market === "ALWAYS" ? tr("Pasar buka 24 jam") : tr("Pasar tutup")}
             </span>
           )}
           <LiveBadge stale={!!quote?.stale} at={quote?.updatedAt} known={!!quote} className="text-muted-foreground" />
         </p>
         {profile?.session && market !== "ALWAYS" && (
           <p className="mt-1 text-xs text-muted-foreground">
-            Sesi reguler {formatTime(new Date(profile.session.start * 1000))} sampai {formatTime(new Date(profile.session.end * 1000))} (jam Anda)
+            {tr("Sesi reguler")} {formatTime(new Date(profile.session.start * 1000))} {tr("sampai")} {formatTime(new Date(profile.session.end * 1000))} {tr("(jam Anda)")}
           </p>
         )}
 
         <div className="mt-4 grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => onTrade("SELL")} className="rounded-md py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ background: TV.down }}>Jual</button>
-          <button type="button" onClick={() => onTrade("BUY")} className="rounded-md py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ background: TV.blue }}>Beli</button>
+          <button type="button" onClick={() => onTrade("SELL")} className="rounded-md py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ background: TV.down }}>{tr("Jual")}</button>
+          <button type="button" onClick={() => onTrade("BUY")} className="rounded-md py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90" style={{ background: TV.blue }}>{tr("Beli")}</button>
         </div>
 
         {profile?.volume != null && (
           <div className="mt-4">
             <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Volume{crypto ? " 24 jam" : ""}</span>
-              <span className="text-muted-foreground">Rata-rata volume (30 hari)</span>
+              <span className="text-muted-foreground">{tr("Volume")}{crypto ? tr(" 24 jam") : ""}</span>
+              <span className="text-muted-foreground">{tr("Rata-rata volume (30 hari)")}</span>
             </div>
             <div className="flex justify-between text-xs font-medium tabular-nums text-foreground">
               <span>{formatCompact(profile.volume)}</span>
               <span>{stats?.avgVolume30 != null ? formatCompact(stats.avgVolume30) : "–"}</span>
             </div>
             {volRatio != null && (
-              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted" role="img" aria-label={`Volume ${nf(1).format(volRatio)} kali rata-rata`}>
+              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted" role="img" aria-label={tr("Volume {format} kali rata-rata", { format: nf(1).format(volRatio) })}>
                 <div className="h-full rounded-full" style={{ width: `${Math.min(100, volRatio * 100)}%`, background: TV.blue }} />
               </div>
             )}
@@ -325,49 +326,49 @@ export function Details({ holding, holdings, prices, profile, k, currency, live,
         <section className="px-4 pb-4">
           <div className="rounded-lg border border-border bg-muted/50 p-3">
             <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <Sparkles className="size-3.5" style={{ color: TV.blue }} aria-hidden /> Ringkasan analisis
+              <Sparkles className="size-3.5" style={{ color: TV.blue }} aria-hidden /> {tr("Ringkasan analisis")}
             </p>
             <ul className="space-y-1 text-xs leading-relaxed text-foreground">
               {facts.map((f) => <li key={f}>{f}</li>)}
             </ul>
-            <p className="mt-2 text-[11px] text-muted-foreground">Dihitung otomatis dari harga, bukan saran investasi.</p>
+            <p className="mt-2 text-[11px] text-muted-foreground">{tr("Dihitung otomatis dari harga, bukan saran investasi.")}</p>
           </div>
         </section>
       )}
 
-      <Section title="Posisi Anda">
+      <Section title={tr("Posisi Anda")}>
         <dl>
-          <Stat label="Jumlah" value={`${formatQuantity(holding.quantity)} ${quantityUnit(holding.assetType)}`} sub={holding.assetType === "IDX_STOCK" ? `${formatQuantity(v.units)} lembar` : undefined} />
-          <Stat label="Harga rata-rata" value={formatMoney(holding.avgPrice, holding.currency)} />
-          <Stat label="Modal" value={formatMoney(v.cost, holding.currency)} />
-          <Stat label="Nilai pasar" value={formatMoney(v.value, holding.currency)} />
-          <Stat label="Untung/rugi" value={<span className={tone(v.pnl)}>{formatSigned(v.pnl, holding.currency)}</span>} sub={<span className={tone(v.pnlPct)}>{formatPercent(v.pnlPct)}</span>} />
-          {share != null && <Stat label="Porsi portofolio" value={`${nf(1).format(share)}%`} />}
+          <Stat label={tr("Jumlah")} value={`${formatQuantity(holding.quantity)} ${quantityUnit(holding.assetType)}`} sub={holding.assetType === "IDX_STOCK" ? tr("{units} lembar", { units: formatQuantity(v.units) }) : undefined} />
+          <Stat label={tr("Harga rata-rata")} value={formatMoney(holding.avgPrice, holding.currency)} />
+          <Stat label={tr("Modal")} value={formatMoney(v.cost, holding.currency)} />
+          <Stat label={tr("Nilai pasar")} value={formatMoney(v.value, holding.currency)} />
+          <Stat label={tr("Untung/rugi")} value={<span className={tone(v.pnl)}>{formatSigned(v.pnl, holding.currency)}</span>} sub={<span className={tone(v.pnlPct)}>{formatPercent(v.pnlPct)}</span>} />
+          {share != null && <Stat label={tr("Porsi portofolio")} value={`${nf(1).format(share)}%`} />}
         </dl>
       </Section>
 
-      <Section title="Statistik utama">
+      <Section title={tr("Statistik utama")}>
         <div className="space-y-4">
-          <RangeBar label={crypto ? "Rentang 24 jam" : "Rentang hari ini"} low={conv(profile?.dayLow)} high={conv(profile?.dayHigh)} value={live} currency={currency} />
-          <RangeBar label="Rentang 52 minggu" low={yearLow} high={yearHigh} value={live} currency={currency} />
+          <RangeBar label={crypto ? tr("Rentang 24 jam") : tr("Rentang hari ini")} low={conv(profile?.dayLow)} high={conv(profile?.dayHigh)} value={live} currency={currency} />
+          <RangeBar label={tr("Rentang 52 minggu")} low={yearLow} high={yearHigh} value={live} currency={currency} />
         </div>
         <dl className="mt-3">
-          {profile?.previousClose != null && <Stat label={crypto ? "Harga 24 jam lalu" : "Penutupan sebelumnya"} value={plain(profile.previousClose * k, currency)} />}
-          {yearHigh != null && live != null && <Stat label="Dari tertinggi 52 minggu" value={<span className={tone(live - yearHigh)}>{formatPercent(((live - yearHigh) / yearHigh) * 100)}</span>} />}
-          {profile?.turnover != null && <Stat label="Nilai transaksi 24 jam" value={`${currency === "IDR" ? "Rp" : "US$"} ${formatCompact(profile.turnover * (currency === "IDR" ? k : 1))}`} />}
-          {profile?.marketCap != null && <Stat label="Kapitalisasi pasar" value={`${currency === "IDR" ? "Rp" : "US$"} ${formatCompact(profile.marketCap * (currency === "IDR" ? k : 1))}`} sub={profile.rank ? `peringkat #${profile.rank}` : undefined} />}
-          {profile?.circulatingSupply != null && <Stat label="Suplai beredar" value={formatCompact(profile.circulatingSupply)} sub={profile.maxSupply ? `dari ${formatCompact(profile.maxSupply)}` : undefined} />}
+          {profile?.previousClose != null && <Stat label={crypto ? tr("Harga 24 jam lalu") : tr("Penutupan sebelumnya")} value={plain(profile.previousClose * k, currency)} />}
+          {yearHigh != null && live != null && <Stat label={tr("Dari tertinggi 52 minggu")} value={<span className={tone(live - yearHigh)}>{formatPercent(((live - yearHigh) / yearHigh) * 100)}</span>} />}
+          {profile?.turnover != null && <Stat label={tr("Nilai transaksi 24 jam")} value={`${currency === "IDR" ? "Rp" : "US$"} ${formatCompact(profile.turnover * (currency === "IDR" ? k : 1))}`} />}
+          {profile?.marketCap != null && <Stat label={tr("Kapitalisasi pasar")} value={`${currency === "IDR" ? "Rp" : "US$"} ${formatCompact(profile.marketCap * (currency === "IDR" ? k : 1))}`} sub={profile.rank ? tr("peringkat #{rank}", { rank: profile.rank }) : undefined} />}
+          {profile?.circulatingSupply != null && <Stat label={tr("Suplai beredar")} value={formatCompact(profile.circulatingSupply)} sub={profile.maxSupply ? tr("dari {maxSupply}", { maxSupply: formatCompact(profile.maxSupply) }) : undefined} />}
           {ath != null && (
-            <Stat label="Tertinggi sepanjang masa" value={plain(ath, currency)}
-              sub={profile?.allTimeHighDate ? new Date(profile.allTimeHighDate).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : undefined} />
+            <Stat label={tr("Tertinggi sepanjang masa")} value={plain(ath, currency)}
+              sub={profile?.allTimeHighDate ? new Date(profile.allTimeHighDate).toLocaleDateString(locale(), { day: "numeric", month: "short", year: "numeric" }) : undefined} />
           )}
-          {ath != null && live != null && <Stat label="Dari tertinggi sepanjang masa" value={<span className={tone(live - ath)}>{formatPercent(((live - ath) / ath) * 100)}</span>} />}
-          {stats?.volatility30 != null && <Stat label="Volatilitas 30 hari (tahunan)" value={`${nf(1).format(stats.volatility30)}%`} />}
+          {ath != null && live != null && <Stat label={tr("Dari tertinggi sepanjang masa")} value={<span className={tone(live - ath)}>{formatPercent(((live - ath) / ath) * 100)}</span>} />}
+          {stats?.volatility30 != null && <Stat label={tr("Volatilitas 30 hari (tahunan)")} value={`${nf(1).format(stats.volatility30)}%`} />}
         </dl>
       </Section>
 
       {stats && (
-        <Section title="Kinerja">
+        <Section title={tr("Kinerja")}>
           <div className="grid grid-cols-3 gap-1.5">
             {PERFORMANCE_PERIODS.map((p) => {
               const value = stats.performance[p.key];
@@ -383,8 +384,8 @@ export function Details({ holding, holdings, prices, profile, k, currency, live,
         </Section>
       )}
 
-      <Section title="Analisis teknikal">
-        <div role="group" aria-label="Interval analisis" className="mb-4 flex flex-wrap gap-1">
+      <Section title={tr("Analisis teknikal")}>
+        <div role="group" aria-label={tr("Interval analisis")} className="mb-4 flex flex-wrap gap-1">
           {TECH_INTERVALS.map((t) => (
             <button key={t.value} type="button" aria-pressed={techInterval === t.value} onClick={() => onTechInterval(t.value)}
               className={cn("rounded-md px-2 py-1 text-xs transition-colors", techInterval === t.value ? "bg-foreground text-background" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
@@ -394,27 +395,27 @@ export function Details({ holding, holdings, prices, profile, k, currency, live,
         </div>
         {tech ? (
           <>
-            <Gauge title="Ringkasan" rating={tech.summary} big />
+            <Gauge title={tr("Ringkasan")} rating={tech.summary} big />
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <Gauge title="Osilator" rating={tech.osc} />
-              <Gauge title="Moving average" rating={tech.ma} />
+              <Gauge title={tr("Osilator")} rating={tech.osc} />
+              <Gauge title={tr("Moving average")} rating={tech.ma} />
             </div>
             <button type="button" onClick={() => setAllIndicators((o) => !o)} aria-expanded={allIndicators}
               className="mt-4 flex w-full items-center justify-center gap-1 rounded-md py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
-              {allIndicators ? "Sembunyikan rincian" : "Lihat semua indikator"}
+              {allIndicators ? tr("Sembunyikan rincian") : tr("Lihat semua indikator")}
               <ChevronDown className={cn("size-3.5 transition-transform", allIndicators && "rotate-180")} aria-hidden />
             </button>
             {allIndicators && (
               <div className="mt-2 space-y-4">
-                <IndicatorTable title="Osilator" rows={tech.oscillators} />
-                <IndicatorTable title="Moving average" rows={tech.movingAverages} currency={currency} />
+                <IndicatorTable title={tr("Osilator")} rows={tech.oscillators} />
+                <IndicatorTable title={tr("Moving average")} rows={tech.movingAverages} currency={currency} />
                 {pivots && (
                   <table className="w-full text-xs tabular-nums">
-                    <caption className="mb-1 text-left text-[11px] text-muted-foreground">Pivot klasik (dari bar {techIntervalLabel(techInterval)} sebelumnya)</caption>
+                    <caption className="mb-1 text-left text-[11px] text-muted-foreground">{tr("Pivot klasik (dari bar")} {techIntervalLabel(techInterval)} {tr("sebelumnya)")}</caption>
                     <tbody>
                       {(["r3", "r2", "r1", "p", "s1", "s2", "s3"] as const).map((key) => (
                         <tr key={key} className="border-t border-border/60">
-                          <td className="py-1.5 text-muted-foreground">{key === "p" ? "Pivot" : `${key[0] === "r" ? "Resisten" : "Support"} ${key[1]}`}</td>
+                          <td className="py-1.5 text-muted-foreground">{key === "p" ? tr("Pivot") : `${key[0] === "r" ? tr("Resisten") : tr("Support")} ${key[1]}`}</td>
                           <td className="py-1.5 text-right text-foreground">{plain(pivots[key], currency)}</td>
                         </tr>
                       ))}
@@ -425,12 +426,12 @@ export function Details({ holding, holdings, prices, profile, k, currency, live,
             )}
           </>
         ) : (
-          <p className="text-xs text-muted-foreground">Memuat data harga...</p>
+          <p className="text-xs text-muted-foreground">{tr("Memuat data harga...")}</p>
         )}
       </Section>
 
       {(profile?.description || profile?.categories.length || profile?.homepage) && (
-        <Section title="Tentang">
+        <Section title={tr("Tentang")}>
           {profile.description && <p className="text-xs leading-relaxed text-foreground">{profile.description}</p>}
           {profile.categories.length > 0 && (
             <ul className="mt-3 flex flex-wrap gap-1.5">
@@ -446,11 +447,11 @@ export function Details({ holding, holdings, prices, profile, k, currency, live,
       )}
 
       <p className="border-t border-border px-4 py-3 text-[11px] text-muted-foreground">
-        {profile?.sources.length ? `Data dari ${profile.sources.join(" dan ")}` : "Data dari Yahoo Finance, Binance dan CoinGecko"}
-        {prices?.fetchedAt ? `, harga terakhir ${formatDayMonth(prices.fetchedAt)} ${formatTime(prices.fetchedAt)}` : ""}.
-        {" "}Chart dibuat dengan{" "}
+        {profile?.sources.length ? tr("Data dari {join}", { join: profile.sources.join(tr(" dan ")) }) : tr("Data dari Yahoo Finance, Binance dan CoinGecko")}
+        {prices?.fetchedAt ? tr(", harga terakhir {fetchedAt} {fetchedAt2}", { fetchedAt: formatDayMonth(prices.fetchedAt), fetchedAt2: formatTime(prices.fetchedAt) }) : ""}.
+        {" "}{tr("Chart dibuat dengan")}{" "}
         <a href="https://www.tradingview.com/lightweight-charts/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
-          TradingView Lightweight Charts
+          {tr("TradingView Lightweight Charts")}
         </a>.
       </p>
     </div>

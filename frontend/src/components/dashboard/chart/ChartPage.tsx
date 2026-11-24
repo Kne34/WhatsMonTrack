@@ -17,57 +17,58 @@ import { TradingChart, TV, type ChartStyle, type HistSpec, type LineSpec, type S
 import { TOOLS, TOOL_GROUPS, TOOL_ICONS } from "./drawings";
 import { Avatar, Details, Watchlist, plain, signedPlain, techIntervalLabel } from "./SidePanel";
 import { useHistory, useProfile } from "./useMarketData";
-
+
+import { locale, tr } from "@/lib/i18n";
 // ---------------------------------------------------------------- options
 
 const INTERVALS: { value: ChartInterval; title: string; seconds: number | null }[] = [
-  { value: "5m", title: "5 menit", seconds: 300 },
-  { value: "15m", title: "15 menit", seconds: 900 },
-  { value: "1h", title: "1 jam", seconds: 3600 },
-  { value: "4h", title: "4 jam", seconds: 14_400 },
-  { value: "1D", title: "Harian", seconds: 86_400 },
-  { value: "1W", title: "Mingguan", seconds: null },
-  { value: "1M", title: "Bulanan", seconds: null },
+  { value: "5m", get title() { return tr("5 menit"); }, seconds: 300 },
+  { value: "15m", get title() { return tr("15 menit"); }, seconds: 900 },
+  { value: "1h", get title() { return tr("1 jam"); }, seconds: 3600 },
+  { value: "4h", get title() { return tr("4 jam"); }, seconds: 14_400 },
+  { value: "1D", get title() { return tr("Harian"); }, seconds: 86_400 },
+  { value: "1W", get title() { return tr("Mingguan"); }, seconds: null },
+  { value: "1M", get title() { return tr("Bulanan"); }, seconds: null },
 ];
 
 /** The range buttons under the chart pick an interval and show that span, as on TradingView */
 const RANGES: { key: string; title: string; interval: ChartInterval; days: number | "ytd" | "all" }[] = [
-  { key: "1D", title: "1 hari", interval: "5m", days: 1 },
-  { key: "5D", title: "5 hari", interval: "15m", days: 5 },
-  { key: "1M", title: "1 bulan", interval: "1h", days: 30 },
-  { key: "3M", title: "3 bulan", interval: "4h", days: 91 },
-  { key: "6M", title: "6 bulan", interval: "1D", days: 182 },
-  { key: "YTD", title: "Tahun ini", interval: "1D", days: "ytd" },
-  { key: "1Y", title: "1 tahun", interval: "1D", days: 365 },
-  { key: "5Y", title: "5 tahun", interval: "1W", days: 1826 },
-  { key: "ALL", title: "Semua", interval: "1M", days: "all" },
+  { key: "1D", get title() { return tr("1 hari"); }, interval: "5m", days: 1 },
+  { key: "5D", get title() { return tr("5 hari"); }, interval: "15m", days: 5 },
+  { key: "1M", get title() { return tr("1 bulan"); }, interval: "1h", days: 30 },
+  { key: "3M", get title() { return tr("3 bulan"); }, interval: "4h", days: 91 },
+  { key: "6M", get title() { return tr("6 bulan"); }, interval: "1D", days: 182 },
+  { key: "YTD", get title() { return tr("Tahun ini"); }, interval: "1D", days: "ytd" },
+  { key: "1Y", get title() { return tr("1 tahun"); }, interval: "1D", days: 365 },
+  { key: "5Y", get title() { return tr("5 tahun"); }, interval: "1W", days: 1826 },
+  { key: "ALL", get title() { return tr("Semua"); }, interval: "1M", days: "all" },
 ];
 
 const SCALES: { value: ScaleMode; title: string; description: string }[] = [
-  { value: "normal", title: "Biasa", description: "Jarak harga sama rata" },
-  { value: "percent", title: "Persen", description: "Perubahan dari bar pertama yang tampil" },
-  { value: "log", title: "Logaritmik", description: "Persentase yang sama, jarak yang sama" },
+  { value: "normal", get title() { return tr("Biasa"); }, get description() { return tr("Jarak harga sama rata"); } },
+  { value: "percent", get title() { return tr("Persen"); }, get description() { return tr("Perubahan dari bar pertama yang tampil"); } },
+  { value: "log", get title() { return tr("Logaritmik"); }, get description() { return tr("Persentase yang sama, jarak yang sama"); } },
 ];
 
 const STYLES: { value: ChartStyle; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { value: "candle", label: "Candle", icon: ChartCandlestick },
-  { value: "hollow", label: "Candle kosong", icon: ChartCandlestick },
-  { value: "heikin", label: "Heikin Ashi", icon: ChartCandlestick },
-  { value: "bar", label: "Bar", icon: ChartNoAxesColumn },
-  { value: "line", label: "Garis", icon: ChartLine },
-  { value: "area", label: "Area", icon: ChartArea },
+  { value: "candle", get label() { return tr("Candle"); }, icon: ChartCandlestick },
+  { value: "hollow", get label() { return tr("Candle kosong"); }, icon: ChartCandlestick },
+  { value: "heikin", get label() { return tr("Heikin Ashi"); }, icon: ChartCandlestick },
+  { value: "bar", get label() { return tr("Bar"); }, icon: ChartNoAxesColumn },
+  { value: "line", get label() { return tr("Garis"); }, icon: ChartLine },
+  { value: "area", get label() { return tr("Area"); }, icon: ChartArea },
 ];
 
 type IndicatorId = "vol" | "ma20" | "ma50" | "ma200" | "ema20" | "bb" | "rsi" | "macd";
 const INDICATORS: { id: IndicatorId; label: string; short: string; color: string; description: string }[] = [
-  { id: "vol", label: "Volume", short: "Volume", color: TV.up, description: "Jumlah yang diperdagangkan per bar" },
-  { id: "ma20", label: "Moving Average 20", short: "MA 20", color: "#2962FF", description: "Rata-rata harga 20 bar" },
-  { id: "ma50", label: "Moving Average 50", short: "MA 50", color: "#FF6D00", description: "Tren menengah" },
-  { id: "ma200", label: "Moving Average 200", short: "MA 200", color: "#E91E63", description: "Tren jangka panjang" },
-  { id: "ema20", label: "EMA 20", short: "EMA 20", color: "#00BCD4", description: "Rata-rata yang lebih cepat bereaksi" },
-  { id: "bb", label: "Bollinger Bands (20, 2)", short: "Bollinger 20, 2", color: "#2196F3", description: "Pita volatilitas di sekitar MA 20" },
-  { id: "rsi", label: "RSI (14)", short: "RSI 14", color: "#7E57C2", description: "Jenuh beli di atas 70, jenuh jual di bawah 30" },
-  { id: "macd", label: "MACD (12, 26, 9)", short: "MACD 12, 26, 9", color: "#2962FF", description: "Momentum: garis MACD melawan sinyal" },
+  { id: "vol", get label() { return tr("Volume"); }, get short() { return tr("Volume"); }, color: TV.up, get description() { return tr("Jumlah yang diperdagangkan per bar"); } },
+  { id: "ma20", get label() { return tr("Moving Average 20"); }, get short() { return tr("MA 20"); }, color: "#2962FF", get description() { return tr("Rata-rata harga 20 bar"); } },
+  { id: "ma50", get label() { return tr("Moving Average 50"); }, get short() { return tr("MA 50"); }, color: "#FF6D00", get description() { return tr("Tren menengah"); } },
+  { id: "ma200", get label() { return tr("Moving Average 200"); }, get short() { return tr("MA 200"); }, color: "#E91E63", get description() { return tr("Tren jangka panjang"); } },
+  { id: "ema20", get label() { return tr("EMA 20"); }, get short() { return tr("EMA 20"); }, color: "#00BCD4", get description() { return tr("Rata-rata yang lebih cepat bereaksi"); } },
+  { id: "bb", get label() { return tr("Bollinger Bands (20, 2)"); }, get short() { return tr("Bollinger 20, 2"); }, color: "#2196F3", get description() { return tr("Pita volatilitas di sekitar MA 20"); } },
+  { id: "rsi", get label() { return tr("RSI (14)"); }, get short() { return tr("RSI 14"); }, color: "#7E57C2", get description() { return tr("Jenuh beli di atas 70, jenuh jual di bawah 30"); } },
+  { id: "macd", get label() { return tr("MACD (12, 26, 9)"); }, get short() { return tr("MACD 12, 26, 9"); }, color: "#2962FF", get description() { return tr("Momentum: garis MACD melawan sinyal"); } },
 ];
 
 const DAY = 86_400;
@@ -117,14 +118,17 @@ function analysisFacts({ holding, live, pct, stats, daily, tech, techLabel, prof
   const crypto = holding.assetType === "CRYPTO";
   const pctText = (v: number) => formatPercent(Math.abs(v)).replace(/^[+−]/, "");
   if (live != null && pct != null) {
-    facts.push(`${holding.symbol} ${pct >= 0 ? "naik" : "turun"} ${pctText(pct)} ${crypto ? "dalam 24 jam" : "hari ini"} ke ${plain(live, currency)} ${currency}.`);
+    const vars = { symbol: holding.symbol, pct: pctText(pct), price: `${plain(live, currency)} ${currency}` };
+    facts.push(pct >= 0
+      ? (crypto ? tr("{symbol} naik {pct} dalam 24 jam ke {price}.", vars) : tr("{symbol} naik {pct} hari ini ke {price}.", vars))
+      : (crypto ? tr("{symbol} turun {pct} dalam 24 jam ke {price}.", vars) : tr("{symbol} turun {pct} hari ini ke {price}.", vars)));
   }
   if (live != null && stats?.yearHigh && stats.yearLow) {
     const fromHigh = ((stats.yearHigh - live) / stats.yearHigh) * 100;
     const fromLow = ((live - stats.yearLow) / stats.yearLow) * 100;
     facts.push(fromHigh < 3
-      ? `Harga dekat tertinggi 52 minggu (${plain(stats.yearHigh, currency)}).`
-      : `Harga ${pctText(fromHigh)} di bawah tertinggi 52 minggu dan ${pctText(fromLow)} di atas terendahnya.`);
+      ? tr("Harga dekat tertinggi 52 minggu ({yearHigh}).", { yearHigh: plain(stats.yearHigh, currency) })
+      : tr("Harga {fromHigh} di bawah tertinggi 52 minggu dan {fromLow} di atas terendahnya.", { fromHigh: pctText(fromHigh), fromLow: pctText(fromLow) }));
   }
   if (live != null && daily.length >= 200) {
     const closes = daily.map((c) => c.close);
@@ -134,10 +138,10 @@ function analysisFacts({ holding, live, pct, stats, daily, tech, techLabel, prof
       const above50 = live > ma50;
       const above200 = live > ma200;
       facts.push(
-        above50 && above200 ? "Di atas MA 50 dan MA 200 harian: tren naik."
-          : !above50 && !above200 ? "Di bawah MA 50 dan MA 200 harian: tren turun."
-            : above50 ? "Di atas MA 50 tetapi masih di bawah MA 200 harian: mulai pulih dalam tren turun."
-              : "Di bawah MA 50 tetapi masih di atas MA 200 harian: koreksi dalam tren naik.",
+        above50 && above200 ? tr("Di atas MA 50 dan MA 200 harian: tren naik.")
+          : !above50 && !above200 ? tr("Di bawah MA 50 dan MA 200 harian: tren turun.")
+            : above50 ? tr("Di atas MA 50 tetapi masih di bawah MA 200 harian: mulai pulih dalam tren turun.")
+              : tr("Di bawah MA 50 tetapi masih di atas MA 200 harian: koreksi dalam tren naik."),
       );
     }
   }
@@ -145,19 +149,19 @@ function analysisFacts({ holding, live, pct, stats, daily, tech, techLabel, prof
     const r = rsi(daily.map((c) => c.close)).at(-1);
     if (r != null) {
       const v = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(r);
-      facts.push(r >= 70 ? `RSI harian ${v}: jenuh beli, rawan koreksi.` : r <= 30 ? `RSI harian ${v}: jenuh jual, bisa memantul.` : `RSI harian ${v}: netral.`);
+      facts.push(r >= 70 ? tr("RSI harian {v}: jenuh beli, rawan koreksi.", { v: v }) : r <= 30 ? tr("RSI harian {v}: jenuh jual, bisa memantul.", { v: v }) : tr("RSI harian {v}: netral.", { v: v }));
     }
   }
   if (profileVolume && stats?.avgVolume30) {
     const ratio = profileVolume / stats.avgVolume30;
     if (ratio >= 1.5 || ratio <= 0.5) {
-      facts.push(`Volume ${crypto ? "24 jam" : "hari ini"} ${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(ratio)} kali rata-rata 30 hari${ratio >= 1.5 ? ": minat sedang tinggi" : ": pasar sepi"}.`);
+      facts.push(tr("Volume {v} {format} kali rata-rata 30 hari{v2}.", { v: crypto ? tr("24 jam") : tr("hari ini"), format: new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(ratio), v2: ratio >= 1.5 ? tr(": minat sedang tinggi") : tr(": pasar sepi") }));
     }
   }
-  if (tech?.summary) facts.push(`Ringkasan teknikal ${techLabel}: ${RATING_TEXT[tech.summary.label]} (${tech.summary.buy} beli, ${tech.summary.sell} jual).`);
+  if (tech?.summary) facts.push(tr("Ringkasan teknikal {techLabel}: {RATING_TEXT} ({buy} beli, {sell} jual).", { techLabel: techLabel, RATING_TEXT: RATING_TEXT[tech.summary.label], buy: tech.summary.buy, sell: tech.summary.sell }));
   if (live != null && avgInDisplay) {
     const p = ((live - avgInDisplay) / avgInDisplay) * 100;
-    facts.push(`Posisi Anda ${p >= 0 ? "untung" : "rugi"} ${pctText(p)} dari harga rata-rata beli.`);
+    facts.push(p >= 0 ? tr("Posisi Anda untung {p} dari harga rata-rata beli.", { p: pctText(p) }) : tr("Posisi Anda rugi {p} dari harga rata-rata beli.", { p: pctText(p) }));
   }
   return facts;
 }
@@ -207,10 +211,10 @@ export function ChartPage({ holdings, prices, holdingId, onBack, onSelect, onTra
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background p-6 text-center">
         <ChartCandlestick className="size-10 text-muted-foreground" aria-hidden />
         <div>
-          <h1 className="text-lg font-semibold">Belum ada aset untuk dilihat</h1>
-          <p className="mt-1 max-w-sm text-sm text-muted-foreground">Tambahkan saham atau crypto yang kamu punya, lalu chart dan analisisnya tampil di sini.</p>
+          <h1 className="text-lg font-semibold">{tr("Belum ada aset untuk dilihat")}</h1>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">{tr("Tambahkan saham atau crypto yang kamu punya, lalu chart dan analisisnya tampil di sini.")}</p>
         </div>
-        <Button onClick={onAdd}><Plus className="size-4" aria-hidden /> Tambah investasi</Button>
+        <Button onClick={onAdd}><Plus className="size-4" aria-hidden /> {tr("Tambah investasi")}</Button>
       </div>
     );
   }
@@ -407,11 +411,11 @@ function Terminal({ holding, holdings, prices, onBack, onSelect, onTrade, onEdit
       {/* ---------------- top toolbar */}
       <header data-scroll-x className="@container relative flex h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-border bg-card px-2 [scrollbar-width:none]">
         {/* No backdrop blur here: it would make the header the frame of its fixed-position menus, and clip them */}
-        <ToolbarButton label="Kembali ke Investasi" onClick={onBack} className="md:hidden"><ArrowLeft className="size-4" /></ToolbarButton>
+        <ToolbarButton label={tr("Kembali ke Investasi")} onClick={onBack} className="md:hidden"><ArrowLeft className="size-4" /></ToolbarButton>
         <SymbolMenu holding={holding} holdings={holdings} onSelect={onSelect} />
         <Divider />
         {/* Intervals: every one as a button when there is room, otherwise one pop-up */}
-        <div role="group" aria-label="Interval" className="hidden items-center @[70rem]:flex">
+        <div role="group" aria-label={tr("Interval")} className="hidden items-center @[70rem]:flex">
           {INTERVALS.map((i) => (
             <button key={i.value} type="button" aria-pressed={interval === i.value} onClick={() => chooseInterval(i.value)}
               className={cn("h-8 whitespace-nowrap rounded-md px-2 text-sm font-medium transition-colors",
@@ -424,26 +428,26 @@ function Terminal({ holding, holdings, prices, onBack, onSelect, onTrade, onEdit
           trigger={<span className="whitespace-nowrap text-sm font-medium">{intervalTitle}</span>}>
           {(close) => (
             <>
-              <MenuHeading>Interval</MenuHeading>
+              <MenuHeading>{tr("Interval")}</MenuHeading>
               {INTERVALS.map((i) => <DropdownItem key={i.value} selected={interval === i.value} onClick={() => { chooseInterval(i.value); close(); }}>{i.title}</DropdownItem>)}
             </>
           )}
         </Dropdown>
         <Divider />
-        <Dropdown label={`Jenis chart: ${styleDef.label}`} trigger={<styleDef.icon className="size-4" />}>
+        <Dropdown label={tr("Jenis chart: {label}", { label: styleDef.label })} trigger={<styleDef.icon className="size-4" />}>
           {(close) => (
             <>
-              <MenuHeading>Jenis chart</MenuHeading>
+              <MenuHeading>{tr("Jenis chart")}</MenuHeading>
               {STYLES.map((s) => (
                 <DropdownItem key={s.value} selected={style === s.value} onClick={() => { setStyle(s.value); close(); }} icon={<s.icon className="size-4" />}>{s.label}</DropdownItem>
               ))}
             </>
           )}
         </Dropdown>
-        <Dropdown label="Indikator" wide trigger={<span className="flex items-center gap-1.5 text-sm font-medium"><ChartLine className="size-4" /> <span className="hidden @[36rem]:inline">Indikator</span></span>}>
+        <Dropdown label={tr("Indikator")} wide trigger={<span className="flex items-center gap-1.5 text-sm font-medium"><ChartLine className="size-4" /> <span className="hidden @[36rem]:inline">{tr("Indikator")}</span></span>}>
           {() => (
             <>
-              <MenuHeading>Indikator</MenuHeading>
+              <MenuHeading>{tr("Indikator")}</MenuHeading>
               {INDICATORS.map((ind) => (
                 <DropdownItem key={ind.id} selected={indicators.includes(ind.id)} onClick={() => toggleIndicator(ind.id)} description={ind.description}
                   icon={<span className="mt-1.5 block h-0.5 w-4 rounded" style={{ background: ind.color }} />}>
@@ -451,21 +455,21 @@ function Terminal({ holding, holdings, prices, onBack, onSelect, onTrade, onEdit
                 </DropdownItem>
               ))}
               <MenuSeparator />
-              <DropdownItem selected={showAvg} onClick={() => setShowAvg(!showAvg)} description="Garis putus-putus di harga rata-rata Anda"
+              <DropdownItem selected={showAvg} onClick={() => setShowAvg(!showAvg)} description={tr("Garis putus-putus di harga rata-rata Anda")}
                 icon={<span className="mt-1.5 block h-0 w-4 border-t border-dashed border-current" />}>
-                Harga rata-rata beli
+                {tr("Harga rata-rata beli")}
               </DropdownItem>
             </>
           )}
         </Dropdown>
         {/* Drawing tools on phones and tablets (the toolbar on the left needs a laptop's width) */}
-        <Dropdown label="Alat gambar" wide className="lg:hidden" trigger={<span className="flex items-center gap-1.5 text-sm font-medium"><PencilRuler className="size-4" /> <span className="hidden @[36rem]:inline">Gambar</span></span>}>
+        <Dropdown label={tr("Alat gambar")} wide className="lg:hidden" trigger={<span className="flex items-center gap-1.5 text-sm font-medium"><PencilRuler className="size-4" /> <span className="hidden @[36rem]:inline">{tr("Gambar")}</span></span>}>
           {(close) => <ToolsMenu tool={tool} onPick={(t) => { pickTool(t); close(); }} {...toggles} />}
         </Dropdown>
         {native === "USD" && fx != null && (
           <>
             <Divider />
-            <div role="group" aria-label="Mata uang chart" className="flex shrink-0 items-center rounded-lg bg-muted p-0.5">
+            <div role="group" aria-label={tr("Mata uang chart")} className="flex shrink-0 items-center rounded-lg bg-muted p-0.5">
               {(["USD", "IDR"] as const).map((c) => (
                 <button key={c} type="button" aria-pressed={currency === c} onClick={() => setInIdr(c === "IDR")}
                   className={cn("rounded-md px-2 py-1 text-xs font-medium transition-all", currency === c ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
@@ -476,16 +480,16 @@ function Terminal({ holding, holdings, prices, onBack, onSelect, onTrade, onEdit
           </>
         )}
         <div className="ml-auto flex items-center gap-1 pl-2">
-          <ToolbarButton label="Simpan gambar chart" onClick={screenshot} className="max-sm:hidden"><Camera className="size-4" /></ToolbarButton>
-          <ToolbarButton label={fullscreen ? "Keluar layar penuh" : "Layar penuh"} onClick={toggleFullscreen} className="max-sm:hidden">
+          <ToolbarButton label={tr("Simpan gambar chart")} onClick={screenshot} className="max-sm:hidden"><Camera className="size-4" /></ToolbarButton>
+          <ToolbarButton label={fullscreen ? tr("Keluar layar penuh") : tr("Layar penuh")} onClick={toggleFullscreen} className="max-sm:hidden">
             {fullscreen ? <Minimize className="size-4" /> : <Maximize className="size-4" />}
           </ToolbarButton>
-          <ToolbarButton label={panelOpen ? "Tutup panel samping" : "Buka panel samping"} onClick={() => setPanelOpen(!panelOpen)} className="max-lg:hidden">
+          <ToolbarButton label={panelOpen ? tr("Tutup panel samping") : tr("Buka panel samping")} onClick={() => setPanelOpen(!panelOpen)} className="max-lg:hidden">
             {panelOpen ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}
           </ToolbarButton>
-          <button type="button" onClick={() => onEdit(holding)} aria-label={`Ubah ${holding.symbol}`}
+          <button type="button" onClick={() => onEdit(holding)} aria-label={tr("Ubah {symbol}", { symbol: holding.symbol })}
             className="ml-1 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-border px-3 text-sm font-medium hover:bg-muted">
-            <Pencil className="size-3.5" aria-hidden /> <span className="max-sm:hidden">Ubah</span>
+            <Pencil className="size-3.5" aria-hidden /> <span className="max-sm:hidden">{tr("Ubah")}</span>
           </button>
         </div>
       </header>
@@ -493,25 +497,25 @@ function Terminal({ holding, holdings, prices, onBack, onSelect, onTrade, onEdit
       <div className="flex min-h-0 flex-1 flex-col gap-1 p-1 lg:flex-row lg:gap-0">
         {/* ---------------- drawing tools, resizable: narrow (icons), wide (names) or hidden */}
         {railOpen ? (
-          <nav aria-label="Alat gambar" style={{ width: railWidth }}
+          <nav aria-label={tr("Alat gambar")} style={{ width: railWidth }}
             className="hidden shrink-0 flex-col gap-0.5 overflow-y-auto overflow-x-clip rounded-lg bg-card p-1 [scrollbar-width:none] lg:flex">
             <ToolRail tool={tool} groupTools={groupTools} onPick={pickTool} wide={railWidth >= RAIL.labels} {...toggles}
               onZoom={(f) => chartRef.current?.zoom(f)} onReset={() => chartRef.current?.reset()} />
           </nav>
         ) : (
-          <button type="button" onClick={() => setRailWidth(RAIL.initial)} aria-label="Tampilkan alat gambar" title="Tampilkan alat gambar"
+          <button type="button" onClick={() => setRailWidth(RAIL.initial)} aria-label={tr("Tampilkan alat gambar")} title={tr("Tampilkan alat gambar")}
             className="hidden w-4 shrink-0 items-center justify-center rounded-lg bg-card text-muted-foreground hover:bg-muted hover:text-foreground lg:flex">
             <ChevronRight className="size-3.5" aria-hidden />
           </button>
         )}
         {railOpen && (
-          <ResizeHandle label="Lebar alat gambar" value={railWidth} min={RAIL.min} max={RAIL.max} collapseBelow={30}
+          <ResizeHandle label={tr("Lebar alat gambar")} value={railWidth} min={RAIL.min} max={RAIL.max} collapseBelow={30}
             onChange={setRailWidth} onReset={() => setRailWidth(railWidth === RAIL.initial ? RAIL.labels + 30 : RAIL.initial)} />
         )}
 
         {/* ---------------- chart */}
         <main className="@container flex h-[68dvh] min-h-[420px] min-w-0 flex-col overflow-clip rounded-lg bg-card lg:h-auto lg:min-h-0 lg:flex-1">
-          <div className="relative min-h-0 flex-1" role="region" aria-label={`Chart ${holding.symbol}, ${intervalTitle}`}>
+          <div className="relative min-h-0 flex-1" role="region" aria-label={tr("Chart {symbol}, {intervalTitle}", { symbol: holding.symbol, intervalTitle: intervalTitle })}>
             {loaded && bars.length > 0 && (
               <ChartView
                 chartRef={chartRef} holding={holding} bars={bars} style={style} currency={currency} indicators={indicators}
@@ -528,14 +532,14 @@ function Terminal({ holding, holdings, prices, onBack, onSelect, onTrade, onEdit
             {((loaded && bars.length === 0) || (chart.failed && !loaded)) && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground">
                 <CircleAlert className="size-5 text-warning" aria-hidden />
-                {chart.failed ? "Chart gagal dimuat. Dicoba lagi otomatis." : `Belum ada data harga ${intervalTitle.toLowerCase()} untuk ${holding.symbol}.`}
+                {chart.failed ? tr("Chart gagal dimuat. Dicoba lagi otomatis.") : tr("Belum ada data harga {intervalTitle} untuk {symbol}.", { intervalTitle: intervalTitle.toLowerCase(), symbol: holding.symbol })}
               </div>
             )}
           </div>
 
           {/* ---------------- ranges, clock, scale */}
           <div className="relative flex h-10 shrink-0 items-center gap-1 border-t border-border px-2 text-xs">
-            <div role="group" aria-label="Rentang waktu" className="hidden items-center @[48rem]:flex">
+            <div role="group" aria-label={tr("Rentang waktu")} className="hidden items-center @[48rem]:flex">
               {RANGES.map((r) => (
                 <button key={r.key} type="button" aria-pressed={range === r.key} onClick={() => chooseRange(r.key)}
                   className={cn("h-7 whitespace-nowrap rounded-md px-2 font-medium transition-colors", range === r.key ? "bg-[#2962FF]/10 text-[#2962FF]" : "text-foreground hover:bg-muted")}>
@@ -543,11 +547,11 @@ function Terminal({ holding, holdings, prices, onBack, onSelect, onTrade, onEdit
                 </button>
               ))}
             </div>
-            <Dropdown label="Rentang waktu" side="top" className="@[48rem]:hidden"
-              trigger={<span className="whitespace-nowrap text-xs font-medium">Rentang: {rangeDef?.title ?? "terbaru"}</span>}>
+            <Dropdown label={tr("Rentang waktu")} side="top" className="@[48rem]:hidden"
+              trigger={<span className="whitespace-nowrap text-xs font-medium">{tr("Rentang:")} {rangeDef?.title ?? tr("terbaru")}</span>}>
               {(close) => (
                 <>
-                  <MenuHeading>Rentang waktu</MenuHeading>
+                  <MenuHeading>{tr("Rentang waktu")}</MenuHeading>
                   {RANGES.map((r) => <DropdownItem key={r.key} selected={range === r.key} onClick={() => { chooseRange(r.key); close(); }}>{r.title}</DropdownItem>)}
                 </>
               )}
@@ -555,7 +559,7 @@ function Terminal({ holding, holdings, prices, onBack, onSelect, onTrade, onEdit
             <div className="ml-auto flex items-center gap-1 pl-3">
               <span className="hidden @[40rem]:inline"><Clock /></span>
               <span className="mx-1 hidden h-4 w-px bg-border @[40rem]:inline" aria-hidden />
-              <div role="group" aria-label="Skala harga" className="hidden items-center @[64rem]:flex">
+              <div role="group" aria-label={tr("Skala harga")} className="hidden items-center @[64rem]:flex">
                 {SCALES.filter((s) => s.value !== "normal").map((s) => (
                   <button key={s.value} type="button" title={s.description} aria-pressed={scaleMode === s.value} onClick={() => setScaleMode(scaleMode === s.value ? "normal" : s.value)}
                     className={cn("h-7 rounded-md px-2 font-medium", scaleMode === s.value ? "bg-[#2962FF]/10 text-[#2962FF]" : "text-foreground hover:bg-muted")}>
@@ -563,18 +567,18 @@ function Terminal({ holding, holdings, prices, onBack, onSelect, onTrade, onEdit
                   </button>
                 ))}
               </div>
-              <Dropdown label="Skala harga" side="top" align="end" className="@[64rem]:hidden"
-                trigger={<span className="whitespace-nowrap text-xs font-medium">Skala: {SCALES.find((s) => s.value === scaleMode)!.title}</span>}>
+              <Dropdown label={tr("Skala harga")} side="top" align="end" className="@[64rem]:hidden"
+                trigger={<span className="whitespace-nowrap text-xs font-medium">{tr("Skala:")} {SCALES.find((s) => s.value === scaleMode)!.title}</span>}>
                 {(close) => (
                   <>
-                    <MenuHeading>Skala harga</MenuHeading>
+                    <MenuHeading>{tr("Skala harga")}</MenuHeading>
                     {SCALES.map((s) => <DropdownItem key={s.value} selected={scaleMode === s.value} description={s.description} onClick={() => { setScaleMode(s.value); close(); }}>{s.title}</DropdownItem>)}
                   </>
                 )}
               </Dropdown>
-              <button type="button" title="Skala otomatis dan tampilan awal (Alt+R)" onClick={() => { setScaleMode("normal"); chartRef.current?.reset(); }}
+              <button type="button" title={tr("Skala otomatis dan tampilan awal (Alt+R)")} onClick={() => { setScaleMode("normal"); chartRef.current?.reset(); }}
                 className="h-7 whitespace-nowrap rounded-md px-2 font-medium text-foreground hover:bg-muted">
-                Otomatis
+                {tr("Otomatis")}
               </button>
             </div>
           </div>
@@ -582,15 +586,15 @@ function Terminal({ holding, holdings, prices, onBack, onSelect, onTrade, onEdit
 
         {/* ---------------- watchlist and details, resizable */}
         {panelOpen && (
-          <ResizeHandle label="Lebar panel samping" value={panelWidth} min={PANEL.min} max={PANEL.max} invert
+          <ResizeHandle label={tr("Lebar panel samping")} value={panelWidth} min={PANEL.min} max={PANEL.max} invert
             onChange={setPanelWidth} onReset={() => setPanelWidth(PANEL.initial)} />
         )}
-        <aside aria-label="Daftar pantau dan detail aset" style={{ "--panel": `${panelWidth}px`, "--watch": `${watchHeight}px` } as React.CSSProperties}
+        <aside aria-label={tr("Daftar pantau dan detail aset")} style={{ "--panel": `${panelWidth}px`, "--watch": `${watchHeight}px` } as React.CSSProperties}
           className={cn("relative flex min-h-0 shrink-0 flex-col overflow-clip rounded-lg bg-card lg:w-[min(var(--panel),50vw)]", !panelOpen && "lg:hidden")}>
           <div className="relative flex max-h-72 shrink-0 flex-col overflow-clip lg:h-[var(--watch)] lg:max-h-[calc(100%-10rem)]">
             <Watchlist holdings={holdings} prices={prices} activeId={holding.id} onSelect={onSelect} />
           </div>
-          <ResizeHandle orientation="y" label="Tinggi daftar pantau" value={watchHeight} min={WATCHLIST.min} max={WATCHLIST.max}
+          <ResizeHandle orientation="y" label={tr("Tinggi daftar pantau")} value={watchHeight} min={WATCHLIST.min} max={WATCHLIST.max}
             onChange={setWatchHeight} onReset={() => setWatchHeight(WATCHLIST.initial)} />
           <div className="relative min-h-0 overflow-y-auto border-t border-border lg:flex-1 lg:border-t-0">
             <Details
@@ -626,24 +630,24 @@ function ToolRail({ tool, groupTools, onPick, wide, onZoom, onReset, ...t }: Tog
         return <ToolGroupButton key={g.id} group={g} current={current} active={g.tools.includes(tool)} wide={wide} onPick={onPick} />;
       })}
       <RailSeparator />
-      <RailButton wide={wide} label={t.magnet ? "Magnet nyala" : "Magnet"} hint="Titik menempel ke harga buka, tertinggi, terendah atau tutup" active={t.magnet} onClick={() => t.setMagnet(!t.magnet)}>
+      <RailButton wide={wide} label={t.magnet ? tr("Magnet nyala") : tr("Magnet")} hint={tr("Titik menempel ke harga buka, tertinggi, terendah atau tutup")} active={t.magnet} onClick={() => t.setMagnet(!t.magnet)}>
         <Magnet className="size-[18px]" />
       </RailButton>
-      <RailButton wide={wide} label="Tetap menggambar" hint="Alat tidak kembali ke kursor setelah satu gambar" active={t.keepTool} onClick={() => t.setKeepTool(!t.keepTool)}>
+      <RailButton wide={wide} label={tr("Tetap menggambar")} hint={tr("Alat tidak kembali ke kursor setelah satu gambar")} active={t.keepTool} onClick={() => t.setKeepTool(!t.keepTool)}>
         <PencilRuler className="size-[18px]" />
       </RailButton>
-      <RailButton wide={wide} label={t.locked ? "Buka kunci gambar" : "Kunci semua gambar"} hint="Gambar tidak bisa dipilih atau digeser" active={t.locked} onClick={() => t.setLocked(!t.locked)}>
+      <RailButton wide={wide} label={t.locked ? tr("Buka kunci gambar") : tr("Kunci semua gambar")} hint={tr("Gambar tidak bisa dipilih atau digeser")} active={t.locked} onClick={() => t.setLocked(!t.locked)}>
         {t.locked ? <Lock className="size-[18px]" /> : <LockOpen className="size-[18px]" />}
       </RailButton>
-      <RailButton wide={wide} label={t.hidden ? "Tampilkan gambar" : "Sembunyikan gambar"} active={t.hidden} onClick={() => t.setHidden(!t.hidden)}>
+      <RailButton wide={wide} label={t.hidden ? tr("Tampilkan gambar") : tr("Sembunyikan gambar")} active={t.hidden} onClick={() => t.setHidden(!t.hidden)}>
         {t.hidden ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}
       </RailButton>
       <RailSeparator />
-      <RailButton wide={wide} label="Perbesar" hint="Tombol +" onClick={() => onZoom(0.8)}><ZoomIn className="size-[18px]" /></RailButton>
-      <RailButton wide={wide} label="Perkecil" hint="Tombol −" onClick={() => onZoom(1.25)}><ZoomOut className="size-[18px]" /></RailButton>
-      <RailButton wide={wide} label="Atur ulang tampilan" hint="Alt+R" onClick={onReset}><RotateCcw className="size-[18px]" /></RailButton>
+      <RailButton wide={wide} label={tr("Perbesar")} hint={tr("Tombol +")} onClick={() => onZoom(0.8)}><ZoomIn className="size-[18px]" /></RailButton>
+      <RailButton wide={wide} label={tr("Perkecil")} hint={tr("Tombol −")} onClick={() => onZoom(1.25)}><ZoomOut className="size-[18px]" /></RailButton>
+      <RailButton wide={wide} label={tr("Atur ulang tampilan")} hint={tr("Alt+R")} onClick={onReset}><RotateCcw className="size-[18px]" /></RailButton>
       <RailSeparator />
-      <RailButton wide={wide} label={t.drawingCount ? `Hapus ${t.drawingCount} gambar` : "Belum ada gambar"} disabled={!t.drawingCount} onClick={t.clear} danger>
+      <RailButton wide={wide} label={t.drawingCount ? tr("Hapus {drawingCount} gambar", { drawingCount: t.drawingCount }) : tr("Belum ada gambar")} disabled={!t.drawingCount} onClick={t.clear} danger>
         <Trash2 className="size-[18px]" />
       </RailButton>
     </>
@@ -671,8 +675,8 @@ function ToolGroupButton({ group, current, active, wide, onPick }: { group: (typ
         {wide && <span className="line-clamp-2 leading-tight">{TOOLS[current].label}</span>}
       </button>
       {group.tools.length > 1 && (
-        <button type="button" onClick={() => (open ? setOpen(false) : openMenu())} aria-haspopup="menu" aria-expanded={open} aria-label={`Pilihan ${group.label.toLowerCase()}`}
-          title={`Semua alat ${group.label.toLowerCase()}`}
+        <button type="button" onClick={() => (open ? setOpen(false) : openMenu())} aria-haspopup="menu" aria-expanded={open} aria-label={tr("Pilihan {toLowerCase}", { toLowerCase: group.label.toLowerCase() })}
+          title={tr("Semua alat {toLowerCase}", { toLowerCase: group.label.toLowerCase() })}
           className={cn("flex w-4 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-opacity hover:bg-muted hover:text-foreground",
             wide || open ? "opacity-100" : "absolute inset-y-0 right-0 opacity-0 focus-visible:opacity-100 group-hover/tool:opacity-100")}>
           <ChevronRight className="size-3" aria-hidden />
@@ -707,13 +711,13 @@ function ToolsMenu({ tool, onPick, ...t }: ToggleProps & { tool: Tool; onPick: (
         </React.Fragment>
       ))}
       <MenuSeparator />
-      <DropdownItem selected={t.magnet} onClick={() => t.setMagnet(!t.magnet)} icon={<Magnet className="size-4" />} description="Menempel ke harga buka, tertinggi, terendah, tutup">Magnet</DropdownItem>
-      <DropdownItem selected={t.keepTool} onClick={() => t.setKeepTool(!t.keepTool)} icon={<PencilRuler className="size-4" />}>Tetap menggambar</DropdownItem>
-      <DropdownItem selected={t.locked} onClick={() => t.setLocked(!t.locked)} icon={<Lock className="size-4" />}>Kunci semua gambar</DropdownItem>
-      <DropdownItem selected={t.hidden} onClick={() => t.setHidden(!t.hidden)} icon={<EyeOff className="size-4" />}>Sembunyikan gambar</DropdownItem>
+      <DropdownItem selected={t.magnet} onClick={() => t.setMagnet(!t.magnet)} icon={<Magnet className="size-4" />} description={tr("Menempel ke harga buka, tertinggi, terendah, tutup")}>{tr("Magnet")}</DropdownItem>
+      <DropdownItem selected={t.keepTool} onClick={() => t.setKeepTool(!t.keepTool)} icon={<PencilRuler className="size-4" />}>{tr("Tetap menggambar")}</DropdownItem>
+      <DropdownItem selected={t.locked} onClick={() => t.setLocked(!t.locked)} icon={<Lock className="size-4" />}>{tr("Kunci semua gambar")}</DropdownItem>
+      <DropdownItem selected={t.hidden} onClick={() => t.setHidden(!t.hidden)} icon={<EyeOff className="size-4" />}>{tr("Sembunyikan gambar")}</DropdownItem>
       <MenuSeparator />
       <DropdownItem role="menuitem" selected={false} disabled={!t.drawingCount} onClick={t.clear} icon={<Trash2 className="size-4" />} danger>
-        {t.drawingCount ? `Hapus ${t.drawingCount} gambar` : "Belum ada gambar"}
+        {t.drawingCount ? tr("Hapus {drawingCount} gambar", { drawingCount: t.drawingCount }) : tr("Belum ada gambar")}
       </DropdownItem>
     </>
   );
@@ -800,19 +804,19 @@ const ChartView = memo(function ChartView({
             <span className={cn("inline-flex items-center gap-1 rounded px-1.5 py-px text-[11px] font-medium",
               market === "CLOSED" ? "bg-muted text-muted-foreground" : "bg-[#089981]/15 text-[#089981]")}>
               <span className={cn("size-1.5 rounded-full", market === "CLOSED" ? "bg-muted-foreground" : "bg-[#089981]")} aria-hidden />
-              {market === "CLOSED" ? "Pasar tutup" : market === "ALWAYS" ? "Buka 24 jam" : "Pasar buka"}
+              {market === "CLOSED" ? tr("Pasar tutup") : market === "ALWAYS" ? tr("Buka 24 jam") : tr("Pasar buka")}
             </span>
           )}
           {bar && legendOpen && (
             <span className="flex flex-wrap gap-x-2 tabular-nums">
-              {([["Buka", bar.open], ["Tertinggi", bar.high], ["Terendah", bar.low], ["Tutup", bar.close]] as const).map(([k, v]) => (
+              {([[tr("Buka"), bar.open], [tr("Tertinggi"), bar.high], [tr("Terendah"), bar.low], [tr("Tutup"), bar.close]] as const).map(([k, v]) => (
                 <span key={k}><span className="text-muted-foreground">{k} </span><span style={{ color }}>{plain(v, currency)}</span></span>
               ))}
               {change != null && <span style={{ color }}>{signedPlain(change, currency)} ({formatPercent(changePct)})</span>}
             </span>
           )}
           <button type="button" onClick={() => setLegendOpen(!legendOpen)} aria-expanded={legendOpen}
-            aria-label={legendOpen ? "Lipat legenda" : "Buka legenda"} title={legendOpen ? "Lipat legenda" : "Buka legenda"}
+            aria-label={legendOpen ? tr("Lipat legenda") : tr("Buka legenda")} title={legendOpen ? tr("Lipat legenda") : tr("Buka legenda")}
             className="pointer-events-auto rounded-md border border-border bg-card/80 p-0.5 text-muted-foreground backdrop-blur hover:text-foreground">
             <ChevronDown className={cn("size-3.5 transition-transform", legendOpen && "rotate-180")} aria-hidden />
           </button>
@@ -823,18 +827,18 @@ const ChartView = memo(function ChartView({
             <button type="button" onClick={() => onTrade("SELL")}
               className="min-w-20 rounded-md border border-[#F23645] bg-card/80 px-2 py-0.5 text-center leading-tight text-[#F23645] backdrop-blur transition-colors hover:bg-[#F23645] hover:text-white">
               <span className="block text-xs font-medium tabular-nums">{live != null ? plain(live, currency) : "–"}</span>
-              <span className="block text-[10px] font-semibold">JUAL</span>
+              <span className="block text-[10px] font-semibold">{tr("JUAL")}</span>
             </button>
             <button type="button" onClick={() => onTrade("BUY")}
               className="min-w-20 rounded-md border border-[#2962FF] bg-card/80 px-2 py-0.5 text-center leading-tight text-[#2962FF] backdrop-blur transition-colors hover:bg-[#2962FF] hover:text-white">
               <span className="block text-xs font-medium tabular-nums">{live != null ? plain(live, currency) : "–"}</span>
-              <span className="block text-[10px] font-semibold">BELI</span>
+              <span className="block text-[10px] font-semibold">{tr("BELI")}</span>
             </button>
-            {holding.currency !== currency && <span className="ml-1 text-[11px] text-muted-foreground">dicatat dalam {holding.currency}</span>}
+            {holding.currency !== currency && <span className="ml-1 text-[11px] text-muted-foreground">{tr("dicatat dalam")} {holding.currency}</span>}
           </div>
 
           {indicators.includes("vol") && bar && bar.volume > 0 && (
-            <p className="tabular-nums"><span className="text-muted-foreground">Volume </span><span style={{ color }}>{formatCompact(bar.volume)}</span></p>
+            <p className="tabular-nums"><span className="text-muted-foreground">{tr("Volume")} </span><span style={{ color }}>{formatCompact(bar.volume)}</span></p>
           )}
           {legendRows.map((row) => (
             <p key={row.id} className="group pointer-events-auto flex w-fit items-center gap-1.5 tabular-nums">
@@ -842,7 +846,7 @@ const ChartView = memo(function ChartView({
               {row.values.map((v, n) => (
                 <span key={n} style={{ color: v.color }}>{v.v == null ? "–" : v.price ? plain(v.v, currency) : fmt2.format(v.v)}</span>
               ))}
-              <button type="button" onClick={() => onRemoveIndicator(row.id)} aria-label={`Hapus ${row.label}`}
+              <button type="button" onClick={() => onRemoveIndicator(row.id)} aria-label={tr("Hapus {label}", { label: row.label })}
                 className="rounded p-0.5 text-muted-foreground opacity-60 hover:bg-muted hover:text-foreground group-hover:opacity-100">
                 <X className="size-3" aria-hidden />
               </button>
@@ -869,7 +873,7 @@ function Clock() {
   const offset = -now.getTimezoneOffset() / 60;
   return (
     <span className="whitespace-nowrap tabular-nums text-muted-foreground">
-      {now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} UTC{offset >= 0 ? "+" : "−"}{Math.abs(offset)}
+      {now.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit", second: "2-digit" })} {tr("UTC")}{offset >= 0 ? "+" : "−"}{Math.abs(offset)}
     </span>
   );
 }
@@ -896,7 +900,7 @@ function ResizeHandle({ orientation = "x", label, value, min, max, onChange, onR
   const horizontal = orientation === "x";
   return (
     <div role="separator" aria-orientation={horizontal ? "vertical" : "horizontal"} aria-label={label} aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} tabIndex={0}
-      title={`${label}: geser untuk mengubah, klik dua kali untuk ukuran biasa`}
+      title={tr("{label}: geser untuk mengubah, klik dua kali untuk ukuran biasa", { label: label })}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.preventDefault();
@@ -1074,11 +1078,11 @@ function DropdownItem({ selected, onClick, icon, description, children, role = "
 /** The ticker button at the top left: switches to another holding */
 function SymbolMenu({ holding, holdings, onSelect }: { holding: Holding; holdings: Holding[]; onSelect: (h: Holding) => void }) {
   return (
-    <Dropdown label={`Ganti aset, sekarang ${holding.symbol}`} wide
+    <Dropdown label={tr("Ganti aset, sekarang {symbol}", { symbol: holding.symbol })} wide
       trigger={<span className="flex items-center gap-2 text-sm font-semibold"><Avatar symbol={holding.symbol} />{holding.symbol}</span>}>
       {(close) => (
         <>
-          <MenuHeading>Aset Anda</MenuHeading>
+          <MenuHeading>{tr("Aset Anda")}</MenuHeading>
           {holdings.map((h) => (
             <DropdownItem key={h.id} role="menuitemradio" selected={h.id === holding.id} onClick={() => { close(); onSelect(h); }} icon={<Avatar symbol={h.symbol} className="size-4 text-[9px]" />}
               description={`${h.name ?? ASSET_TYPE_LABEL[h.assetType]}, ${h.platform}`}>

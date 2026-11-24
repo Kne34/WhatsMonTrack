@@ -2,7 +2,8 @@
 
 import React from "react";
 import { TV, alpha } from "./colors";
-
+
+import { tr } from "@/lib/i18n";
 /**
  * The drawing tools of the chart page, after TradingView's left toolbar: what each tool is, how many
  * clicks it takes, its icon, and how a drawing is painted (an SVG layer over the chart, in the
@@ -69,41 +70,41 @@ export const TOOL_ICONS: Record<Tool, React.ReactNode> = {
 
 /** How many clicks a drawing takes; 0 = not a drawing (cursor, eraser), -1 = drag (brush) */
 export const TOOLS: Record<Tool, { label: string; hint: string; clicks: number }> = {
-  cross: { label: "Kursor silang", hint: "Geser, zoom, dan pilih gambar (Esc)", clicks: 0 },
-  eraser: { label: "Penghapus", hint: "Klik gambar untuk menghapusnya", clicks: 0 },
-  trend: { label: "Garis tren", hint: "Klik dua titik", clicks: 2 },
-  arrow: { label: "Panah", hint: "Klik awal dan ujung panah", clicks: 2 },
-  ray: { label: "Sinar", hint: "Klik dua titik; garis berlanjut ke kanan", clicks: 2 },
-  extended: { label: "Garis diperpanjang", hint: "Klik dua titik; garis berlanjut ke dua arah", clicks: 2 },
-  hline: { label: "Garis horizontal", hint: "Klik satu harga", clicks: 1 },
-  hray: { label: "Sinar horizontal", hint: "Klik satu titik; garis berlanjut ke kanan", clicks: 1 },
-  vline: { label: "Garis vertikal", hint: "Klik satu waktu", clicks: 1 },
-  crossline: { label: "Garis silang", hint: "Klik satu titik", clicks: 1 },
-  channel: { label: "Kanal paralel", hint: "Klik dua titik garis, lalu satu titik untuk lebarnya", clicks: 3 },
-  fib: { label: "Fib retracement", hint: "Klik titik awal dan akhir gerakan harga", clicks: 2 },
-  fibext: { label: "Ekstensi Fib berbasis tren", hint: "Klik awal tren, akhir tren, lalu titik koreksi", clicks: 3 },
-  rect: { label: "Persegi panjang", hint: "Klik dua sudut", clicks: 2 },
-  ellipse: { label: "Elips", hint: "Klik dua sudut", clicks: 2 },
-  triangle: { label: "Segitiga", hint: "Klik tiga titik", clicks: 3 },
-  brush: { label: "Kuas", hint: "Tekan dan geser untuk menggambar bebas", clicks: -1 },
-  text: { label: "Teks", hint: "Klik tempatnya, lalu ketik", clicks: 1 },
-  arrowup: { label: "Tanda panah naik", hint: "Klik satu titik", clicks: 1 },
-  arrowdown: { label: "Tanda panah turun", hint: "Klik satu titik", clicks: 1 },
-  long: { label: "Posisi beli", hint: "Klik harga masuk, lalu target; batas rugi bisa digeser", clicks: 2 },
-  short: { label: "Posisi jual", hint: "Klik harga masuk, lalu target; batas rugi bisa digeser", clicks: 2 },
-  pricerange: { label: "Rentang harga", hint: "Klik dua harga", clicks: 2 },
-  daterange: { label: "Rentang tanggal", hint: "Klik dua waktu", clicks: 2 },
-  measure: { label: "Rentang tanggal dan harga", hint: "Klik awal dan akhir", clicks: 2 },
+  cross: { get label() { return tr("Kursor silang"); }, get hint() { return tr("Geser, zoom, dan pilih gambar (Esc)"); }, clicks: 0 },
+  eraser: { get label() { return tr("Penghapus"); }, get hint() { return tr("Klik gambar untuk menghapusnya"); }, clicks: 0 },
+  trend: { get label() { return tr("Garis tren"); }, get hint() { return tr("Klik dua titik"); }, clicks: 2 },
+  arrow: { get label() { return tr("Panah"); }, get hint() { return tr("Klik awal dan ujung panah"); }, clicks: 2 },
+  ray: { get label() { return tr("Sinar"); }, get hint() { return tr("Klik dua titik; garis berlanjut ke kanan"); }, clicks: 2 },
+  extended: { get label() { return tr("Garis diperpanjang"); }, get hint() { return tr("Klik dua titik; garis berlanjut ke dua arah"); }, clicks: 2 },
+  hline: { get label() { return tr("Garis horizontal"); }, get hint() { return tr("Klik satu harga"); }, clicks: 1 },
+  hray: { get label() { return tr("Sinar horizontal"); }, get hint() { return tr("Klik satu titik; garis berlanjut ke kanan"); }, clicks: 1 },
+  vline: { get label() { return tr("Garis vertikal"); }, get hint() { return tr("Klik satu waktu"); }, clicks: 1 },
+  crossline: { get label() { return tr("Garis silang"); }, get hint() { return tr("Klik satu titik"); }, clicks: 1 },
+  channel: { get label() { return tr("Kanal paralel"); }, get hint() { return tr("Klik dua titik garis, lalu satu titik untuk lebarnya"); }, clicks: 3 },
+  fib: { get label() { return tr("Fib retracement"); }, get hint() { return tr("Klik titik awal dan akhir gerakan harga"); }, clicks: 2 },
+  fibext: { get label() { return tr("Ekstensi Fib berbasis tren"); }, get hint() { return tr("Klik awal tren, akhir tren, lalu titik koreksi"); }, clicks: 3 },
+  rect: { get label() { return tr("Persegi panjang"); }, get hint() { return tr("Klik dua sudut"); }, clicks: 2 },
+  ellipse: { get label() { return tr("Elips"); }, get hint() { return tr("Klik dua sudut"); }, clicks: 2 },
+  triangle: { get label() { return tr("Segitiga"); }, get hint() { return tr("Klik tiga titik"); }, clicks: 3 },
+  brush: { get label() { return tr("Kuas"); }, get hint() { return tr("Tekan dan geser untuk menggambar bebas"); }, clicks: -1 },
+  text: { get label() { return tr("Teks"); }, get hint() { return tr("Klik tempatnya, lalu ketik"); }, clicks: 1 },
+  arrowup: { get label() { return tr("Tanda panah naik"); }, get hint() { return tr("Klik satu titik"); }, clicks: 1 },
+  arrowdown: { get label() { return tr("Tanda panah turun"); }, get hint() { return tr("Klik satu titik"); }, clicks: 1 },
+  long: { get label() { return tr("Posisi beli"); }, get hint() { return tr("Klik harga masuk, lalu target; batas rugi bisa digeser"); }, clicks: 2 },
+  short: { get label() { return tr("Posisi jual"); }, get hint() { return tr("Klik harga masuk, lalu target; batas rugi bisa digeser"); }, clicks: 2 },
+  pricerange: { get label() { return tr("Rentang harga"); }, get hint() { return tr("Klik dua harga"); }, clicks: 2 },
+  daterange: { get label() { return tr("Rentang tanggal"); }, get hint() { return tr("Klik dua waktu"); }, clicks: 2 },
+  measure: { get label() { return tr("Rentang tanggal dan harga"); }, get hint() { return tr("Klik awal dan akhir"); }, clicks: 2 },
 };
 
 /** The groups of the left toolbar; each button shows the group's last-used tool, the arrow opens the rest */
 export const TOOL_GROUPS: { id: string; label: string; tools: Tool[] }[] = [
-  { id: "cursor", label: "Kursor", tools: ["cross", "eraser"] },
-  { id: "lines", label: "Garis", tools: ["trend", "arrow", "ray", "extended", "hline", "hray", "vline", "crossline"] },
-  { id: "fib", label: "Kanal dan Fibonacci", tools: ["channel", "fib", "fibext"] },
-  { id: "shapes", label: "Bentuk", tools: ["rect", "ellipse", "triangle", "brush"] },
-  { id: "notes", label: "Anotasi", tools: ["text", "arrowup", "arrowdown"] },
-  { id: "measure", label: "Prediksi dan ukur", tools: ["long", "short", "pricerange", "daterange", "measure"] },
+  { id: "cursor", get label() { return tr("Kursor"); }, tools: ["cross", "eraser"] },
+  { id: "lines", get label() { return tr("Garis"); }, tools: ["trend", "arrow", "ray", "extended", "hline", "hray", "vline", "crossline"] },
+  { id: "fib", get label() { return tr("Kanal dan Fibonacci"); }, tools: ["channel", "fib", "fibext"] },
+  { id: "shapes", get label() { return tr("Bentuk"); }, tools: ["rect", "ellipse", "triangle", "brush"] },
+  { id: "notes", get label() { return tr("Anotasi"); }, tools: ["text", "arrowup", "arrowdown"] },
+  { id: "measure", get label() { return tr("Prediksi dan ukur"); }, tools: ["long", "short", "pricerange", "daterange", "measure"] },
 ];
 
 export const DRAW_COLORS = ["#2962FF", "#F23645", "#089981", "#FF9800", "#9C27B0", "#787B86"];
@@ -170,10 +171,10 @@ export function duration(seconds: number) {
   const d = Math.floor(s / 86_400);
   const h = Math.floor((s % 86_400) / 3600);
   const m = Math.floor((s % 3600) / 60);
-  if (d >= 60) return `${d} hari`;
-  if (d > 0) return h ? `${d} hari ${h} jam` : `${d} hari`;
-  if (h > 0) return m ? `${h} jam ${m} menit` : `${h} jam`;
-  return `${m} menit`;
+  if (d >= 60) return tr("{d} hari", { d: d });
+  if (d > 0) return h ? tr("{d} hari {h} jam", { d: d, h: h }) : tr("{d} hari", { d: d });
+  if (h > 0) return m ? tr("{h} jam {m} menit", { h: h, m: m }) : tr("{h} jam", { h: h });
+  return tr("{m} menit", { m: m });
 }
 
 /** A filled label with text; width estimated from the characters (11px font) */
@@ -366,10 +367,10 @@ export function paint(d: Drawing, g: Geometry): { picture: React.ReactNode; hit:
           {hitFill(<rect x={left} y={lossTop} width={width} height={Math.abs(c3[1] - a[1])} fill={alpha(TV.down, 0.2)} />)}
           <path d={line([left, a[1]], [right, a[1]])} stroke="#787B86" strokeWidth={1.5} />
           <Label x={(left + right) / 2} y={targetAbove ? b[1] - 26 : b[1] + 6} bg={TV.up}
-            text={[`Target: ${g.price(target.price)} (${pctText(entry.price, target.price)})`]} />
+            text={[tr("Target: {g} ({price})", { g: g.price(target.price), price: pctText(entry.price, target.price) })]} />
           <Label x={(left + right) / 2} y={targetAbove ? c3[1] + 6 : c3[1] - 26} bg={TV.down}
-            text={[`Batas rugi: ${g.price(stop.price)} (${pctText(entry.price, stop.price)})`]} />
-          <Label x={(left + right) / 2} y={a[1] + (targetAbove ? 4 : -24)} bg="#787B86" text={[`Rasio imbalan/risiko ${rr}`]} />
+            text={[tr("Batas rugi: {g} ({price})", { g: g.price(stop.price), price: pctText(entry.price, stop.price) })]} />
+          <Label x={(left + right) / 2} y={a[1] + (targetAbove ? 4 : -24)} bg="#787B86" text={[tr("Rasio imbalan/risiko {rr}", { rr: rr })]} />
         </>,
         hit: null, handles: [a, [right, b[1]], [right, c3[1]]],
       };
@@ -387,7 +388,7 @@ export function paint(d: Drawing, g: Geometry): { picture: React.ReactNode; hit:
       const midY = (a[1] + b[1]) / 2;
       const bars = g.bars(p1.time, p2.time);
       const priceText = `${signed(diff, g.price)} (${pctText(p1.price, p2.price)})`;
-      const timeText = `${bars} bar, ${duration(p2.time - p1.time)}`;
+      const timeText = tr("{bars} bar, {duration}", { bars: bars, duration: duration(p2.time - p1.time) });
       const text = d.kind === "pricerange" ? [priceText] : d.kind === "daterange" ? [timeText] : [priceText, timeText];
       const vArrow = d.kind !== "daterange"
         ? <path d={`${line([midX, a[1]], [midX, b[1]])}M${midX - 5},${b[1] + (up ? 6 : -6)}L${midX},${b[1]}L${midX + 5},${b[1] + (up ? 6 : -6)}`} stroke={col} strokeWidth={1.5} fill="none" />

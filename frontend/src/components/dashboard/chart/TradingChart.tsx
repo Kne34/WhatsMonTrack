@@ -8,6 +8,7 @@ import { heikinAshi, type Series } from "@/lib/technicals";
 import { TV, alpha } from "./colors";
 import { DRAW_COLORS, TOOLS, makeDrawing, newId, paint, type Drawing, type DrawKind, type Geometry, type Point, type Tool } from "./drawings";
 
+import { locale, tr } from "@/lib/i18n";
 export { TV } from "./colors";
 export type { Tool } from "./drawings";
 
@@ -264,7 +265,7 @@ export function TradingChart({
         vertLine: { color: alpha(c.text, 0.7), labelBackgroundColor: dark ? "#2A2E39" : "#131722" },
         horzLine: { color: alpha(c.text, 0.7), labelBackgroundColor: dark ? "#2A2E39" : "#131722" },
       },
-      localization: { locale: "id-ID", priceFormatter: (p: number) => (Math.abs(p) > 0 && Math.abs(p) < 1 ? small.format(p) : formats[decimalsRef.current ? 1 : 0].format(p)) },
+      localization: { locale: locale(), priceFormatter: (p: number) => (Math.abs(p) > 0 && Math.abs(p) < 1 ? small.format(p) : formats[decimalsRef.current ? 1 : 0].format(p)) },
       // Scroll wheel zooms, dragging pans, as on TradingView
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: true }, axisDoubleClickReset: { time: true, price: true } },
@@ -455,7 +456,7 @@ export function TradingChart({
     for (const pl of priceLinesRef.current) main.removePriceLine(pl);
     priceLinesRef.current = [];
     if (avgPrice != null && avgPrice > 0) {
-      priceLinesRef.current.push(main.createPriceLine({ price: avgPrice, color: c.fg, lineWidth: 1, lineStyle: lib.LineStyle.Dashed, axisLabelVisible: true, title: "Rata-rata beli" }));
+      priceLinesRef.current.push(main.createPriceLine({ price: avgPrice, color: c.fg, lineWidth: 1, lineStyle: lib.LineStyle.Dashed, axisLabelVisible: true, title: tr("Rata-rata beli") }));
     }
 
     chart.priceScale("right").applyOptions({
@@ -752,11 +753,11 @@ export function TradingChart({
       {countdown}
       {pending.length > 0 && TOOLS[tool].clicks > 1 && (
         <p className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-full bg-foreground/85 px-3 py-1 text-xs text-background">
-          {TOOLS[tool].label}: titik {pending.length + 1} dari {TOOLS[tool].clicks}. Esc membatalkan.
+          {tr("{tool}: titik {n} dari {total}. Esc membatalkan.", { tool: TOOLS[tool].label, n: pending.length + 1, total: TOOLS[tool].clicks })}
         </p>
       )}
       {textEdit && textAt?.x != null && textAt.y != null && (
-        <input autoFocus value={textEdit.value} placeholder="Ketik catatan" aria-label="Teks di chart" maxLength={120}
+        <input autoFocus value={textEdit.value} placeholder={tr("Ketik catatan")} aria-label={tr("Teks di chart")} maxLength={120}
           onChange={(e) => setTextEdit({ ...textEdit, value: e.target.value })}
           onKeyDown={(e) => { if (e.key === "Enter") commitText(); if (e.key === "Escape") { e.stopPropagation(); setTextEdit(null); } }}
           onBlur={commitText}
@@ -765,24 +766,24 @@ export function TradingChart({
       )}
       {/* The selected drawing's toolbar: color, text, delete */}
       {selectedDrawing && tool === "cross" && !locked && !hidden && (
-        <div role="toolbar" aria-label={`Gambar terpilih: ${TOOLS[selectedDrawing.kind].label}`}
+        <div role="toolbar" aria-label={tr("Gambar terpilih: {label}", { label: TOOLS[selectedDrawing.kind].label })}
           className="absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-black/[0.08] bg-popover/85 p-1 shadow-lg backdrop-blur-xl dark:border-white/10">
           <span className="px-2 text-xs font-medium text-muted-foreground max-sm:hidden">{TOOLS[selectedDrawing.kind].label}</span>
           {DRAW_COLORS.map((c) => (
-            <button key={c} type="button" aria-label={`Warna ${c}`} aria-pressed={selectedDrawing.color === c}
+            <button key={c} type="button" aria-label={tr("Warna {c}", { c: c })} aria-pressed={selectedDrawing.color === c}
               onClick={() => { update(selectedDrawing.id, { color: c }); setColor(c); }}
               className="flex size-7 items-center justify-center rounded-md hover:bg-muted">
               <span className="size-4 rounded-full ring-offset-2 ring-offset-card" style={{ background: c, boxShadow: selectedDrawing.color === c ? `0 0 0 2px var(--card), 0 0 0 3.5px ${c}` : undefined }} />
             </button>
           ))}
           {selectedDrawing.kind === "text" && (
-            <button type="button" aria-label="Ubah teks" title="Ubah teks" onClick={() => setTextEdit({ id: selectedDrawing.id, point: selectedDrawing.points[0], value: selectedDrawing.text ?? "" })}
+            <button type="button" aria-label={tr("Ubah teks")} title={tr("Ubah teks")} onClick={() => setTextEdit({ id: selectedDrawing.id, point: selectedDrawing.points[0], value: selectedDrawing.text ?? "" })}
               className="flex size-7 items-center justify-center rounded-md text-foreground hover:bg-muted">
               <Pencil className="size-4" aria-hidden />
             </button>
           )}
           <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
-          <button type="button" aria-label="Hapus gambar (Delete)" title="Hapus gambar (Delete)"
+          <button type="button" aria-label={tr("Hapus gambar (Delete)")} title={tr("Hapus gambar (Delete)")}
             onClick={() => { setDrawings((list) => list.filter((d) => d.id !== selectedDrawing.id)); setSelected(null); }}
             className="flex size-7 items-center justify-center rounded-md text-[#F23645] hover:bg-[#F23645]/10">
             <Trash2 className="size-4" aria-hidden />
