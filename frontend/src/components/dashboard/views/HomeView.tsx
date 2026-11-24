@@ -181,7 +181,8 @@ export default function HomeView({
   const dailyBudget = totalBudget > 0 ? totalBudget / daysInMonth : 0;
 
   // Ranked categories (top 5 + "Lainnya")
-  const categories = useMemo(() => {
+  // Not memoized: the labels follow the language
+  const categories = (() => {
     const totals = new Map<string, number>();
     for (const t of counted.filter((x) => x.type === breakdown)) {
       const key = (t.category || "UNCATEGORIZED").toUpperCase();
@@ -193,7 +194,7 @@ export default function HomeView({
     if (rest > 0) top.push({ label: tr("Lainnya"), value: rest });
     const sum = top.reduce((s, c) => s + c.value, 0);
     return top.map((c) => ({ ...c, share: sum ? c.value / sum : 0 }));
-  }, [counted, breakdown]);
+  })();
 
   const budgetRows = budgets.map((b) => {
     const spent = counted

@@ -97,7 +97,7 @@ export default function SettingsView(props: SettingsViewProps) {
       </Group>
 
       <Group title={tr("Akun")}>
-        <Row icon={User} tint="bg-[#8E8E93]" label={tr("Email")} value={<span className="break-all">{props.email}</span>} />
+        <Row icon={User} tint="bg-[#8E8E93]" label={tr("Email")} value={<span className="block truncate" title={props.email}>{props.email}</span>} />
         <Row icon={LogOut} tint="bg-[#FF3B30]" label={tr("Keluar")} onClick={props.onLogout} danger />
       </Group>
     </div>

@@ -664,4 +664,6 @@ A test with 16 injection messages (fake admin, reading other users' data, leakin
 
 ### Phase 20: Motion
 - Lenis, GSAP with ScrollTrigger and Motion, in `frontend/src/components/motion/` (see Development, *Animation layer*). Smooth wheel scrolling, counting key figures (Dashboard, Investasi, Utang-piutang), cards revealed once as they scroll in, a sliding thumb in every segmented control and a sliding row in the sidebar, progress bars of budgets, categories and payments that fill, live prices that flash green or red, debt records and people that slide in and out, a toast that rises. Dialogs open in 250 ms and close in 150 ms.
+- **Switching the language** re-renders in place instead of re-mounting the app: data, scroll position and what is open stay, and the page cross-fades (View Transitions, where the browser has them). Texts are computed while rendering, never memoized; the chart is rebuilt for its localized axes.
+- **Pengaturan** is centered as one narrow column (title and groups together); a long email shortens with an ellipsis.
 - Checked with the browser: no script errors, numbers count up once and then stay calm through the 10-second price refreshes, smooth scrolling stops under an open dialog and is off on touch screens, the chart and chat pages and with *Reduce motion* (where nothing waits hidden either).

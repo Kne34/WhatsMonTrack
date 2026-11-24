@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useSyncExternalStore } from "react";
+import { flushSync } from "react-dom";
 import { EN } from "./i18n-en";
 
 /**
@@ -10,8 +11,10 @@ import { EN } from "./i18n-en";
  *
  *   tr("Hapus rekening {name}?", { name })  ->  "Delete account BCA?"
  *
- * The choice is kept in this browser (localStorage). Changing it re-mounts the app below
- * <LanguageProvider>, so every `tr()` call (also in plain functions) renders again in the new language.
+ * The choice is kept in this browser (localStorage). Changing it re-renders in place (no remount: data,
+ * scroll position and open state stay): the components at the top (AuthWrapper, Dashboard) subscribe with
+ * useLang(), so everything under them renders again, and memos holding translated text list `lang` in
+ * their dependencies.
  */
 export type Lang = "id" | "en";
 export const LANGS: { value: Lang; label: string; native: string }[] = [
@@ -41,8 +44,16 @@ export function setLang(lang: Lang) {
     if (lang === "id") localStorage.removeItem(LANG_STORAGE_KEY);
     else localStorage.setItem(LANG_STORAGE_KEY, lang);
   } catch { /* storage unavailable: applies to this visit only */ }
-  chosen = lang;
-  listeners.forEach((l) => l());
+  if (lang === chosen) return;
+  const apply = () => {
+    chosen = lang;
+    // Synchronously, so a view transition captures the new language
+    flushSync(() => listeners.forEach((l) => l()));
+  };
+  // A short cross-fade of the whole page where the browser can (Chrome, Edge, Safari 18), unless motion is reduced
+  const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+  if (doc.startViewTransition && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) doc.startViewTransition(apply);
+  else apply();
 }
 
 const subscribe = (listener: () => void) => {
@@ -86,5 +97,5 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
-  return <React.Fragment key={lang}>{children}</React.Fragment>;
+  return <>{children}</>;
 }

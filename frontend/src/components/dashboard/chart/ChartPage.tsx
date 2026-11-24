@@ -18,7 +18,7 @@ import { TOOLS, TOOL_GROUPS, TOOL_ICONS } from "./drawings";
 import { Avatar, Details, Watchlist, plain, signedPlain, techIntervalLabel } from "./SidePanel";
 import { useHistory, useProfile } from "./useMarketData";
 
-import { locale, tr } from "@/lib/i18n";
+import { locale, tr, useLang } from "@/lib/i18n";
 // ---------------------------------------------------------------- options
 
 const INTERVALS: { value: ChartInterval; title: string; seconds: number | null }[] = [
@@ -336,10 +336,9 @@ function Terminal({ holding, holdings, prices, onBack, onSelect, onTrade, onEdit
   }, [techHistory.data, convert, live]);
   const tech = useMemo(() => (techBars.length > 30 ? technicals(techBars) : null), [techBars]);
   const pivots = useMemo(() => classicPivots(techBars.at(-2)), [techBars]);
-  const facts = useMemo(
-    () => analysisFacts({ holding, live, pct: quote?.changePct ?? null, stats, daily: dailyBars, tech, techLabel: techIntervalLabel(techInterval), profileVolume: profile?.volume ?? null, currency, avgInDisplay }),
-    [holding, live, quote?.changePct, stats, dailyBars, tech, techInterval, profile?.volume, currency, avgInDisplay],
-  );
+  const lang = useLang();
+  // Plain sentences, cheap to build: not memoized, so they follow the language
+  const facts = analysisFacts({ holding, live, pct: quote?.changePct ?? null, stats, daily: dailyBars, tech, techLabel: techIntervalLabel(techInterval), profileVolume: profile?.volume ?? null, currency, avgInDisplay });
 
   // ---- view: a range button shows its span, an interval the latest bars
   const loaded = chart.data != null && chart.key === `${holding.id}:${interval}`;
@@ -518,6 +517,8 @@ function Terminal({ holding, holdings, prices, onBack, onSelect, onTrade, onEdit
           <div className="relative min-h-0 flex-1" role="region" aria-label={tr("Chart {symbol}, {intervalTitle}", { symbol: holding.symbol, intervalTitle: intervalTitle })}>
             {loaded && bars.length > 0 && (
               <ChartView
+                // The chart's axes are localized when it is created: a new one for another language
+                key={lang}
                 chartRef={chartRef} holding={holding} bars={bars} style={style} currency={currency} indicators={indicators}
                 lines={lines} hists={hists} avgPrice={showAvg ? avgInDisplay : null} intervalTitle={intervalTitle}
                 exchange={profile?.exchange ?? chart.data?.source ?? null} market={market} tool={tool} magnet={magnet} keepTool={keepTool}

@@ -47,6 +47,8 @@ const COPY: Record<Mode, { title: string; subtitle: string }> = {
 };
 
 export default function AuthWrapper() {
+  // Renders again (with everything below) when the language changes
+  useLang();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
   // True while a saved session is being restored: only then is the dashboard frame shown as a placeholder

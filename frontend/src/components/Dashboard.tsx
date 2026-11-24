@@ -18,7 +18,7 @@ import type { SessionUser } from "./AuthWrapper";
 import { PageSkeleton } from "./dashboard/skeletons";
 import { ALL_TABS, AddMenu, BottomTabs, MonthSwitcher, SettingsButton, Sidebar, setSidebarCollapsed, useSidebarCollapsed, type Tab } from "./dashboard/shared/Navigation";
 import SettingsView from "./dashboard/views/SettingsView";
-import { tr } from "@/lib/i18n";
+import { tr, useLang } from "@/lib/i18n";
 import { AnimatePresence, motion } from "motion/react";
 import { SmoothScrollProvider } from "./motion/SmoothScrollProvider";
 import { useReveal } from "./motion/useReveal";
@@ -64,6 +64,8 @@ const PRICES_REFRESH_MS = 10_000;
 
 export default function Dashboard({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   const router = useRouter();
+  // The language: everything below renders again when it changes (texts are computed while rendering, not memoized)
+  useLang();
   const searchParams = useSearchParams();
   useKeyboardOpen();
   const tabParam = searchParams.get("tab") as Tab | null;
@@ -253,10 +255,8 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
 
   const confirmedMonthly = useMemo(() => monthlyTxs.filter((t: ApiTx) => t.status === "CONFIRMED"), [monthlyTxs]);
   const reviewItems = useMemo(() => monthlyTxs.filter((t: ApiTx) => t.status === "NEEDS_REVIEW"), [monthlyTxs]);
-  const categories = useMemo(
-    () => categoryOptions([...monthlyTxs.map((t: ApiTx) => t.category), ...budgets.map((b) => b.categoryName)]),
-    [monthlyTxs, budgets],
-  );
+  // Not memoized: the labels follow the language
+  const categories = categoryOptions([...monthlyTxs.map((t: ApiTx) => t.category), ...budgets.map((b) => b.categoryName)]);
 
   // ---------- Actions (throwing lets dialogs show the error and stay open) ----------
 
@@ -552,7 +552,9 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
             {activeTab !== "settings" && <SettingsButton onClick={() => navigate("settings")} alert={settingsAlert} />}
           </div>
 
-          <main ref={mainRef} id="main" className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-8 md:pb-12">
+          <main ref={mainRef} id="main"
+            // Pengaturan is one narrow column: the page narrows with it, so title and groups stay centered together
+            className={cn("mx-auto w-full px-4 pt-6 pb-28 sm:px-6 md:pt-8 md:pb-12", activeTab === "settings" ? "max-w-2xl" : "max-w-6xl")}>
             {/* On phones the chat fills the screen like a messaging app, without the page title */}
             <header className={cn("mb-6 flex flex-wrap items-center justify-between gap-3", activeTab === "chat" && "max-md:hidden")}>
               {/* A large title, as at the top of an iOS screen */}

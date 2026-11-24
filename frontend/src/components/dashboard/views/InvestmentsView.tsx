@@ -72,7 +72,8 @@ interface Slice { key: string; label: string; value: number; pct: number; color:
 function Allocation({ rows, platforms, hidden, eye }: { rows: Row[]; platforms: string[]; hidden: boolean; eye: React.ReactNode }) {
   const [by, setBy] = useState<"type" | "platform">("type");
 
-  const slices = useMemo<Slice[]>(() => {
+  // Not memoized: the labels follow the language
+  const slices: Slice[] = (() => {
     const sums = new Map<string, number>();
     for (const { h, v } of rows) {
       if (v.valueIdr == null || v.valueIdr <= 0) continue;
@@ -103,7 +104,7 @@ function Allocation({ rows, platforms, hidden, eye }: { rows: Row[]; platforms: 
     }
     // Fixed order for asset classes; platforms by size
     return by === "type" ? list.sort((a, b) => ASSET_TYPES.indexOf(a.key as AssetType) - ASSET_TYPES.indexOf(b.key as AssetType)) : list.sort((a, b) => b.value - a.value);
-  }, [rows, by, platforms]);
+  })();
 
   return (
     <Card>
