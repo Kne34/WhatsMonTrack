@@ -50,7 +50,6 @@ export const EN: Record<string, string> = {
   "Sidebar ringkas": "Compact sidebar",
   "Hanya ikon, untuk layar laptop dan tablet. Bisa juga lewat tombol di atas sidebar.": "Icons only, on laptops and tablets. Also available from the button at the top of the sidebar.",
   "Nomor WhatsApp": "WhatsApp number",
-  "Belum dihubungkan": "Not linked",
   "Privasi": "Privacy",
   "Angka yang disembunyikan tampil sebagai Rp ••••••. Menampilkannya lagi meminta password akun.": "Hidden amounts show as Rp ••••••. Showing them again asks for your account password.",
   "Sembunyikan semua angka": "Hide all amounts",
