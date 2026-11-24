@@ -2,8 +2,10 @@
 
 import React from "react";
 import { Card, Skeleton } from "../common/ui";
-import type { Tab } from "./shared/Navigation";
-
+import { useSidebarCollapsed, type Tab } from "./shared/Navigation";
+import { cn } from "@/lib/utils";
+
+import { tr } from "@/lib/i18n";
 /**
  * Loading placeholders that mirror the real layout of each page, so nothing jumps when the data
  * arrives. The blocks are hidden from screen readers; the wrapper announces what is loading.
@@ -44,7 +46,7 @@ function ListRowsSkeleton({ rows }: { rows: number }) {
 
 export function HomeSkeleton() {
   return (
-    <Loading label="Memuat ringkasan" className="space-y-6">
+    <Loading label={tr("Memuat ringkasan")} className="space-y-6">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[0, 1, 2, 3].map((i) => (
           <Card key={i} className="p-4">
@@ -107,7 +109,7 @@ export function HomeSkeleton() {
 /** Rows of the transaction list; also used alone when only the day or page changes. */
 export function LedgerRowsSkeleton({ rows }: { rows: number }) {
   return (
-    <Loading label="Memuat transaksi">
+    <Loading label={tr("Memuat transaksi")}>
       <ul className="divide-y divide-border/70">
         {Array.from({ length: rows }, (_, i) => (
           <li key={i} className="flex items-center gap-4 px-5 py-3.5">
@@ -151,7 +153,7 @@ export function LedgerSkeleton() {
 
 export function InboxSkeleton() {
   return (
-    <Loading label="Memuat transaksi yang perlu ditinjau" className="space-y-4">
+    <Loading label={tr("Memuat transaksi yang perlu ditinjau")} className="space-y-4">
       <Skeleton className="h-4 w-80 max-w-full rounded-md" />
       {[0, 1].map((i) => (
         <Card key={i} className="p-0">
@@ -183,7 +185,7 @@ export function InboxSkeleton() {
 
 export function ChatSkeleton() {
   return (
-    <Loading label="Memuat chat" className="flex h-[calc(100dvh-15rem)] min-h-[420px] flex-col rounded-2xl border border-border/70 bg-card shadow-sm md:h-[calc(100dvh-11rem)]">
+    <Loading label={tr("Memuat chat")} className="flex h-[calc(100dvh-15rem)] min-h-[420px] flex-col rounded-2xl border border-border/70 bg-card shadow-sm md:h-[calc(100dvh-11rem)]">
       <div className="space-y-2 border-b border-border/70 px-5 py-3.5">
         <Skeleton className="h-4 w-32 rounded-md" />
         <Skeleton className="h-3 w-72 max-w-full rounded-md" />
@@ -224,15 +226,21 @@ export function AppShellSkeleton({ tab }: { tab: Tab }) {
       </div>
     );
   }
+  return <ShellSkeleton tab={tab} />;
+}
+
+/** Same widths as the real sidebar (icons only or with names), so nothing jumps when the app loads */
+function ShellSkeleton({ tab }: { tab: Tab }) {
+  const collapsed = useSidebarCollapsed("normal");
   return (
     <div className="min-h-screen bg-background">
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-black/[0.06] bg-[#F6F6F8] px-5 pt-6 md:flex dark:border-white/[0.08] dark:bg-[#1C1C1E]" aria-hidden>
-        <Skeleton className="h-6 w-36 rounded-md" />
-        <div className="mt-10 space-y-3">
-          {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-8 rounded-lg" />)}
+      <aside className={cn("fixed inset-y-0 left-0 hidden flex-col border-r border-black/[0.06] bg-[#F6F6F8] pt-4 md:flex dark:border-white/[0.08] dark:bg-[#1C1C1E]", collapsed ? "w-16 items-center" : "w-60 px-5")} aria-hidden>
+        <Skeleton className={collapsed ? "size-9 rounded-lg" : "h-6 w-36 rounded-md"} />
+        <div className={cn("mt-8 space-y-3", collapsed && "flex flex-col items-center")}>
+          {[0, 1, 2, 3].map((i) => <Skeleton key={i} className={collapsed ? "size-9 rounded-lg" : "h-8 rounded-lg"} />)}
         </div>
       </aside>
-      <div className="md:pl-60">
+      <div className={collapsed ? "md:pl-16" : "md:pl-60"}>
         <div className="flex h-[53px] items-center justify-between border-b border-border/70 bg-card px-4 md:hidden" aria-hidden>
           <Skeleton className="h-5 w-32 rounded-md" />
           <Skeleton className="size-8 rounded-lg" />

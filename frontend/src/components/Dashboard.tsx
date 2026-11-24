@@ -16,7 +16,9 @@ import { useKeyboardOpen } from "@/lib/useKeyboardOpen";
 import { filterParams, NO_FILTERS, type TxFilters } from "@/lib/txFilters";
 import type { SessionUser } from "./AuthWrapper";
 import { PageSkeleton } from "./dashboard/skeletons";
-import { AddMenu, BottomTabs, MobileAccountMenu, MonthSwitcher, NAV_ITEMS, Sidebar, type Tab } from "./dashboard/shared/Navigation";
+import { ALL_TABS, AddMenu, BottomTabs, MonthSwitcher, SettingsButton, Sidebar, setSidebarCollapsed, useSidebarCollapsed, type Tab } from "./dashboard/shared/Navigation";
+import SettingsView from "./dashboard/views/SettingsView";
+import { tr } from "@/lib/i18n";
 import HomeView from "./dashboard/views/HomeView";
 import LedgerView, { type LedgerTx } from "./dashboard/views/LedgerView";
 import DebtsView, { DEFAULT_DEBT_FILTERS, type DebtFilters } from "./dashboard/views/DebtsView";
@@ -50,7 +52,8 @@ type DialogState =
   | { kind: "link" }
   | { kind: "bot" };
 
-const PAGE_TITLES: Record<Tab, string> = { dashboard: "Dashboard", transactions: "Transaksi", debts: "Utang-piutang", investments: "Investasi", chart: "Chart", chat: "Chat", inbox: "Perlu ditinjau" };
+/** Indonesian sources, shown through tr() */
+const PAGE_TITLES: Record<Tab, string> = { dashboard: "Dashboard", transactions: "Transaksi", debts: "Utang-piutang", investments: "Investasi", chart: "Chart", chat: "Chat", inbox: "Perlu ditinjau", settings: "Pengaturan" };
 const REFRESH_MS = 15_000;
 /** Live prices on the Investasi page and in "Saldo total"; the server shares one 10-second cache between everyone */
 const PRICES_REFRESH_MS = 10_000;
@@ -60,7 +63,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   const searchParams = useSearchParams();
   useKeyboardOpen();
   const tabParam = searchParams.get("tab") as Tab | null;
-  const activeTab: Tab = NAV_ITEMS.some((n) => n.id === tabParam) ? (tabParam as Tab) : "dashboard";
+  const activeTab: Tab = tabParam && ALL_TABS.includes(tabParam) ? tabParam : "dashboard";
   const navigate = (tab: Tab) => router.push(`/?tab=${tab}`);
   /** The Chart page (like TradingView), its own item in the sidebar: /?tab=chart&id=<holding> (no id: the last one viewed) */
   const chartId = activeTab === "chart" ? searchParams.get("id") : null;
@@ -212,24 +215,24 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     await loadHoldings();
     // A new ticker needs its price
     if (!holding) loadPrices();
-    notify(holding ? `${holding.symbol} diperbarui` : `${input.symbol.toUpperCase()} ditambahkan`);
+    notify(holding ? tr("{symbol} diperbarui", { symbol: holding.symbol }) : tr("{toUpperCase} ditambahkan", { toUpperCase: input.symbol.toUpperCase() }));
   };
   const saveTrade = (holding: Holding) => async (input: Parameters<typeof addTrade>[1]) => {
     await addTrade(holding.id, input);
     await loadHoldings();
-    notify(`${input.side === "BUY" ? "Pembelian" : "Penjualan"} ${holding.symbol} dicatat`);
+    notify(tr("{v} {symbol} dicatat", { v: input.side === "BUY" ? tr("Pembelian") : tr("Penjualan"), symbol: holding.symbol }));
   };
   const askDeleteHolding = (holding: Holding) =>
     setDialog({
       kind: "confirm",
-      title: `Hapus ${holding.symbol} di ${holding.platform}?`,
-      description: "Aset ini dan seluruh riwayat beli/jualnya dihapus. Saldo rekening tidak berubah.",
-      confirmLabel: "Hapus aset",
+      title: tr("Hapus {symbol} di {platform}?", { symbol: holding.symbol, platform: holding.platform }),
+      description: tr("Aset ini dan seluruh riwayat beli/jualnya dihapus. Saldo rekening tidak berubah."),
+      confirmLabel: tr("Hapus aset"),
       action: async () => {
         await deleteHolding(holding.id);
         if (chartId === holding.id) router.replace("/?tab=chart");
         await loadHoldings();
-        notify(`${holding.symbol} dihapus`);
+        notify(tr("{symbol} dihapus", { symbol: holding.symbol }));
       },
     });
 
@@ -257,7 +260,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     if (account) await updateAccount(account.id, { name, balance });
     else await createAccount(name, "BANK", balance);
     await loadData();
-    notify(account ? "Rekening diperbarui" : "Rekening ditambahkan");
+    notify(account ? tr("Rekening diperbarui") : tr("Rekening ditambahkan"));
   };
 
   /** Asks first; an account that transactions or Utang-piutang records use can only go together with all of them. */
@@ -268,36 +271,36 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   ) => {
     if (transactionCount > 0 || debtCount > 0) {
       const parts = [
-        transactionCount > 0 ? `${transactionCount} transaksi` : null,
-        debtCount > 0 ? `${debtCount} catatan utang-piutang` : null,
-      ].filter(Boolean).join(" dan ");
+        transactionCount > 0 ? tr("{transactionCount} transaksi", { transactionCount: transactionCount }) : null,
+        debtCount > 0 ? tr("{debtCount} catatan utang-piutang", { debtCount: debtCount }) : null,
+      ].filter(Boolean).join(tr(" dan "));
       setDialog({
         kind: "confirm",
-        title: `Hapus rekening ${account.name} beserta ${parts}?`,
+        title: tr("Hapus rekening {name} beserta {parts}?", { name: account.name, parts: parts }),
         description: [
-          `Rekening ini dipakai ${parts}. Semuanya ikut dihapus.`,
-          transactionCount > 0 ? "Untuk transfer dari atau ke rekening lain, saldo rekening tersebut ikut dikembalikan." : "",
-          debtCount > 0 ? "Catatan utang-piutang dihapus utuh: pembayaran yang masuk ke rekening lain juga dibatalkan dari saldonya, dan pengeluaran yang sudah dicatat ke laporan ikut hilang." : "",
-          "Tindakan ini tidak bisa dibatalkan.",
+          tr("Rekening ini dipakai {parts}. Semuanya ikut dihapus.", { parts: parts }),
+          transactionCount > 0 ? tr("Untuk transfer dari atau ke rekening lain, saldo rekening tersebut ikut dikembalikan.") : "",
+          debtCount > 0 ? tr("Catatan utang-piutang dihapus utuh: pembayaran yang masuk ke rekening lain juga dibatalkan dari saldonya, dan pengeluaran yang sudah dicatat ke laporan ikut hilang.") : "",
+          tr("Tindakan ini tidak bisa dibatalkan."),
         ].filter(Boolean).join(" "),
-        confirmLabel: `Hapus rekening & ${parts}`,
+        confirmLabel: tr("Hapus rekening & {parts}", { parts: parts }),
         action: async () => {
           const res = await deleteAccount(account.id, true);
           await Promise.all([loadData(), res.deletedDebts > 0 ? loadDebts() : null]);
           const done = [
-            res.deletedTransactions > 0 ? `${res.deletedTransactions} transaksi` : null,
-            res.deletedDebts > 0 ? `${res.deletedDebts} catatan utang-piutang` : null,
-          ].filter(Boolean).join(" dan ");
-          notify(done ? `Rekening ${account.name} dan ${done} dihapus` : `Rekening ${account.name} dihapus`);
+            res.deletedTransactions > 0 ? tr("{deletedTransactions} transaksi", { deletedTransactions: res.deletedTransactions }) : null,
+            res.deletedDebts > 0 ? tr("{deletedDebts} catatan utang-piutang", { deletedDebts: res.deletedDebts }) : null,
+          ].filter(Boolean).join(tr(" dan "));
+          notify(done ? tr("Rekening {name} dan {done} dihapus", { name: account.name, done: done }) : tr("Rekening {name} dihapus", { name: account.name }));
         },
       });
       return;
     }
     setDialog({
       kind: "confirm",
-      title: `Hapus rekening ${account.name}?`,
-      description: "Rekening ini belum dipakai transaksi apa pun.",
-      confirmLabel: "Hapus rekening",
+      title: tr("Hapus rekening {name}?", { name: account.name }),
+      description: tr("Rekening ini belum dipakai transaksi apa pun."),
+      confirmLabel: tr("Hapus rekening"),
       action: async () => {
         try {
           await deleteAccount(account.id);
@@ -311,7 +314,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
           throw err;
         }
         await loadData();
-        notify("Rekening dihapus");
+        notify(tr("Rekening dihapus"));
       },
     });
   };
@@ -354,50 +357,50 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     } else {
       await createDebt(input);
     }
-    await afterDebtChange(record ? "Catatan diperbarui" : input.type === "RECEIVABLE" ? "Talangan dicatat, saldo sudah dikurangi" : "Utang dicatat");
+    await afterDebtChange(record ? tr("Catatan diperbarui") : input.type === "RECEIVABLE" ? tr("Talangan dicatat, saldo sudah dikurangi") : tr("Utang dicatat"));
   };
   const savePayment = (record: DebtRecord, participant: DebtParticipant) => async (input: { amount: number; accountId: string; paidAt: string }) => {
     await payDebtParticipant(record.id, participant.id, input);
-    await afterDebtChange(`${participant.personName}: ${formatRupiah(input.amount)} dicatat`);
+    await afterDebtChange(tr("{personName}: {amount} dicatat", { personName: participant.personName, amount: formatRupiah(input.amount) }));
   };
   const unpay = (record: DebtRecord, participant: DebtParticipant) =>
     setDialog({
       kind: "confirm",
-      title: `Batalkan pembayaran ${participant.personName}?`,
-      description: `${formatRupiah(participant.paidAmount)} dikembalikan dari saldo ${participant.paidAccount?.name ?? "rekeningnya"}.`,
-      confirmLabel: "Batalkan pembayaran",
+      title: tr("Batalkan pembayaran {personName}?", { personName: participant.personName }),
+      description: tr("{paidAmount} dikembalikan dari saldo {v}.", { paidAmount: formatRupiah(participant.paidAmount), v: participant.paidAccount?.name ?? tr("rekeningnya") }),
+      confirmLabel: tr("Batalkan pembayaran"),
       action: async () => {
         await unpayDebtParticipant(record.id, participant.id);
-        await afterDebtChange(`Pembayaran ${participant.personName} dibatalkan`);
+        await afterDebtChange(tr("Pembayaran {personName} dibatalkan", { personName: participant.personName }));
       },
     });
   const askDeleteDebt = (record: DebtRecord) =>
     setDialog({
       kind: "confirm",
-      title: `Hapus "${record.title}"?`,
+      title: tr("Hapus \"{title}\"?", { title: record.title }),
       description: record.status === "OPEN"
-        ? "Semua pergerakan saldonya dibatalkan: talangan dan pembayaran dikembalikan ke rekening masing-masing."
-        : "Semua pergerakan saldonya dibatalkan: talangan dan pembayaran dikembalikan ke rekening masing-masing, dan pengeluaran atau pemasukan yang dicatat saat diselesaikan ikut dihapus dari laporan.",
-      confirmLabel: "Hapus catatan",
+        ? tr("Semua pergerakan saldonya dibatalkan: talangan dan pembayaran dikembalikan ke rekening masing-masing.")
+        : tr("Semua pergerakan saldonya dibatalkan: talangan dan pembayaran dikembalikan ke rekening masing-masing, dan pengeluaran atau pemasukan yang dicatat saat diselesaikan ikut dihapus dari laporan."),
+      confirmLabel: tr("Hapus catatan"),
       action: async () => {
         await deleteDebt(record.id);
-        await afterDebtChange("Catatan dihapus, saldo dikembalikan");
+        await afterDebtChange(tr("Catatan dihapus, saldo dikembalikan"));
       },
     });
   const settle = (record: DebtRecord) => async (input: { recordExcessAsIncome?: boolean; recordExpense?: boolean }) => {
     const done = await settleDebt(record.id, input);
-    await afterDebtChange(done.linkedTransactionId ? "Selesai, dicatat ke laporan" : "Selesai");
+    await afterDebtChange(done.linkedTransactionId ? tr("Selesai, dicatat ke laporan") : tr("Selesai"));
   };
   const askReopen = (record: DebtRecord) =>
     setDialog({
       kind: "confirm",
-      title: `Buka kembali "${record.title}"?`,
-      description: "Pengeluaran/pemasukan yang dicatat saat selesai dihapus dari laporan. Saldo rekening tidak berubah.",
-      confirmLabel: "Buka kembali",
+      title: tr("Buka kembali \"{title}\"?", { title: record.title }),
+      description: tr("Pengeluaran/pemasukan yang dicatat saat selesai dihapus dari laporan. Saldo rekening tidak berubah."),
+      confirmLabel: tr("Buka kembali"),
       destructive: false,
       action: async () => {
         await reopenDebt(record.id);
-        await afterDebtChange("Catatan dibuka kembali");
+        await afterDebtChange(tr("Catatan dibuka kembali"));
       },
     });
 
@@ -405,32 +408,32 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     if (tx) await updateTransaction(tx.id, data);
     else await createTransaction(data);
     await loadData();
-    notify(tx ? "Transaksi diperbarui" : "Transaksi ditambahkan");
+    notify(tx ? tr("Transaksi diperbarui") : tr("Transaksi ditambahkan"));
   };
 
   const askDeleteTransaction = (tx: { id: string; amount: number; category: string; subcategory?: string | null }) =>
     setDialog({
       kind: "confirm",
-      title: "Hapus transaksi?",
-      description: `${tx.subcategory || categoryLabel(tx.category)} sebesar ${formatRupiah(tx.amount)} akan dihapus dan saldo rekening dikembalikan.`,
-      confirmLabel: "Hapus",
+      title: tr("Hapus transaksi?"),
+      description: tr("{v} sebesar {amount} akan dihapus dan saldo rekening dikembalikan.", { v: tx.subcategory || categoryLabel(tx.category), amount: formatRupiah(tx.amount) }),
+      confirmLabel: tr("Hapus"),
       action: async () => {
         await deleteTransaction(tx.id);
         await loadData();
-        notify("Transaksi dihapus");
+        notify(tr("Transaksi dihapus"));
       },
     });
 
   const askDeleteAllReview = () =>
     setDialog({
       kind: "confirm",
-      title: `Hapus ${reviewItems.length} transaksi yang perlu ditinjau?`,
-      description: "Transaksi ini belum memengaruhi saldo. Tindakan ini tidak bisa dibatalkan.",
-      confirmLabel: "Hapus semua",
+      title: tr("Hapus {length} transaksi yang perlu ditinjau?", { length: reviewItems.length }),
+      description: tr("Transaksi ini belum memengaruhi saldo. Tindakan ini tidak bisa dibatalkan."),
+      confirmLabel: tr("Hapus semua"),
       action: async () => {
         for (const t of reviewItems) await deleteTransaction(t.id);
         await loadData();
-        notify("Semua transaksi yang perlu ditinjau dihapus");
+        notify(tr("Semua transaksi yang perlu ditinjau dihapus"));
       },
     });
 
@@ -438,28 +441,28 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     try {
       await confirmTransaction(tx.id);
       await loadData();
-      notify("Transaksi dikonfirmasi, saldo diperbarui");
+      notify(tr("Transaksi dikonfirmasi, saldo diperbarui"));
     } catch {
-      notify("Gagal mengonfirmasi. Coba lagi.");
+      notify(tr("Gagal mengonfirmasi. Coba lagi."));
     }
   };
 
   const saveBudget = async (category: string, limitValue: number) => {
     await setBudget(category, limitValue);
     await loadData();
-    notify("Anggaran disimpan");
+    notify(tr("Anggaran disimpan"));
   };
 
   const askDeleteBudget = (budget: BudgetLike) =>
     setDialog({
       kind: "confirm",
-      title: `Hapus anggaran ${categoryLabel(budget.categoryName)}?`,
-      description: "Transaksi tidak ikut terhapus.",
-      confirmLabel: "Hapus anggaran",
+      title: tr("Hapus anggaran {categoryName}?", { categoryName: categoryLabel(budget.categoryName) }),
+      description: tr("Transaksi tidak ikut terhapus."),
+      confirmLabel: tr("Hapus anggaran"),
       action: async () => {
         await deleteBudget(budget.id);
         await loadData();
-        notify("Anggaran dihapus");
+        notify(tr("Anggaran dihapus"));
       },
     });
 
@@ -473,6 +476,22 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     onBotClick: () => setDialog({ kind: "bot" }),
     onLogout,
   };
+
+  // The sidebar collapses to icons or expands with names; the chart page remembers its own choice
+  const sidebarKind = activeTab === "chart" ? "chart" : "normal";
+  const sidebarCollapsed = useSidebarCollapsed(sidebarKind);
+  const contentPad = sidebarCollapsed ? "md:pl-16" : "md:pl-60";
+  const settingsAlert = statusProps.isAdmin && (statusProps.botConnected === false || statusProps.botStopped) ? tr("Bot WhatsApp offline") : null;
+  const sidebar = (
+    <Sidebar
+      active={activeTab}
+      onNavigate={navigate}
+      reviewCount={reviewItems.length}
+      collapsed={sidebarCollapsed}
+      onToggle={() => setSidebarCollapsed(sidebarKind, !sidebarCollapsed)}
+      settingsAlert={settingsAlert}
+    />
+  );
 
   /** Pages that show one month at a time (with the month switcher) */
   const monthly = activeTab === "dashboard" || activeTab === "transactions" || activeTab === "inbox";
@@ -490,10 +509,10 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     // so nothing behind the full-screen chat can scroll the top bar away
     <div className={cn("min-h-screen bg-background text-foreground", activeTab === "chat" && "max-md:h-dvh max-md:min-h-0 max-md:overflow-hidden")}>
       {activeTab === "chart" ? (
-        // The chart needs the width: the sidebar shrinks to its icons
+        // The chart needs the width: the sidebar starts as icons here
         <>
-          <Sidebar collapsed active={activeTab} onNavigate={navigate} reviewCount={reviewItems.length} {...statusProps} />
-          <div className="md:pl-16">
+          {sidebar}
+          <div className={cn("transition-[padding] duration-200 motion-reduce:transition-none", contentPad)}>
             <ChartPage
               holdings={holdings}
               prices={prices}
@@ -510,47 +529,51 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       ) : (
         <>
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:px-3 focus:py-2 focus:shadow">
-          Lewati ke konten
+          {tr("Lewati ke konten")}
         </a>
 
-        <Sidebar active={activeTab} onNavigate={navigate} reviewCount={reviewItems.length} {...statusProps} />
+        {sidebar}
 
-        <div className="md:pl-60">
+        <div className={cn("transition-[padding] duration-200 motion-reduce:transition-none", contentPad)}>
           {/* Phone top bar */}
           <div className="sticky top-0 z-20 flex h-12 items-center justify-between border-b border-black/[0.08] bg-[#F9F9F9]/80 px-4 backdrop-blur-2xl backdrop-saturate-150 md:hidden dark:border-white/[0.08] dark:bg-[#1C1C1E]/80">
-            <span className="font-heading text-[17px] font-semibold tracking-tight">WhatsMonTrack</span>
-            <MobileAccountMenu {...statusProps} />
+            <span className="font-heading text-[17px] font-semibold tracking-tight">{tr("WhatsMonTrack")}</span>
+            {activeTab !== "settings" && <SettingsButton onClick={() => navigate("settings")} alert={settingsAlert} />}
           </div>
 
           <main id="main" className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-8 md:pb-12">
             {/* On phones the chat fills the screen like a messaging app, without the page title */}
             <header className={cn("mb-6 flex flex-wrap items-center justify-between gap-3", activeTab === "chat" && "max-md:hidden")}>
               {/* A large title, as at the top of an iOS screen */}
-              <h1 className="font-heading text-[28px] font-bold leading-tight tracking-[-0.02em] md:text-[32px]">{PAGE_TITLES[activeTab]}</h1>
+              <h1 className="font-heading text-[28px] font-bold leading-tight tracking-[-0.02em] md:text-[32px]">{tr(PAGE_TITLES[activeTab])}</h1>
               {/* Phones: month switcher left, add button right (its menu opens leftwards and stays on screen) */}
               {/* Pages not tied to a month have no switcher: the add button then sits next to the title */}
-              <div className={cn("flex items-center justify-between gap-2 sm:w-auto sm:justify-end", monthly && "w-full")}>
-                {monthly && <MonthSwitcher month={month} year={year} onChange={changeMonth} />}
-                <AddMenu {...addActions} />
-              </div>
+              {activeTab !== "settings" && (
+                <div className={cn("flex items-center justify-between gap-2 sm:w-auto sm:justify-end", monthly && "w-full")}>
+                  {monthly && <MonthSwitcher month={month} year={year} onChange={changeMonth} />}
+                  <AddMenu {...addActions} />
+                </div>
+              )}
             </header>
 
             {loadError && loaded && (
               <div role="alert" className="mb-6 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                Gagal memuat data terbaru. Kami akan mencoba lagi otomatis.
+                {tr("Gagal memuat data terbaru. Kami akan mencoba lagi otomatis.")}
               </div>
             )}
 
-            {activeTab === "chat" ? (
+            {activeTab === "settings" ? (
+              <SettingsView {...statusProps} notify={notify} />
+            ) : activeTab === "chat" ? (
               // Loads its own history; recording refreshes balances and the review badge
               <ChatView
                 onRecorded={loadData}
                 onAskClear={(clear) =>
                   setDialog({
                     kind: "confirm",
-                    title: "Hapus riwayat chat?",
-                    description: "Semua pesan di chat ini dihapus. Transaksi yang sudah tercatat tetap ada.",
-                    confirmLabel: "Hapus riwayat",
+                    title: tr("Hapus riwayat chat?"),
+                    description: tr("Semua pesan di chat ini dihapus. Transaksi yang sudah tercatat tetap ada."),
+                    confirmLabel: tr("Hapus riwayat"),
                     action: async () => {
                       await clear();
                       notify("Riwayat chat dihapus");
@@ -639,7 +662,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       )}
 
       {/* Feedback after actions */}
-      <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4 md:bottom-6 md:pl-60">
+      <div aria-live="polite" className={cn("pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4 md:bottom-6", contentPad)}>
         {toast && (
           <div role="status" className="rounded-xl bg-foreground px-4 py-2.5 text-sm text-background shadow-lg">{toast}</div>
         )}

@@ -6,9 +6,10 @@ import { forgotPassword, getProfile, login, register, resetPassword, verifyOtp }
 import Dashboard from './Dashboard';
 import { Alert, Button, PasswordField, TextField } from './common/ui';
 import { AppShellSkeleton } from './dashboard/skeletons';
-import { NAV_ITEMS, type Tab } from './dashboard/shared/Navigation';
+import { ALL_TABS, type Tab } from './dashboard/shared/Navigation';
 import { ThemeSwitcher } from './theme';
-
+
+import { setLang, tr, useLang } from "@/lib/i18n";
 export interface SessionUser {
   id: string;
   email: string;
@@ -34,15 +35,15 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function errorMessage(err: unknown): string {
   const msg = (err as { response?: { data?: { message?: string | string[] } } })?.response?.data?.message;
   if (Array.isArray(msg)) return msg.join('. ');
-  return msg || 'Tidak dapat terhubung ke server. Periksa koneksi Anda.';
+  return msg || tr("Tidak dapat terhubung ke server. Periksa koneksi Anda.");
 }
 
 const COPY: Record<Mode, { title: string; subtitle: string }> = {
-  LOGIN: { title: 'Masuk', subtitle: 'Lanjutkan mencatat keuangan Anda.' },
-  REGISTER: { title: 'Buat akun', subtitle: 'Catat pemasukan dan pengeluaran cukup lewat chat WhatsApp.' },
-  VERIFY: { title: 'Verifikasi email', subtitle: '' },
-  FORGOT: { title: 'Lupa password', subtitle: 'Masukkan email akun Anda. Kami akan mengirim kode untuk membuat password baru.' },
-  RESET: { title: 'Buat password baru', subtitle: '' },
+  LOGIN: { get title() { return tr("Masuk"); }, get subtitle() { return tr("Lanjutkan mencatat keuangan Anda."); } },
+  REGISTER: { get title() { return tr("Buat akun"); }, get subtitle() { return tr("Catat pemasukan dan pengeluaran cukup lewat chat WhatsApp."); } },
+  VERIFY: { get title() { return tr("Verifikasi email"); }, subtitle: '' },
+  FORGOT: { get title() { return tr("Lupa password"); }, get subtitle() { return tr("Masukkan email akun Anda. Kami akan mengirim kode untuk membuat password baru."); } },
+  RESET: { get title() { return tr("Buat password baru"); }, subtitle: '' },
 };
 
 export default function AuthWrapper() {
@@ -51,7 +52,7 @@ export default function AuthWrapper() {
   // True while a saved session is being restored: only then is the dashboard frame shown as a placeholder
   const [restoring, setRestoring] = useState(false);
   const tabParam = useSearchParams().get('tab');
-  const tab: Tab = NAV_ITEMS.find((n) => n.id === tabParam)?.id ?? 'dashboard';
+  const tab: Tab = ALL_TABS.find((id) => id === tabParam) ?? 'dashboard';
   const [mode, setMode] = useState<Mode>('LOGIN');
 
   const [email, setEmail] = useState('');
@@ -108,10 +109,10 @@ export default function AuthWrapper() {
   /** Client-side checks so obvious mistakes are shown next to the field, before a round trip. */
   const validate = (fields: { email?: boolean; password?: 'any' | 'new'; code?: boolean }) => {
     const errs: typeof fieldErrors = {};
-    if (fields.email && !EMAIL_RE.test(email.trim())) errs.email = 'Masukkan alamat email yang valid.';
-    if (fields.password === 'any' && !password) errs.password = 'Masukkan password Anda.';
-    if (fields.password === 'new' && password.length < 8) errs.password = 'Password minimal 8 karakter.';
-    if (fields.code && !/^\d{6}$/.test(code)) errs.code = 'Masukkan 6 digit kode.';
+    if (fields.email && !EMAIL_RE.test(email.trim())) errs.email = tr("Masukkan alamat email yang valid.");
+    if (fields.password === 'any' && !password) errs.password = tr("Masukkan password Anda.");
+    if (fields.password === 'new' && password.length < 8) errs.password = tr("Password minimal 8 karakter.");
+    if (fields.code && !/^\d{6}$/.test(code)) errs.code = tr("Masukkan 6 digit kode.");
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -135,7 +136,7 @@ export default function AuthWrapper() {
     run(async () => {
       const res = await login({ email: email.trim(), password, timeZone: browserTimeZone() });
       if (res.success) return signedIn(res.token);
-      setError(res.message || 'Email atau password salah.');
+      setError(res.message || tr("Email atau password salah."));
       setNeedsVerification(res.reason === 'EMAIL_NOT_VERIFIED');
     });
   };
@@ -143,12 +144,12 @@ export default function AuthWrapper() {
   const sendVerificationCode = () =>
     run(async () => {
       const res = await register({ email: email.trim(), password, timeZone: browserTimeZone() });
-      if (!res.success) return setError(res.message || 'Gagal mengirim kode.');
+      if (!res.success) return setError(res.message || tr("Gagal mengirim kode."));
       setMode('VERIFY');
       setFieldErrors({});
       setNeedsVerification(false);
       setCode('');
-      setNotice(`Kode dikirim ke ${email.trim()}. Cek juga folder Spam.`);
+      setNotice(tr("Kode dikirim ke {email}. Cek juga folder Spam.", { email: email.trim() }));
       setResendIn(RESEND_COOLDOWN_SECONDS);
     });
 
@@ -162,7 +163,7 @@ export default function AuthWrapper() {
     run(async () => {
       const res = await verifyOtp({ email: email.trim(), otpCode: value });
       if (res.success) return signedIn(res.token);
-      setError(res.message || 'Kode salah.');
+      setError(res.message || tr("Kode salah."));
     });
 
   const handleVerify = (e: React.FormEvent) => {
@@ -173,12 +174,12 @@ export default function AuthWrapper() {
   const sendResetCode = () =>
     run(async () => {
       const res = await forgotPassword(email.trim());
-      if (!res.success) return setError(res.message || 'Gagal mengirim kode.');
+      if (!res.success) return setError(res.message || tr("Gagal mengirim kode."));
       setMode('RESET');
       setFieldErrors({});
       setCode('');
       setPassword('');
-      setNotice(res.message || 'Jika email terdaftar, kode reset telah dikirim.');
+      setNotice(res.message || tr("Jika email terdaftar, kode reset telah dikirim."));
       setResendIn(RESEND_COOLDOWN_SECONDS);
     });
 
@@ -193,7 +194,7 @@ export default function AuthWrapper() {
     run(async () => {
       const res = await resetPassword({ email: email.trim(), otpCode: code, password });
       if (res.success) return signedIn(res.token);
-      setError(res.message || 'Kode salah.');
+      setError(res.message || tr("Kode salah."));
     });
   };
 
@@ -215,7 +216,7 @@ export default function AuthWrapper() {
 
   const codeField = (onComplete?: (value: string) => void) => (
     <TextField
-      label="Kode verifikasi"
+      label={tr("Kode verifikasi")}
       name="one-time-code"
       inputMode="numeric"
       autoComplete="one-time-code"
@@ -223,7 +224,7 @@ export default function AuthWrapper() {
       maxLength={6}
       value={code}
       error={fieldErrors.code}
-      hint={`Kode 6 digit yang dikirim ke ${email.trim()}`}
+      hint={tr("Kode 6 digit yang dikirim ke {email}", { email: email.trim() })}
       onChange={(e) => {
         const value = e.target.value.replace(/\D/g, '').slice(0, 6);
         setCode(value);
@@ -236,7 +237,7 @@ export default function AuthWrapper() {
 
   const resendButton = (onResend: () => void) => (
     <Button variant="ghost" size="sm" onClick={onResend} disabled={resendIn > 0 || isSubmitting}>
-      {resendIn > 0 ? `Kirim ulang dalam ${resendIn} dtk` : 'Kirim ulang kode'}
+      {resendIn > 0 ? tr("Kirim ulang dalam {resendIn} dtk", { resendIn: resendIn }) : tr("Kirim ulang kode")}
     </Button>
   );
 
@@ -248,8 +249,11 @@ export default function AuthWrapper() {
       {/* Content sits near the top (not vertically centered) so mobile keyboards don't cover the button */}
       <div className="mx-auto w-full max-w-sm px-4 pt-14 pb-12 sm:pt-24">
         <div className="mb-8 flex items-center justify-between gap-4">
-          <p className="font-heading text-lg font-semibold tracking-tight">WhatsMonTrack</p>
-          <ThemeSwitcher compact />
+          <p className="font-heading text-lg font-semibold tracking-tight">{tr("WhatsMonTrack")}</p>
+          <div className="flex items-center gap-2">
+            <LanguageToggle />
+            <ThemeSwitcher compact />
+          </div>
         </div>
 
         <h1 className="font-heading text-2xl font-semibold tracking-tight">{title}</h1>
@@ -264,39 +268,39 @@ export default function AuthWrapper() {
               {needsVerification && (
                 <div className="-mt-1 flex flex-wrap gap-2">
                   <Button variant="secondary" size="sm" onClick={sendVerificationCode} loading={isSubmitting}>
-                    Kirim kode verifikasi
+                    {tr("Kirim kode verifikasi")}
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => go('VERIFY')}>
-                    Sudah punya kode
+                    {tr("Sudah punya kode")}
                   </Button>
                 </div>
               )}
-              <TextField label="Email" type="email" name="email" autoComplete="username" required
+              <TextField label={tr("Email")} type="email" name="email" autoComplete="username" required
                 value={email} onChange={(e) => setEmail(e.target.value)} error={fieldErrors.email} />
               <div>
-                <PasswordField label="Password" name="password" autoComplete="current-password" required
+                <PasswordField label={tr("Password")} name="password" autoComplete="current-password" required
                   value={password} onChange={(e) => setPassword(e.target.value)} error={fieldErrors.password} />
                 <div className="mt-2 text-right">
                   <button type="button" onClick={() => go('FORGOT')} className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline">
-                    Lupa password?
+                    {tr("Lupa password?")}
                   </button>
                 </div>
               </div>
-              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>Masuk</Button>
+              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>{tr("Masuk")}</Button>
             </form>
           )}
 
           {mode === 'REGISTER' && (
             <form onSubmit={handleRegister} noValidate className="space-y-4">
-              <TextField label="Email" type="email" name="email" autoComplete="username" required
+              <TextField label={tr("Email")} type="email" name="email" autoComplete="username" required
                 value={email} onChange={(e) => setEmail(e.target.value)} error={fieldErrors.email}
-                hint="Kami kirim kode verifikasi ke email ini." />
-              <PasswordField label="Password" name="new-password" autoComplete="new-password" required minLength={8}
+                hint={tr("Kami kirim kode verifikasi ke email ini.")} />
+              <PasswordField label={tr("Password")} name="new-password" autoComplete="new-password" required minLength={8}
                 value={password} onChange={(e) => setPassword(e.target.value)} error={fieldErrors.password}
-                hint="Minimal 8 karakter." />
-              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>Buat akun</Button>
+                hint={tr("Minimal 8 karakter.")} />
+              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>{tr("Buat akun")}</Button>
               <p className="text-xs text-muted-foreground">
-                Nomor WhatsApp dihubungkan setelah masuk, dari dashboard.
+                {tr("Nomor WhatsApp dihubungkan setelah masuk, dari dashboard.")}
               </p>
             </form>
           )}
@@ -304,19 +308,19 @@ export default function AuthWrapper() {
           {mode === 'VERIFY' && (
             <form onSubmit={handleVerify} noValidate className="space-y-4">
               {codeField(submitVerify)}
-              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>Verifikasi</Button>
+              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>{tr("Verifikasi")}</Button>
               <div className="flex items-center justify-between">
                 {resendButton(sendVerificationCode)}
-                <Button variant="ghost" size="sm" onClick={() => go('REGISTER')}>Ganti email</Button>
+                <Button variant="ghost" size="sm" onClick={() => go('REGISTER')}>{tr("Ganti email")}</Button>
               </div>
             </form>
           )}
 
           {mode === 'FORGOT' && (
             <form onSubmit={handleForgot} noValidate className="space-y-4">
-              <TextField label="Email" type="email" name="email" autoComplete="username" required autoFocus
+              <TextField label={tr("Email")} type="email" name="email" autoComplete="username" required autoFocus
                 value={email} onChange={(e) => setEmail(e.target.value)} error={fieldErrors.email} />
-              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>Kirim kode</Button>
+              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>{tr("Kirim kode")}</Button>
             </form>
           )}
 
@@ -325,13 +329,13 @@ export default function AuthWrapper() {
               {/* Lets password managers save the new password under the right account (web.dev) */}
               <input type="email" name="email" autoComplete="username" value={email} readOnly hidden />
               {codeField()}
-              <PasswordField label="Password baru" name="new-password" autoComplete="new-password" required minLength={8}
+              <PasswordField label={tr("Password baru")} name="new-password" autoComplete="new-password" required minLength={8}
                 value={password} onChange={(e) => setPassword(e.target.value)} error={fieldErrors.password}
-                hint="Minimal 8 karakter." />
-              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>Simpan password baru</Button>
+                hint={tr("Minimal 8 karakter.")} />
+              <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>{tr("Simpan password baru")}</Button>
               <div className="flex items-center justify-between">
                 {resendButton(sendResetCode)}
-                <Button variant="ghost" size="sm" onClick={() => go('FORGOT')}>Ganti email</Button>
+                <Button variant="ghost" size="sm" onClick={() => go('FORGOT')}>{tr("Ganti email")}</Button>
               </div>
             </form>
           )}
@@ -339,16 +343,29 @@ export default function AuthWrapper() {
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
           {mode === 'LOGIN' && (
-            <>Belum punya akun? <button type="button" onClick={() => go('REGISTER')} className={linkClass}>Buat akun</button></>
+            <>{tr("Belum punya akun?")} <button type="button" onClick={() => go('REGISTER')} className={linkClass}>{tr("Buat akun")}</button></>
           )}
           {mode === 'REGISTER' && (
-            <>Sudah punya akun? <button type="button" onClick={() => go('LOGIN')} className={linkClass}>Masuk</button></>
+            <>{tr("Sudah punya akun?")} <button type="button" onClick={() => go('LOGIN')} className={linkClass}>{tr("Masuk")}</button></>
           )}
           {(mode === 'VERIFY' || mode === 'FORGOT' || mode === 'RESET') && (
-            <button type="button" onClick={() => go('LOGIN')} className={linkClass}>Kembali ke halaman masuk</button>
+            <button type="button" onClick={() => go('LOGIN')} className={linkClass}>{tr("Kembali ke halaman masuk")}</button>
           )}
         </p>
       </div>
     </div>
+  );
+}
+
+/** Before signing in, the language can be switched here too (afterwards: Pengaturan) */
+function LanguageToggle() {
+  const lang = useLang();
+  const next = lang === "en" ? "id" : "en";
+  return (
+    <button type="button" onClick={() => setLang(next)}
+      aria-label={next === "en" ? "Switch to English" : "Ganti ke Bahasa Indonesia"} lang={next}
+      className="h-8 rounded-lg bg-muted px-2.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#0071E3]/45">
+      {next === "en" ? "EN" : "ID"}
+    </button>
   );
 }

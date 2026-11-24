@@ -10,7 +10,8 @@ import React, { useEffect, useId, useRef, useState } from "react";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Select, menuSurface } from "./select";
-
+
+import { tr } from "@/lib/i18n";
 export { Select } from "./select";
 
 // ---------- Buttons ----------
@@ -170,7 +171,7 @@ export function PasswordField(props: Omit<TextFieldProps, "type" | "trailing">) 
       type={visible ? "text" : "password"}
       trailing={
         <IconButton
-          label={visible ? "Sembunyikan password" : "Tampilkan password"}
+          label={visible ? tr("Sembunyikan password") : tr("Tampilkan password")}
           aria-pressed={visible}
           onClick={() => setVisible((v) => !v)}
         >

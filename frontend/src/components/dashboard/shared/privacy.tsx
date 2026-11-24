@@ -4,23 +4,24 @@ import React, { useEffect, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { IconButton } from "../../common/ui";
 import { UnlockDialog } from "../dialogs";
-
+
+import { tr } from "@/lib/i18n";
 /**
  * Every section has its own eye: hiding one never hides or shows another. Each choice is remembered
  * in this browser (localStorage), and showing a hidden section asks for the account password every time.
  */
 export const PRIVACY_SECTIONS = {
-  balance: { key: "wmt.hideBalances", label: "saldo total" },
-  accounts: { key: "wmt.hideAccounts", label: "saldo rekening" },
-  income: { key: "wmt.hideIncome", label: "pemasukan" },
-  expense: { key: "wmt.hideExpense", label: "pengeluaran" },
-  net: { key: "wmt.hideNet", label: "selisih" },
-  debt: { key: "wmt.hideDebt", label: "utang-piutang di Dashboard" },
-  debtSummary: { key: "wmt.hideDebtSummary", label: "total utang-piutang" },
-  debtList: { key: "wmt.hideDebtList", label: "daftar utang-piutang" },
-  portfolio: { key: "wmt.hidePortfolio", label: "ringkasan investasi" },
-  allocation: { key: "wmt.hideAllocation", label: "alokasi investasi" },
-  holdings: { key: "wmt.hideHoldings", label: "daftar investasi" },
+  balance: { key: "wmt.hideBalances", get label() { return tr("saldo total"); } },
+  accounts: { key: "wmt.hideAccounts", get label() { return tr("saldo rekening"); } },
+  income: { key: "wmt.hideIncome", get label() { return tr("pemasukan"); } },
+  expense: { key: "wmt.hideExpense", get label() { return tr("pengeluaran"); } },
+  net: { key: "wmt.hideNet", get label() { return tr("selisih"); } },
+  debt: { key: "wmt.hideDebt", get label() { return tr("utang-piutang di Dashboard"); } },
+  debtSummary: { key: "wmt.hideDebtSummary", get label() { return tr("total utang-piutang"); } },
+  debtList: { key: "wmt.hideDebtList", get label() { return tr("daftar utang-piutang"); } },
+  portfolio: { key: "wmt.hidePortfolio", get label() { return tr("ringkasan investasi"); } },
+  allocation: { key: "wmt.hideAllocation", get label() { return tr("alokasi investasi"); } },
+  holdings: { key: "wmt.hideHoldings", get label() { return tr("daftar investasi"); } },
 } as const;
 export type PrivacySection = keyof typeof PRIVACY_SECTIONS;
 
@@ -54,7 +55,7 @@ export function usePrivacy<K extends PrivacySection>(sections: readonly K[]) {
 
   const eye = (s: K, className?: string) => (
     <IconButton
-      label={hidden[s] ? `Tampilkan ${PRIVACY_SECTIONS[s].label}` : `Sembunyikan ${PRIVACY_SECTIONS[s].label}`}
+      label={hidden[s] ? tr("Tampilkan {label}", { label: PRIVACY_SECTIONS[s].label }) : tr("Sembunyikan {label}", { label: PRIVACY_SECTIONS[s].label })}
       aria-pressed={!!hidden[s]}
       onClick={() => toggle(s)}
       className={className ?? "-my-2 -mr-2 size-8"}
