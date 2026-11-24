@@ -7,7 +7,7 @@ import { categoryLabel, formatDayMonth, formatMonth, formatRupiah, formatTime, T
 import { Button, Card, EmptyState, IconButton, Select, focusRing, inputBase } from "../../common/ui";
 import { activeFilterCount, matchesFilters, NO_FILTERS, type TxFilters } from "@/lib/txFilters";
 import { LedgerRowsSkeleton } from "../skeletons";
-
+
 import { locale, tr } from "@/lib/i18n";
 export interface LedgerTx {
   id: string;
@@ -293,7 +293,7 @@ export default function LedgerView({
         ) : (
           <>
             {/* Wide screens: table (scrolls inside its card if it still does not fit) */}
-            <div className="hidden overflow-x-auto lg:block">
+            <div data-lenis-prevent-horizontal className="hidden overflow-x-auto lg:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border/70 text-left text-xs text-muted-foreground">

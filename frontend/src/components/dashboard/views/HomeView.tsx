@@ -7,7 +7,9 @@ import { cn } from "@/lib/utils";
 import { categoryLabel, formatCompact, formatMonth, formatRupiah, inReports } from "@/lib/format";
 import type { DebtSummary } from "@/lib/api";
 import { Button, Card, CardHeader, EmptyState, SegmentedControl, focusRing } from "../../common/ui";
-import { usePrivacy } from "../shared/privacy";
+import { MASK, usePrivacy } from "../shared/privacy";
+import { AnimatedNumber } from "../../motion/AnimatedNumber";
+import { AnimatedBar } from "../../motion/primitives";
 
 import { locale, pick, tr } from "@/lib/i18n";
 interface Tx {
@@ -68,7 +70,10 @@ function ChartTooltip({ active, payload, label, month, year }: {
   );
 }
 
-function StatTile({ label, value, sub, action }: { label: string; value: string; sub?: string; action?: React.ReactNode }) {
+/** +Rp 1.000 for a surplus, as the net figure is shown */
+const signedRupiah = (n: number) => `${n > 0 ? "+" : ""}${formatRupiah(n)}`;
+
+function StatTile({ label, value, sub, action }: { label: string; value: React.ReactNode; sub?: string; action?: React.ReactNode }) {
   return (
     <Card className="@container p-4">
       <div className="flex items-center justify-between gap-2">
@@ -221,25 +226,25 @@ export default function HomeView({
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           label={tr("Saldo total")}
-          value={privacy.show("balance", formatRupiah(totalBalance))}
+          value={privacy.isHidden("balance") ? MASK : <AnimatedNumber value={totalBalance} format={formatRupiah} />}
           sub={hasInvestments ? tr("{length} rekening dan investasi", { length: accounts.length }) : tr("{length} rekening", { length: accounts.length })}
           action={privacy.eye("balance")}
         />
         <StatTile
           label={tr("Pemasukan")}
-          value={privacy.show("income", formatRupiah(income))}
+          value={privacy.isHidden("income") ? MASK : <AnimatedNumber value={income} format={formatRupiah} />}
           sub={monthName}
           action={privacy.eye("income")}
         />
         <StatTile
           label={tr("Pengeluaran")}
-          value={privacy.show("expense", formatRupiah(expense))}
+          value={privacy.isHidden("expense") ? MASK : <AnimatedNumber value={expense} format={formatRupiah} />}
           sub={monthName}
           action={privacy.eye("expense")}
         />
         <StatTile
           label={tr("Selisih")}
-          value={privacy.show("net", `${net > 0 ? "+" : ""}${formatRupiah(net)}`)}
+          value={privacy.isHidden("net") ? MASK : <AnimatedNumber value={net} format={signedRupiah} />}
           sub={tr("Pemasukan dikurangi pengeluaran")}
           action={privacy.eye("net")}
         />
@@ -310,8 +315,8 @@ export default function HomeView({
                         {formatRupiah(c.value)} <span className="text-muted-foreground">({Math.round(c.share * 100)}%)</span>
                       </span>
                     </div>
-                    <div className="mt-1.5 h-1.5 rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-foreground" style={{ width: `${Math.max(c.share * 100, 1)}%` }} />
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <AnimatedBar value={Math.max(c.share, 0.01)} className="rounded-full bg-foreground" />
                     </div>
                   </li>
                 ))}
@@ -411,11 +416,8 @@ export default function HomeView({
                           {formatRupiah(spent)} / {formatRupiah(budget.limit)}
                         </span>
                       </div>
-                      <div className="mt-1.5 h-1.5 rounded-full bg-muted">
-                        <div
-                          className={cn("h-full rounded-full", status === "over" ? "bg-destructive" : status === "warn" ? "bg-warning" : "bg-foreground")}
-                          style={{ width: `${Math.min(ratio * 100, 100)}%` }}
-                        />
+                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                        <AnimatedBar value={ratio} className={cn("rounded-full", status === "over" ? "bg-destructive" : status === "warn" ? "bg-warning" : "bg-foreground")} />
                       </div>
                       {/* Status is never color-only */}
                       {status !== "ok" && (

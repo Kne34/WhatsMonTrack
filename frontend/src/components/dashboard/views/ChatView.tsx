@@ -8,7 +8,7 @@ import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Alert, Card, IconButton, focusRing } from "../../common/ui";
 import { ChatSkeleton } from "../skeletons";
-
+
 import { tr } from "@/lib/i18n";
 const MAX_LENGTH = 500;
 
@@ -155,7 +155,7 @@ export default function ChatView({ onRecorded, onAskClear }: {
   return (
     // Phones: full screen between the top bar (3rem) and the bottom tabs (4rem), like a messaging app;
     // while the keyboard is open the tabs hide and the chat reaches down to the keyboard.
-    <Card
+    <Card reveal={false}
       className={cn(
         "fixed inset-x-0 top-12 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 flex flex-col overflow-hidden rounded-none border-0 p-0 shadow-none",
         "[html[data-keyboard=open]_&]:bottom-0",
@@ -176,7 +176,7 @@ export default function ChatView({ onRecorded, onAskClear }: {
         )}
       </div>
 
-      <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5" aria-live="polite">
+      <div data-lenis-prevent ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5" aria-live="polite">
         {loadError && <Alert>{tr("Gagal memuat riwayat chat. Muat ulang halaman untuk mencoba lagi.")}</Alert>}
         {empty && (
           <div className="flex h-full flex-col items-center justify-center px-2 text-center">

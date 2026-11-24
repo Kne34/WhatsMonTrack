@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { CandlestickChart, CircleAlert, LineChart, Pencil, Plus, Search, SearchX } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,9 @@ import {
 import { Button, Card, EmptyState, IconButton, SegmentedControl, Select, Skeleton, focusRing, inputBase } from "../../common/ui";
 import { MASK, MASK_PLAIN, usePrivacy } from "../shared/privacy";
 import { LiveBadge } from "../liveBadge";
-
+
+import { AnimatedNumber } from "../../motion/AnimatedNumber";
+import { PriceFlash } from "../../motion/primitives";
 import { tr } from "@/lib/i18n";
 interface InvestmentsViewProps {
   /** null while loading */
@@ -35,24 +37,12 @@ const OTHER_COLOR = "var(--muted-foreground)";
 
 const pnlTone = (n: number | null | undefined) => (n == null || n === 0 ? "text-muted-foreground" : n > 0 ? "text-income" : "text-expense");
 
-/** A live number that briefly lights up green or red when it moves, as on a trading screen */
+/** A live number that briefly lights up green or red when it moves, as on a trading screen (GSAP, see PriceFlash) */
 function Flash({ value, children }: { value: number; children: React.ReactNode }) {
-  const previous = useRef(value);
-  const [dir, setDir] = useState<"up" | "down" | null>(null);
-  useEffect(() => {
-    if (value === previous.current) return;
-    const next = value > previous.current ? "up" : "down";
-    previous.current = value;
-    setDir(next);
-    const t = setTimeout(() => setDir(null), 1200);
-    return () => clearTimeout(t);
-  }, [value]);
-  return (
-    <span className={cn("rounded px-0.5 transition-colors duration-700", dir === "up" && "bg-income/15 text-income", dir === "down" && "bg-expense/15 text-expense")}>
-      {children}
-    </span>
-  );
+  return <PriceFlash value={value}>{children}</PriceFlash>;
 }
+
+const signedIdr = (n: number) => formatSigned(n, "IDR");
 
 function Tile({ label, children, sub, className }: { label: string; children: React.ReactNode; sub?: React.ReactNode; className?: string }) {
   return (
@@ -257,10 +247,10 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
 
         {/* One column on the smallest phones, so "Rp 143.041.654" is never split over two lines */}
         <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
-          <Tile label={tr("Nilai portofolio")}>{ph ? MASK : formatRupiah(value)}</Tile>
-          <Tile label={tr("Modal")}>{ph ? MASK : formatRupiah(cost)}</Tile>
+          <Tile label={tr("Nilai portofolio")}>{ph ? MASK : <AnimatedNumber value={value} format={formatRupiah} />}</Tile>
+          <Tile label={tr("Modal")}>{ph ? MASK : <AnimatedNumber value={cost} format={formatRupiah} />}</Tile>
           <Tile label={tr("Untung/rugi")} sub={<span className={pnlTone(pnl)}>{formatPercent(cost > 0 ? (pnl / cost) * 100 : null)}</span>}>
-            <span className={ph ? undefined : pnlTone(pnl)}>{ph ? MASK : formatSigned(pnl, "IDR")}</span>
+            <span className={ph ? undefined : pnlTone(pnl)}>{ph ? MASK : <AnimatedNumber value={pnl} format={signedIdr} />}</span>
           </Tile>
           <Tile label={tr("Kurs USD/IDR")}
             sub={fx ? (fx.stale ? tr("Tersimpan {updatedAt}", { updatedAt: formatTime(fx.updatedAt) }) : tr("Live dari Yahoo Finance")) : needsFx ? tr("Belum tersedia") : tr("Yahoo Finance")}>
@@ -318,7 +308,7 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
         ) : (
           <>
             {/* Wide screens: a table */}
-            <div className="hidden overflow-x-auto border-t border-border/70 xl:block">
+            <div data-lenis-prevent-horizontal className="hidden overflow-x-auto border-t border-border/70 xl:block">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground">

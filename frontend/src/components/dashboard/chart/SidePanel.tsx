@@ -13,7 +13,7 @@ import {
 } from "@/lib/technicals";
 import { LiveBadge } from "../liveBadge";
 import { TV } from "./TradingChart";
-
+
 import { locale, tr } from "@/lib/i18n";
 const tone = (n: number | null | undefined) => (n == null || n === 0 ? "text-muted-foreground" : n > 0 ? "text-income" : "text-expense");
 /** Change in money from a percentage: price - price / (1 + pct) */
@@ -57,7 +57,7 @@ export function Watchlist({ holdings, prices, activeId, onSelect }: {
         <h2 className="text-sm font-semibold">{tr("Daftar pantau")}</h2>
         <span className="text-xs text-muted-foreground">{holdings.length} {tr("aset")}</span>
       </div>
-      <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
+      <div data-lenis-prevent className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
         {ASSET_TYPES.map((type) => {
           const rows = holdings.filter((h) => h.assetType === type);
           if (!rows.length) return null;

@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Alert, Button, PasswordField, SegmentedControl, SelectField, TextField } from "../common/ui";
 import { verifyPassword } from "@/lib/api";
 import { CATEGORIES, categoryLabel, TX_TYPE_LABEL, type TxType } from "@/lib/format";
-
+
 import { tr } from "@/lib/i18n";
 // ---------- Shared shell ----------
 
@@ -18,7 +18,7 @@ export function AppDialog({ open, onClose, title, description, children }: {
 }) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90dvh] grid-cols-1 gap-5 overflow-y-auto overflow-x-hidden rounded-2xl bg-card p-5 sm:max-w-md sm:p-6">
+      <DialogContent data-lenis-prevent className="max-h-[90dvh] grid-cols-1 gap-5 overflow-y-auto overflow-x-hidden rounded-2xl bg-card p-5 sm:max-w-md sm:p-6">
         <DialogHeader className="pr-8">
           <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}

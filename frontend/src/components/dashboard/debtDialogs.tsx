@@ -9,6 +9,8 @@ import { Alert, Button, IconButton, SegmentedControl, SelectField, TextField, in
 import { AmountField, AppDialog, DialogActions, useSubmit, type AccountLike } from "./dialogs";
 
 import { tr } from "@/lib/i18n";
+import { AnimatePresence } from "motion/react";
+import { MotionListItem } from "../motion/primitives";
 export const DEBT_TYPE_LABEL: Record<DebtType, string> = { get RECEIVABLE() { return tr("Piutang / Talangan"); }, get PAYABLE() { return tr("Utang"); } };
 
 const todayInput = () => {
@@ -178,9 +180,11 @@ export function DebtRecordDialog({ record, defaultType = "RECEIVABLE", accounts,
               </button>
             )}
           </div>
+          {/* A person added or removed slides in/out */}
+          <AnimatePresence initial={false} mode="popLayout">
           {rows.map((r, i) => (
             // Phones: the name on its own line, the estimate and the delete button below it
-            <div key={r.key} className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+            <MotionListItem key={r.key} className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
               <input aria-label={tr("Nama orang {v}", { v: i + 1 })} value={r.personName} maxLength={60} placeholder={tr("Nama")}
                 onChange={(e) => setRow(r.key, { personName: e.target.value })} autoComplete="off"
                 className={cn(inputBase, "w-full min-w-0 border-border sm:w-auto sm:flex-[3]")} />
@@ -194,8 +198,9 @@ export function DebtRecordDialog({ record, defaultType = "RECEIVABLE", accounts,
                 onClick={() => setRows((list) => list.filter((x) => x.key !== r.key))} className="shrink-0 hover:text-destructive">
                 <Trash2 className="size-4" />
               </IconButton>
-            </div>
+            </MotionListItem>
           ))}
+          </AnimatePresence>
           {errors.people && <p className="text-xs text-destructive">{errors.people}</p>}
           <Button variant="ghost" size="sm" onClick={() => setRows((list) => [...list, newRow()])}><Plus className="size-4" aria-hidden /> {tr("Tambah orang")}</Button>
         </fieldset>

@@ -6,7 +6,10 @@ import { cn } from "@/lib/utils";
 import { categoryLabel, formatDayMonth, formatRupiah } from "@/lib/format";
 import type { DebtParticipant, DebtRecord, DebtStatus, DebtSummary, DebtType } from "@/lib/api";
 import { Button, Card, EmptyState, IconButton, SegmentedControl, Skeleton, focusRing, inputBase } from "../../common/ui";
-import { usePrivacy } from "../shared/privacy";
+import { MASK, usePrivacy } from "../shared/privacy";
+import { AnimatePresence, motion } from "motion/react";
+import { AnimatedNumber } from "../../motion/AnimatedNumber";
+import { AnimatedBar, MotionListItem, SPRING } from "../../motion/primitives";
 
 import { tr } from "@/lib/i18n";
 export interface DebtFilters {
@@ -58,12 +61,12 @@ export default function DebtsView({ data, filters, onFiltersChange, onAdd, onEdi
         </div>
         <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-3 min-[400px]:gap-3">
           {[
-            [tr("Piutang aktif"), summary ? privacy.show("debtSummary", formatRupiah(summary.receivable)) : null, tr("Orang utang ke kamu")],
-            [tr("Utang aktif"), summary ? privacy.show("debtSummary", formatRupiah(summary.payable)) : null, tr("Kamu utang")],
+            [tr("Piutang aktif"), summary ? (privacy.isHidden("debtSummary") ? MASK : <AnimatedNumber value={summary.receivable} format={formatRupiah} />) : null, tr("Orang utang ke kamu")],
+            [tr("Utang aktif"), summary ? (privacy.isHidden("debtSummary") ? MASK : <AnimatedNumber value={summary.payable} format={formatRupiah} />) : null, tr("Kamu utang")],
             [tr("Belum selesai"), summary ? tr("{openCount} catatan", { openCount: summary.openCount }) : null, tr("Status Open")],
           ].map(([label, value, sub]) => (
             // Smallest phones: one compact row each (label left, amount right) instead of three tall tiles
-            <div key={label} className="@container flex min-w-0 items-baseline justify-between gap-3 rounded-xl border border-border/70 p-3 min-[400px]:block sm:p-4">
+            <div key={String(label)} className="@container flex min-w-0 items-baseline justify-between gap-3 rounded-xl border border-border/70 p-3 min-[400px]:block sm:p-4">
               <p className="text-xs text-muted-foreground sm:text-sm">{label}</p>
               {value == null ? <Skeleton className="h-6 w-24 rounded-md min-[400px]:mt-2" /> : (
                 <p className="break-words text-base font-semibold leading-tight tracking-tight text-foreground tabular-nums min-[400px]:mt-2 min-[400px]:text-[clamp(0.95rem,10cqi,1.4rem)]">{value}</p>
@@ -113,9 +116,14 @@ export default function DebtsView({ data, filters, onFiltersChange, onAdd, onEdi
             )}
           </Card>
         ) : (
-          data.records.map((r) => (
-            <RecordCard key={r.id} record={r} money={money} onEdit={onEdit} onDelete={onDelete} onPay={onPay} onUnpay={onUnpay} onSettle={onSettle} onReopen={onReopen} />
-          ))
+          // Records slide in, and out when they leave this view (settled while showing open ones, deleted)
+          <AnimatePresence mode="popLayout">
+            {data.records.map((r) => (
+              <MotionListItem key={r.id}>
+                <RecordCard record={r} money={money} onEdit={onEdit} onDelete={onDelete} onPay={onPay} onUnpay={onUnpay} onSettle={onSettle} onReopen={onReopen} />
+              </MotionListItem>
+            ))}
+          </AnimatePresence>
         )}
       </div>
     </div>
@@ -132,7 +140,8 @@ function RecordCard({ record: r, money, onEdit, onDelete, onPay, onUnpay, onSett
   const pct = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
 
   return (
-    <Card className="p-0">
+    // Motion animates the wrapper (MotionListItem); GSAP's reveal stays off this card
+    <Card reveal={false} className="p-0">
       <div className="flex items-start gap-3 px-4 pt-4 sm:px-5">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -165,7 +174,7 @@ function RecordCard({ record: r, money, onEdit, onDelete, onPay, onUnpay, onSett
         </div>
         <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
           aria-label={tr("Terbayar {pct}% dari total", { pct: pct })}>
-          <div className="h-full rounded-full bg-foreground transition-[width]" style={{ width: `${pct}%` }} />
+          <AnimatedBar value={pct / 100} className="rounded-full bg-foreground" />
         </div>
       </div>
 
@@ -179,7 +188,13 @@ function RecordCard({ record: r, money, onEdit, onDelete, onPay, onUnpay, onSett
                 onClick={() => (p.isPaid ? onUnpay(r, p) : onPay(r, p))}
                 className={cn("mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-60", focusRing,
                   p.isPaid ? "border-foreground bg-foreground text-background" : "border-border hover:border-foreground/60")}>
-                {p.isPaid && <Check className="size-4" aria-hidden />}
+                <AnimatePresence initial={false}>
+                  {p.isPaid && (
+                    <motion.span key="check" initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }} transition={SPRING}>
+                      <Check className="size-4" aria-hidden />
+                    </motion.span>
+                  )}
+                </AnimatePresence>
               </button>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
