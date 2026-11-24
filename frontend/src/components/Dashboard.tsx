@@ -50,7 +50,7 @@ type DialogState =
   | { kind: "link" }
   | { kind: "bot" };
 
-const PAGE_TITLES: Record<Tab, string> = { dashboard: "Dashboard", transactions: "Transaksi", debts: "Utang-piutang", investments: "Investasi", chat: "Chat", inbox: "Perlu ditinjau" };
+const PAGE_TITLES: Record<Tab, string> = { dashboard: "Dashboard", transactions: "Transaksi", debts: "Utang-piutang", investments: "Investasi", chart: "Chart", chat: "Chat", inbox: "Perlu ditinjau" };
 const REFRESH_MS = 15_000;
 /** Live prices on the Investasi page and in "Saldo total"; the server shares one 10-second cache between everyone */
 const PRICES_REFRESH_MS = 10_000;
@@ -62,9 +62,15 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   const tabParam = searchParams.get("tab") as Tab | null;
   const activeTab: Tab = NAV_ITEMS.some((n) => n.id === tabParam) ? (tabParam as Tab) : "dashboard";
   const navigate = (tab: Tab) => router.push(`/?tab=${tab}`);
-  /** The chart page of one holding (full screen, like TradingView): /?tab=investments&chart=<id> */
-  const chartId = activeTab === "investments" ? searchParams.get("chart") : null;
-  const openChart = (h: Holding) => router.push(`/?tab=investments&chart=${h.id}`);
+  /** The Chart page (like TradingView), its own item in the sidebar: /?tab=chart&id=<holding> (no id: the last one viewed) */
+  const chartId = activeTab === "chart" ? searchParams.get("id") : null;
+  const openChart = (h: Holding) => router.push(`/?tab=chart&id=${h.id}`);
+  const selectChart = useCallback((h: Holding) => router.replace(`/?tab=chart&id=${h.id}`), [router]);
+  // The first chart page lived at /?tab=investments&chart=<id>
+  const legacyChart = activeTab === "investments" ? searchParams.get("chart") : null;
+  useEffect(() => {
+    if (legacyChart) router.replace(`/?tab=chart&id=${legacyChart}`);
+  }, [legacyChart, router]);
 
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
@@ -174,7 +180,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       // The next tick tries again; the page keeps the last prices meanwhile
     }
   }, []);
-  const livePrices = activeTab === "investments" || activeTab === "dashboard";
+  const livePrices = activeTab === "investments" || activeTab === "chart" || activeTab === "dashboard";
   const hasHoldings = (holdings?.length ?? 0) > 0;
   useEffect(() => {
     if (!livePrices) return;
@@ -221,7 +227,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       confirmLabel: "Hapus aset",
       action: async () => {
         await deleteHolding(holding.id);
-        if (chartId === holding.id) router.push("/?tab=investments");
+        if (chartId === holding.id) router.replace("/?tab=chart");
         await loadHoldings();
         notify(`${holding.symbol} dihapus`);
       },
@@ -464,17 +470,24 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     // Phones, Chat tab: exactly the visible screen (dvh, not 100vh which ignores the browser's address bar),
     // so nothing behind the full-screen chat can scroll the top bar away
     <div className={cn("min-h-screen bg-background text-foreground", activeTab === "chat" && "max-md:h-dvh max-md:min-h-0 max-md:overflow-hidden")}>
-      {chartId ? (
-        <ChartPage
-          holdings={holdings}
-          prices={prices}
-          holdingId={chartId}
-          onBack={() => navigate("investments")}
-          // replace: switching assets shouldn't fill the back button's history
-          onSelect={(h) => router.replace(`/?tab=investments&chart=${h.id}`)}
-          onTrade={(h, side) => setDialog({ kind: "trade", holding: h, side })}
-          onEdit={(h) => setDialog({ kind: "holding", holding: h })}
-        />
+      {activeTab === "chart" ? (
+        // The chart needs the width: the sidebar shrinks to its icons
+        <>
+          <Sidebar collapsed active={activeTab} onNavigate={navigate} reviewCount={reviewItems.length} {...statusProps} />
+          <div className="md:pl-16">
+            <ChartPage
+              holdings={holdings}
+              prices={prices}
+              holdingId={chartId}
+              onBack={() => navigate("investments")}
+              // replace: switching assets shouldn't fill the back button's history
+              onSelect={selectChart}
+              onTrade={(h, side) => setDialog({ kind: "trade", holding: h, side })}
+              onEdit={(h) => setDialog({ kind: "holding", holding: h })}
+              onAdd={addActions.onAddInvestment}
+            />
+          </div>
+        </>
       ) : (
         <>
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:px-3 focus:py-2 focus:shadow">
@@ -485,15 +498,16 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
 
         <div className="md:pl-60">
           {/* Phone top bar */}
-          <div className="flex h-12 items-center justify-between border-b border-border/70 bg-card px-4 md:hidden">
-            <span className="font-heading text-base font-semibold tracking-tight">WhatsMonTrack</span>
+          <div className="sticky top-0 z-20 flex h-12 items-center justify-between border-b border-black/[0.08] bg-[#F9F9F9]/80 px-4 backdrop-blur-2xl backdrop-saturate-150 md:hidden dark:border-white/[0.08] dark:bg-[#1C1C1E]/80">
+            <span className="font-heading text-[17px] font-semibold tracking-tight">WhatsMonTrack</span>
             <MobileAccountMenu {...statusProps} />
           </div>
 
           <main id="main" className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-8 md:pb-12">
             {/* On phones the chat fills the screen like a messaging app, without the page title */}
             <header className={cn("mb-6 flex flex-wrap items-center justify-between gap-3", activeTab === "chat" && "max-md:hidden")}>
-              <h1 className="font-heading text-2xl font-semibold tracking-tight">{PAGE_TITLES[activeTab]}</h1>
+              {/* A large title, as at the top of an iOS screen */}
+              <h1 className="font-heading text-[28px] font-bold leading-tight tracking-[-0.02em] md:text-[32px]">{PAGE_TITLES[activeTab]}</h1>
               {/* Phones: month switcher left, add button right (its menu opens leftwards and stays on screen) */}
               {/* Pages not tied to a month have no switcher: the add button then sits next to the title */}
               <div className={cn("flex items-center justify-between gap-2 sm:w-auto sm:justify-end", monthly && "w-full")}>

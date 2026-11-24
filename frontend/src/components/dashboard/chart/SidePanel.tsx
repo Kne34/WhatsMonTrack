@@ -51,44 +51,43 @@ export function Watchlist({ holdings, prices, activeId, onSelect }: {
 }) {
   const fx = prices?.fx?.price ?? null;
   return (
-    <div className="flex min-h-0 flex-col">
-      <div className="flex items-center justify-between px-4 pb-2 pt-3">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-baseline justify-between px-4 pb-2 pt-3">
         <h2 className="text-sm font-semibold">Daftar pantau</h2>
         <span className="text-xs text-muted-foreground">{holdings.length} aset</span>
       </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] gap-x-3 px-4 pb-1 text-[11px] text-muted-foreground">
-        <span>Simbol</span><span className="text-right">Terakhir</span><span className="text-right">Perub</span><span className="w-14 text-right">Perub%</span>
-      </div>
-      <div className="relative min-h-0 overflow-y-auto pb-2">
+      <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
         {ASSET_TYPES.map((type) => {
           const rows = holdings.filter((h) => h.assetType === type);
           if (!rows.length) return null;
           return (
-            <div key={type}>
-              <p className="px-4 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{ASSET_TYPE_LABEL[type]}</p>
+            <section key={type} aria-label={ASSET_TYPE_LABEL[type]}>
+              <h3 className="sticky top-0 z-[1] bg-card/90 px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur">{ASSET_TYPE_LABEL[type]}</h3>
               {rows.map((h) => {
                 const quote = prices?.prices[h.priceKey];
                 const price = currentPrice(h, quote, fx);
                 const pct = quote?.changePct ?? null;
                 const active = h.id === activeId;
+                // Two lines, nothing cut short: the ticker and its name or platform, then the price and its change
                 return (
                   <button key={h.id} type="button" onClick={() => onSelect(h)} aria-current={active ? "page" : undefined}
-                    className={cn("grid w-full grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-x-3 px-4 py-1.5 text-left text-xs tabular-nums transition-colors hover:bg-muted",
-                      active && "bg-muted")}>
-                    <span className="flex min-w-0 items-center gap-2">
-                      <Avatar symbol={h.symbol} />
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium text-foreground">{h.symbol}</span>
-                        <span className="block truncate text-[10px] text-muted-foreground">{h.platform}</span>
+                    className={cn("flex w-full items-center gap-3 px-4 py-2 text-left text-xs tabular-nums transition-colors hover:bg-muted",
+                      active && "bg-[#2962FF]/8 shadow-[inset_2px_0_0_#2962FF]")}>
+                    <Avatar symbol={h.symbol} className="size-7 text-xs" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold text-foreground">{h.symbol}</span>
+                      <span className="block break-words text-[11px] leading-snug text-muted-foreground">{h.name ? `${h.name}, ${h.platform}` : h.platform}</span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block font-medium text-foreground">{price != null ? plain(price, h.currency) : "–"} <span className="font-normal text-muted-foreground">{h.currency}</span></span>
+                      <span className={cn("block text-[11px]", tone(pct))}>
+                        {price != null && pct != null ? `${signedPlain(changeFromPct(price, pct), h.currency)} (${formatPercent(pct)})` : "–"}
                       </span>
                     </span>
-                    <span className="text-right text-foreground">{price != null ? plain(price, h.currency) : "–"}</span>
-                    <span className={cn("text-right", tone(pct))}>{price != null && pct != null ? signedPlain(changeFromPct(price, pct), h.currency) : "–"}</span>
-                    <span className={cn("w-14 text-right", tone(pct))}>{formatPercent(pct)}</span>
                   </button>
                 );
               })}
-            </div>
+            </section>
           );
         })}
       </div>
@@ -125,11 +124,15 @@ function RangeBar({ label, low, high, value, currency }: { label: string; low: n
   );
 }
 
+/** A label and its value; a long value wraps, and the second value goes under the first instead of squeezing beside it */
 function Stat({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 py-1.5 text-xs">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-right font-medium tabular-nums text-foreground">{value}{sub && <span className="ml-1 font-normal text-muted-foreground">{sub}</span>}</dd>
+    <div className="flex items-start justify-between gap-4 py-1.5 text-xs">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-right font-medium tabular-nums text-foreground [overflow-wrap:anywhere]">
+        {value}
+        {sub && <span className="block text-[11px] font-normal text-muted-foreground">{sub}</span>}
+      </dd>
     </div>
   );
 }
@@ -411,7 +414,7 @@ export function Details({ holding, holdings, prices, profile, k, currency, live,
                     <tbody>
                       {(["r3", "r2", "r1", "p", "s1", "s2", "s3"] as const).map((key) => (
                         <tr key={key} className="border-t border-border/60">
-                          <td className="py-1.5 text-muted-foreground">{key === "p" ? "Pivot" : key.toUpperCase()}</td>
+                          <td className="py-1.5 text-muted-foreground">{key === "p" ? "Pivot" : `${key[0] === "r" ? "Resisten" : "Support"} ${key[1]}`}</td>
                           <td className="py-1.5 text-right text-foreground">{plain(pivots[key], currency)}</td>
                         </tr>
                       ))}
@@ -445,6 +448,10 @@ export function Details({ holding, holdings, prices, profile, k, currency, live,
       <p className="border-t border-border px-4 py-3 text-[11px] text-muted-foreground">
         {profile?.sources.length ? `Data dari ${profile.sources.join(" dan ")}` : "Data dari Yahoo Finance, Binance dan CoinGecko"}
         {prices?.fetchedAt ? `, harga terakhir ${formatDayMonth(prices.fetchedAt)} ${formatTime(prices.fetchedAt)}` : ""}.
+        {" "}Chart dibuat dengan{" "}
+        <a href="https://www.tradingview.com/lightweight-charts/" target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-foreground">
+          TradingView Lightweight Charts
+        </a>.
       </p>
     </div>
   );

@@ -210,9 +210,23 @@ export function PageSkeleton({ tab }: { tab: Tab }) {
 
 /** Whole app frame while the session is being restored (before the dashboard itself mounts). */
 export function AppShellSkeleton({ tab }: { tab: Tab }) {
+  // The Chart page: a narrow sidebar of icons and the chart filling the screen
+  if (tab === "chart") {
+    return (
+      <div className="min-h-screen bg-background" aria-hidden>
+        <aside className="fixed inset-y-0 left-0 hidden w-16 flex-col items-center gap-3 border-r border-border/70 bg-card py-3 md:flex">
+          {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="size-9 rounded-[10px]" />)}
+        </aside>
+        <div className="flex h-dvh flex-col gap-1 p-1 md:pl-[68px]">
+          <Skeleton className="h-12 w-full rounded-lg" />
+          <div className="flex min-h-0 flex-1 gap-1"><Skeleton className="flex-1 rounded-lg" /><Skeleton className="hidden w-80 rounded-lg lg:block" /></div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="min-h-screen bg-background">
-      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-border/70 bg-card px-5 pt-6 md:flex" aria-hidden>
+      <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col border-r border-black/[0.06] bg-[#F6F6F8] px-5 pt-6 md:flex dark:border-white/[0.08] dark:bg-[#1C1C1E]" aria-hidden>
         <Skeleton className="h-6 w-36 rounded-md" />
         <div className="mt-10 space-y-3">
           {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-8 rounded-lg" />)}

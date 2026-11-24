@@ -210,7 +210,8 @@ export const formatQuantity = (value: number) => number(8).format(value);
 export function formatPercent(value: number | null) {
   if (value == null || !Number.isFinite(value)) return "–";
   const sign = value > 0 ? "+" : value < 0 ? "−" : "";
-  return `${sign}${number(2).format(Math.abs(value))}%`;
+  // Huge gains (a test buy at a tiny price) read better without the decimals: +10.988.034%
+  return `${sign}${number(Math.abs(value) >= 1000 ? 0 : 2).format(Math.abs(value))}%`;
 }
 
 /** A signed amount: +Rp 1.000 / −Rp 1.000 */

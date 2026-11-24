@@ -1,20 +1,20 @@
 "use client";
 
 import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
-import type {
-  IChartApi, IPriceLine, ISeriesApi, ITextWatermarkPluginApi, MouseEventParams, SeriesType, Time, UTCTimestamp,
-} from "lightweight-charts";
+import type { IChartApi, IPriceLine, ISeriesApi, ITextWatermarkPluginApi, MouseEventParams, SeriesType, Time, UTCTimestamp } from "lightweight-charts";
+import { Pencil, Trash2 } from "lucide-react";
 import type { Candle } from "@/lib/portfolio";
 import { heikinAshi, type Series } from "@/lib/technicals";
+import { TV, alpha } from "./colors";
+import { DRAW_COLORS, TOOLS, makeDrawing, newId, paint, type Drawing, type DrawKind, type Geometry, type Point, type Tool } from "./drawings";
+
+export { TV } from "./colors";
+export type { Tool } from "./drawings";
 
 type LWC = typeof import("lightweight-charts");
 
 export type ChartStyle = "candle" | "hollow" | "bar" | "heikin" | "line" | "area";
-export type Tool = "cross" | "trend" | "hline" | "measure";
 export type ScaleMode = "normal" | "log" | "percent";
-
-/** TradingView's own colors: candles and the drawing blue */
-export const TV = { up: "#089981", down: "#F23645", blue: "#2962FF" };
 
 /** An indicator line (moving average, RSI, MACD...) in pane 0 (on the price) or below it */
 export interface LineSpec {
@@ -37,13 +37,8 @@ export interface TradingChartHandle {
   screenshot: () => HTMLCanvasElement | null;
 }
 
-interface Point { time: number; price: number }
-interface Drawings { trends: [Point, Point][]; hlines: number[] }
-interface Measure { from: { i: number; price: number }; to: { i: number; price: number }; done: boolean }
-
 /** Candles are in UTC; the chart prints the time stamps as given, so shift them to the viewer's clock */
 export const localTime = (t: number) => (t - new Date(t * 1000).getTimezoneOffset() * 60) as UTCTimestamp;
-const alpha = (hex: string, a: number) => (/^#[0-9a-f]{6}$/i.test(hex) ? `${hex}${Math.round(a * 255).toString(16).padStart(2, "0")}` : hex);
 
 function themeColors() {
   const css = getComputedStyle(document.documentElement);
@@ -62,16 +57,38 @@ export function useDarkMode() {
   return dark;
 }
 
-function loadDrawings(key: string): Drawings {
+// ---------------------------------------------------------------- drawings in browser storage
+
+const KINDS = new Set(Object.keys(TOOLS));
+function loadDrawings(key: string, legacyPrefix?: string): Drawing[] {
   try {
-    const d = JSON.parse(localStorage.getItem(key) ?? "null");
-    if (d && Array.isArray(d.trends) && Array.isArray(d.hlines)) return d;
+    const saved = JSON.parse(localStorage.getItem(key) ?? "null");
+    if (Array.isArray(saved)) {
+      return saved.filter((d): d is Drawing => d && typeof d.id === "string" && KINDS.has(d.kind) && Array.isArray(d.points) && d.points.every((p: Point) => Number.isFinite(p?.time) && Number.isFinite(p?.price)));
+    }
+    // Drawings of the first chart page were kept per interval as { trends, hlines }
+    if (!legacyPrefix) return [];
+    const out: Drawing[] = [];
+    const old: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k?.startsWith(legacyPrefix)) continue;
+      old.push(k);
+      const d = JSON.parse(localStorage.getItem(k) ?? "null");
+      for (const [a, b] of d?.trends ?? []) out.push({ id: newId(), kind: "trend", points: [a, b], color: TV.blue });
+      for (const price of d?.hlines ?? []) out.push({ id: newId(), kind: "hline", points: [{ time: 0, price }], color: TV.blue });
+    }
+    if (old.length) {
+      localStorage.setItem(key, JSON.stringify(out));
+      old.forEach((k) => localStorage.removeItem(k));
+    }
+    return out;
   } catch {
     // private mode or bad data: start empty
+    return [];
   }
-  return { trends: [], hlines: [] };
 }
-function saveDrawings(key: string, d: Drawings) {
+function saveDrawings(key: string, d: Drawing[]) {
   try {
     localStorage.setItem(key, JSON.stringify(d));
   } catch {
@@ -87,14 +104,18 @@ const formatCountdown = (s: number) => {
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
 };
 
+interface Drag { id: string; handle: number | null; x: number; y: number; orig: Point[]; moved: boolean }
+
 /**
  * The price chart of the chart page, on TradingView's open-source library: scroll to zoom, drag
- * to pan, drag the axes to stretch, indicator panes, drawings (trend line, horizontal line,
- * measure) kept per asset in this browser, and the last bar following the live price.
+ * to pan, drag the axes to stretch, indicator panes, and the drawing tools of TradingView's left
+ * toolbar painted on an SVG layer (select a drawing to drag it or its points, recolor or delete
+ * it). Drawings are kept per asset in this browser, in the asset's own currency, so they show on
+ * every interval and in rupiah as well.
  */
 export function TradingChart({
-  ref, bars, style, currency, volume, lines, hists, avgPrice, watermark, tool, magnet, scaleMode,
-  storageKey, view, barSeconds, sessionEnd, onHover, onToolDone, onDrawingsChange,
+  ref, bars, style, currency, volume, lines, hists, avgPrice, watermark, tool, magnet, keepTool, locked, hidden, scaleMode,
+  priceFactor, storageKey, legacyPrefix, view, barSeconds, sessionEnd, onHover, onToolDone, onDrawingsChange,
 }: {
   ref?: React.Ref<TradingChartHandle>;
   bars: Candle[];
@@ -108,9 +129,18 @@ export function TradingChart({
   watermark: string;
   tool: Tool;
   magnet: boolean;
+  /** Stay on the drawing tool after a drawing (otherwise back to the cursor) */
+  keepTool: boolean;
+  /** Drawings can't be selected or moved */
+  locked: boolean;
+  hidden: boolean;
   scaleMode: ScaleMode;
-  /** Where the drawings of this asset and interval are kept */
+  /** Shown prices = the asset's own prices × this (the dollar-rupiah rate when shown in rupiah) */
+  priceFactor: number;
+  /** Where the drawings of this asset are kept */
   storageKey: string;
+  /** Keys of drawings kept the old way, moved to `storageKey` once */
+  legacyPrefix?: string;
   /** A new key moves the view: to `from` (Unix seconds) or to the latest bars */
   view: { key: string; from: number | null };
   /** Bars that close on the clock (intraday, crypto days): their length in seconds, for the countdown under the price label */
@@ -131,28 +161,35 @@ export function TradingChart({
   const linesRef = useRef(new Map<string, ISeriesApi<"Line">>());
   const histsRef = useRef(new Map<string, ISeriesApi<"Histogram">>());
   const priceLinesRef = useRef<IPriceLine[]>([]);
-  const trendRefs = useRef<ISeriesApi<"Line">[]>([]);
-  const previewRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const previewTarget = useRef("");
   /** Rupiah prices have no decimals on the axis, dollars two */
   const decimalsRef = useRef(2);
+  const bgRef = useRef("#000");
   const watermarkRef = useRef<ITextWatermarkPluginApi<Time> | null>(null);
   const shownRef = useRef<Candle[] | null>(null);
   const appliedView = useRef<string | null>(null);
-  const [drawings, setDrawings] = useState<Drawings>({ trends: [], hlines: [] });
-  const [pending, setPending] = useState<Point | null>(null);
-  const [measure, setMeasure] = useState<Measure | null>(null);
+  const drag = useRef<Drag | null>(null);
+  const brush = useRef<Point[] | null>(null);
+
+  const [store, setStore] = useState<{ key: string; list: Drawing[] }>({ key: "", list: [] });
+  const drawings = store.key === storageKey ? store.list : [];
+  const [pending, setPending] = useState<Point[]>([]);
+  const [cursor, setCursor] = useState<Point | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [color, setColor] = useState(DRAW_COLORS[0]);
+  const [textEdit, setTextEdit] = useState<{ id: string | null; point: Point; value: string } | null>(null);
+  const [brushPoints, setBrushPoints] = useState<Point[] | null>(null);
   const [, setTick] = useState(0);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
 
   const shown = style === "heikin" ? heikinAshi(bars) : bars;
   const countdownEnd = barSeconds ? (Math.floor(now / barSeconds) + 1) * barSeconds : sessionEnd;
   const ticking = barSeconds != null || sessionEnd != null;
+  const k = priceFactor || 1;
 
   // Everything the chart's event handlers need, always current
-  const live = useRef({ shown, bars, tool, magnet, pending, measure, drawings, storageKey, onHover, onToolDone });
+  const live = useRef({ shown, tool, magnet, keepTool, pending, drawings, color, k, storageKey, onHover, onToolDone });
   useEffect(() => {
-    live.current = { shown, bars, tool, magnet, pending, measure, drawings, storageKey, onHover, onToolDone };
+    live.current = { shown, tool, magnet, keepTool, pending, drawings, color, k, storageKey, onHover, onToolDone };
   });
 
   // Loaded on demand: only the chart page needs the library
@@ -162,19 +199,46 @@ export function TradingChart({
     return () => { cancelled = true; };
   }, []);
 
-  // Drawings of this asset and interval
+  // Drawings of this asset; saved on every change
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- read from browser storage when the asset or interval changes
-    setDrawings(loadDrawings(storageKey));
-    setPending(null);
-    setMeasure(null);
-  }, [storageKey]);
-  // Another tool drops a half-drawn trend line
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read from browser storage when the asset changes
+    setStore({ key: storageKey, list: loadDrawings(storageKey, legacyPrefix) });
+    setPending([]);
+    setSelected(null);
+    setTextEdit(null);
+  }, [storageKey, legacyPrefix]);
+  useEffect(() => {
+    if (store.key) saveDrawings(store.key, store.list);
+  }, [store]);
+  useEffect(() => { onDrawingsChange(drawings.length); }, [drawings.length, onDrawingsChange]);
+  const setDrawings = (update: (list: Drawing[]) => Drawing[]) => setStore((s) => (s.key === live.current.storageKey ? { ...s, list: update(s.list) } : s));
+
+  // Another tool drops a half-made drawing; the brush draws instead of panning
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reacting to the toolbar
-    if (tool !== "trend") setPending(null);
-  }, [tool]);
-  useEffect(() => { onDrawingsChange(drawings.trends.length + drawings.hlines.length); }, [drawings, onDrawingsChange]);
+    setPending([]);
+    setCursor(null);
+    if (tool !== "cross" && tool !== "eraser") setSelected(null);
+    const drawing = tool === "brush";
+    chartRef.current?.applyOptions({ handleScroll: { pressedMouseMove: !drawing, horzTouchDrag: !drawing, vertTouchDrag: false } });
+  }, [tool, chartVersion]);
+
+  // Delete removes the selected drawing, Escape lets go of it
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).closest("input, textarea, select, [role=dialog]")) return;
+      if ((e.key === "Delete" || e.key === "Backspace") && selected) {
+        e.preventDefault();
+        setDrawings((list) => list.filter((d) => d.id !== selected));
+        setSelected(null);
+      } else if (e.key === "Escape") {
+        setPending([]);
+        setSelected(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected]);
 
   // ------------------------------------------------------------ the chart itself (rebuilt when the theme changes)
   useEffect(() => {
@@ -182,13 +246,15 @@ export function TradingChart({
     const lineSeries = linesRef.current;
     const histSeries = histsRef.current;
     const c = themeColors();
+    bgRef.current = c.bg;
     const formats = [0, 2].map((d) => new Intl.NumberFormat("id-ID", { minimumFractionDigits: d, maximumFractionDigits: d }));
     const small = new Intl.NumberFormat("id-ID", { maximumSignificantDigits: 4 });
     const chart = lib.createChart(box.current, {
       autoSize: true,
       layout: {
         background: { type: lib.ColorType.Solid, color: c.bg }, textColor: c.text, fontFamily: "inherit", fontSize: 11,
-        attributionLogo: true, panes: { separatorColor: c.border, separatorHoverColor: alpha(TV.blue, 0.2), enableResize: true },
+        // The library's license asks for a link to TradingView; it is in the page's data sources instead of a logo on the chart
+        attributionLogo: false, panes: { separatorColor: c.border, separatorHoverColor: alpha(TV.blue, 0.2), enableResize: true },
       },
       grid: { vertLines: { color: alpha(c.border, 0.55) }, horzLines: { color: alpha(c.border, 0.55) } },
       rightPriceScale: { borderColor: c.border, scaleMargins: { top: 0.08, bottom: 0.08 } },
@@ -211,28 +277,58 @@ export function TradingChart({
 
     chart.subscribeCrosshairMove(onMove);
     // The library drops a second click within half a second (it waits for a double click), which
-    // loses the second point of a quick trend line: clicks are read from the pointer instead
+    // loses the second point of a quick drawing: clicks are read from the pointer instead
     const el = box.current;
     let down: { x: number; y: number } | null = null;
-    const onDown = (e: PointerEvent) => { down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null; };
+    const local = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    const inPane = (x: number, y: number) => x <= chart.paneSize(0).width && y <= chart.paneSize(0).height;
+    const onDown = (e: PointerEvent) => {
+      down = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+      const { x, y } = local(e);
+      if (down && live.current.tool === "brush" && inPane(x, y)) {
+        const p = pointAt(x, y, false);
+        if (p) {
+          brush.current = [p];
+          setBrushPoints([p]);
+          el.setPointerCapture(e.pointerId);
+        }
+      }
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (!brush.current) return;
+      const { x, y } = local(e);
+      const p = pointAt(x, y, false);
+      if (p) {
+        brush.current = [...brush.current, p];
+        setBrushPoints(brush.current);
+      }
+    };
     const onUp = (e: PointerEvent) => {
+      if (brush.current) {
+        const points = brush.current;
+        brush.current = null;
+        setBrushPoints(null);
+        if (points.length > 1) addDrawing(makeDrawing("brush", points, live.current.color));
+        return;
+      }
       if (!down || Math.abs(e.clientX - down.x) + Math.abs(e.clientY - down.y) > 4) return;
       down = null;
-      const r = el.getBoundingClientRect();
-      const x = e.clientX - r.left;
-      const y = e.clientY - r.top;
+      const { x, y } = local(e);
       // Only the price pane (not the axes or the indicator panes below)
-      if (x > chart.paneSize(0).width || y > chart.paneSize(0).height) return onClick(null);
-      onClick({ x, y, logical: chart.timeScale().coordinateToLogical(x) });
+      if (!inPane(x, y)) return onClick(null);
+      onClick({ x, y });
     };
     el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointermove", onPointerMove);
     el.addEventListener("pointerup", onUp);
-    const bump = () => setTick((t) => t + 1);
-    chart.timeScale().subscribeVisibleLogicalRangeChange(bump);
     chartRef.current = chart;
     setChartVersion((v) => v + 1);
     return () => {
       el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointermove", onPointerMove);
       el.removeEventListener("pointerup", onUp);
       chart.remove();
       chartRef.current = null;
@@ -241,8 +337,6 @@ export function TradingChart({
       lineSeries.clear();
       histSeries.clear();
       priceLinesRef.current = [];
-      trendRefs.current = [];
-      previewRef.current = null;
       watermarkRef.current = null;
       shownRef.current = null;
       appliedView.current = null;
@@ -256,7 +350,7 @@ export function TradingChart({
     const chart = chartRef.current;
     if (!lib || !chart) return;
     const c = themeColors();
-    const fine = bars.some((k) => k.close > 0 && k.close < 1);
+    const fine = bars.some((b) => b.close > 0 && b.close < 1);
     const minMove = fine ? 0.00000001 : currency === "USD" ? 0.01 : 1;
     const precision = minMove < 0.01 ? 8 : minMove < 1 ? 2 : 0;
     decimalsRef.current = currency === "USD" ? 2 : 0;
@@ -284,9 +378,9 @@ export function TradingChart({
     }
     const main = mainRef.current.series;
     const ohlc = style !== "line" && style !== "area";
-    const point = (k: Candle) => (ohlc
-      ? { time: localTime(k.time), open: k.open, high: k.high, low: k.low, close: k.close }
-      : { time: localTime(k.time), value: k.close });
+    const point = (b: Candle) => (ohlc
+      ? { time: localTime(b.time), open: b.open, high: b.high, low: b.low, close: b.close }
+      : { time: localTime(b.time), value: b.close });
 
     // A live tick changes the last bar (or adds one): update it instead of redrawing everything
     const prev = shownRef.current;
@@ -303,12 +397,12 @@ export function TradingChart({
     shownRef.current = shown;
 
     // Volume along the bottom fifth of the price pane
-    if (volume && bars.some((k) => k.volume > 0)) {
+    if (volume && bars.some((b) => b.volume > 0)) {
       if (!volumeRef.current) {
         volumeRef.current = chart.addSeries(lib.HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
         volumeRef.current.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
       }
-      volumeRef.current.setData(bars.map((k) => ({ time: localTime(k.time), value: k.volume, color: alpha(k.close >= k.open ? TV.up : TV.down, 0.45) })));
+      volumeRef.current.setData(bars.map((b) => ({ time: localTime(b.time), value: b.volume, color: alpha(b.close >= b.open ? TV.up : TV.down, 0.45) })));
       main.priceScale().applyOptions({ scaleMargins: { top: 0.08, bottom: 0.22 } });
     } else {
       if (volumeRef.current) chart.removeSeries(volumeRef.current);
@@ -316,7 +410,7 @@ export function TradingChart({
       main.priceScale().applyOptions({ scaleMargins: { top: 0.08, bottom: 0.08 } });
     }
 
-    const toPoints = (values: Series) => bars.map((k, i) => (values[i] == null ? { time: localTime(k.time) } : { time: localTime(k.time), value: values[i]! }));
+    const toPoints = (values: Series) => bars.map((b, i) => (values[i] == null ? { time: localTime(b.time) } : { time: localTime(b.time), value: values[i]! }));
 
     // Indicator lines
     const wantedLines = new Set(lines.map((l) => l.id));
@@ -347,24 +441,21 @@ export function TradingChart({
       } else if (s.getPane().paneIndex() !== spec.pane) {
         s.moveToPane(spec.pane);
       }
-      s.setData(bars.map((k, i) => {
+      s.setData(bars.map((b, i) => {
         const v = spec.values[i];
-        if (v == null) return { time: localTime(k.time) };
+        if (v == null) return { time: localTime(b.time) };
         const before = spec.values[i - 1] ?? v;
-        const color = v >= 0 ? (v >= before ? TV.up : alpha(TV.up, 0.5)) : (v <= before ? TV.down : alpha(TV.down, 0.5));
-        return { time: localTime(k.time), value: v, color };
+        const col = v >= 0 ? (v >= before ? TV.up : alpha(TV.up, 0.5)) : (v <= before ? TV.down : alpha(TV.down, 0.5));
+        return { time: localTime(b.time), value: v, color: col };
       }));
     }
     chart.panes().forEach((p, i) => p.setStretchFactor(i === 0 ? 3 : 1));
 
-    // Price lines on the price: the average buy price and the horizontal lines drawn
+    // The average buy price as a dashed line on the price
     for (const pl of priceLinesRef.current) main.removePriceLine(pl);
     priceLinesRef.current = [];
     if (avgPrice != null && avgPrice > 0) {
       priceLinesRef.current.push(main.createPriceLine({ price: avgPrice, color: c.fg, lineWidth: 1, lineStyle: lib.LineStyle.Dashed, axisLabelVisible: true, title: "Rata-rata beli" }));
-    }
-    for (const price of drawings.hlines) {
-      priceLinesRef.current.push(main.createPriceLine({ price, color: TV.blue, lineWidth: 1, lineStyle: lib.LineStyle.Solid, axisLabelVisible: true, title: "" }));
     }
 
     chart.priceScale("right").applyOptions({
@@ -378,30 +469,30 @@ export function TradingChart({
       applyView(view.from);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lib, chartVersion, bars, style, currency, volume, lines, hists, avgPrice, drawings.hlines, scaleMode, watermark, view.key]);
+  }, [lib, chartVersion, bars, style, currency, volume, lines, hists, avgPrice, scaleMode, watermark, view.key]);
 
-  // ------------------------------------------------------------ trend lines
+  // The drawings follow every move of the view: scrolling, zooming, stretching the price axis
   useEffect(() => {
-    const chart = chartRef.current;
-    if (!lib || !chart) return;
-    for (const s of trendRefs.current) chart.removeSeries(s);
-    trendRefs.current = drawings.trends.map(([a, b]) => {
-      const s = chart.addSeries(lib.LineSeries, trendOptions(lib));
-      s.setData([a, b].sort((x, y) => x.time - y.time).map((p) => ({ time: localTime(p.time), value: p.price })));
-      return s;
-    });
-  }, [lib, chartVersion, drawings.trends]);
-
-  // The preview of a trend line follows the mouse (see onMove)
-  useEffect(() => {
-    const chart = chartRef.current;
-    if (!lib || !chart) return;
-    if (pending && !previewRef.current) previewRef.current = chart.addSeries(lib.LineSeries, { ...trendOptions(lib), lineStyle: lib.LineStyle.Dashed });
-    if (!pending && previewRef.current) {
-      chart.removeSeries(previewRef.current);
-      previewRef.current = null;
-    }
-  }, [lib, chartVersion, pending]);
+    let raf = 0;
+    let last = "";
+    const loop = () => {
+      const chart = chartRef.current;
+      const main = mainRef.current?.series;
+      if (chart && main) {
+        const r = chart.timeScale().getVisibleLogicalRange();
+        const size = chart.paneSize(0);
+        const ref = live.current.shown.at(-1)?.close ?? 1;
+        const sig = `${r?.from}|${r?.to}|${main.priceToCoordinate(ref)}|${main.priceToCoordinate(ref * 1.1)}|${size.width}|${size.height}`;
+        if (sig !== last) {
+          last = sig;
+          setTick((t) => t + 1);
+        }
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   // The bar close countdown ticks every second
   useEffect(() => {
@@ -416,78 +507,152 @@ export function TradingChart({
     if (!chart || !data.length) return;
     const n = data.length;
     if (from != null) {
-      const first = data.findIndex((k) => k.time >= from);
+      const first = data.findIndex((b) => b.time >= from);
       chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, first === -1 ? 0 : first) - 0.5, to: n - 1 + 6 });
     } else {
       chart.timeScale().setVisibleLogicalRange({ from: Math.max(-2, n - 140), to: n - 1 + 8 });
     }
   }
 
-  /** The price under the pointer; with the magnet, the nearest open/high/low/close of the bar */
-  function priceAt(y: number, i: number): number | null {
+  // ------------------------------------------------------------ time and price <-> screen
+
+  /** The length of one bar in seconds (for times past the last bar) */
+  function step() {
+    const d = live.current.shown;
+    return d.length > 1 ? d[d.length - 1].time - d[d.length - 2].time : 86_400;
+  }
+  /** Bar index of a time, fractional between bars and past either end */
+  function logicalOf(time: number): number {
+    const d = live.current.shown;
+    const n = d.length;
+    if (!n) return 0;
+    if (time >= d[n - 1].time) return n - 1 + (time - d[n - 1].time) / step();
+    if (time <= d[0].time) return (time - d[0].time) / step();
+    let lo = 0;
+    let hi = n - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (d[mid].time <= time) lo = mid;
+      else hi = mid;
+    }
+    return lo + (time - d[lo].time) / (d[hi].time - d[lo].time);
+  }
+  /** The time of a bar index (snapped to the bar), also past the last bar */
+  function timeOf(logical: number): number {
+    const d = live.current.shown;
+    const n = d.length;
+    const i = Math.round(logical);
+    if (!n) return 0;
+    if (i >= 0 && i < n) return d[i].time;
+    return i >= n ? d[n - 1].time + (i - (n - 1)) * step() : d[0].time + i * step();
+  }
+  const xOf = (time: number) => chartRef.current?.timeScale().logicalToCoordinate(logicalOf(time) as never) ?? null;
+  const yOf = (price: number) => mainRef.current?.series.priceToCoordinate(price * live.current.k) ?? null;
+
+  /** The point under a screen position, in the asset's own prices; the magnet snaps to the bar's open/high/low/close */
+  function pointAt(x: number, y: number, snap: boolean): Point | null {
+    const chart = chartRef.current;
     const main = mainRef.current?.series;
-    if (!main) return null;
+    if (!chart || !main) return null;
+    const logical = chart.timeScale().coordinateToLogical(x);
     const raw = main.coordinateToPrice(y);
-    if (raw == null) return null;
-    const bar = live.current.shown[i];
-    if (!live.current.magnet || !bar) return raw;
-    return [bar.open, bar.high, bar.low, bar.close].reduce((best, p) => (Math.abs(p - raw) < Math.abs(best - raw) ? p : best), bar.close);
+    if (logical == null || raw == null) return null;
+    let price: number = raw;
+    const bar = live.current.shown[Math.round(logical)];
+    if (snap && live.current.magnet && bar) {
+      price = [bar.open, bar.high, bar.low, bar.close].reduce((best, p) => (Math.abs(p - raw) < Math.abs(best - raw) ? p : best), bar.close);
+    }
+    return { time: timeOf(logical), price: price / live.current.k };
   }
 
-  function indexOf(param: MouseEventParams<Time>): number | null {
-    if (param.logical == null || !param.point) return null;
-    const i = Math.round(param.logical);
-    return i >= 0 && i < live.current.shown.length ? i : null;
+  function addDrawing(d: Drawing) {
+    setDrawings((list) => [...list, d]);
+    setSelected(d.id);
+    if (!live.current.keepTool) live.current.onToolDone();
   }
 
   function onMove(param: MouseEventParams<Time>) {
-    const i = indexOf(param);
-    live.current.onHover(i);
-    const { pending: p, measure: m, shown: data } = live.current;
-    if (i == null || (param.paneIndex ?? 0) !== 0) return;
-    const price = param.point ? priceAt(param.point.y, i) : null;
-    if (price == null) return;
-    if (p && previewRef.current && data[i].time !== p.time) {
-      // setData inside a crosshair event fires another crosshair event: only on a new point, and on the next frame
-      const target = `${data[i].time}:${price}`;
-      if (previewTarget.current !== target) {
-        previewTarget.current = target;
-        const points = [p, { time: data[i].time, price }].sort((x, y) => x.time - y.time).map((q) => ({ time: localTime(q.time), value: q.price }));
-        requestAnimationFrame(() => previewRef.current?.setData(points));
-      }
+    const i = param.logical == null || !param.point ? null : Math.round(param.logical);
+    live.current.onHover(i != null && i >= 0 && i < live.current.shown.length ? i : null);
+    if (live.current.pending.length && param.point && (param.paneIndex ?? 0) === 0) {
+      setCursor(pointAt(param.point.x, param.point.y, true));
     }
-    if (m && !m.done) setMeasure({ ...m, to: { i, price } });
   }
 
   /** A click on the price pane (null: somewhere else on the chart) */
-  function onClick(at: { x: number; y: number; logical: number | null } | null) {
-    const { tool: t, pending: p, measure: m, shown: data, drawings: d, storageKey: key } = live.current;
-    const i = at?.logical == null ? null : Math.round(at.logical);
-    if (t === "cross") {
-      if (m) setMeasure(null);
+  function onClick(at: { x: number; y: number } | null) {
+    const { tool: t, pending: p, color: col } = live.current;
+    if (t === "cross") return setSelected(null);
+    if (t === "eraser" || t === "brush" || !at) return;
+    const pt = pointAt(at.x, at.y, true);
+    if (!pt) return;
+    if (t === "text") {
+      setTextEdit({ id: null, point: pt, value: "" });
       return;
     }
-    if (!at || i == null || i < 0 || i >= data.length) return;
-    const price = priceAt(at.y, i);
-    if (price == null) return;
-    const store = (next: Drawings) => { setDrawings(next); saveDrawings(key, next); };
-    if (t === "hline") {
-      store({ ...d, hlines: [...d.hlines, price] });
-      live.current.onToolDone();
-    } else if (t === "trend") {
-      if (!p) setPending({ time: data[i].time, price });
-      else if (data[i].time !== p.time) {
-        store({ ...d, trends: [...d.trends, [p, { time: data[i].time, price }]] });
-        setPending(null);
-        live.current.onToolDone();
-      }
-    } else if (t === "measure") {
-      if (!m || m.done) setMeasure({ from: { i, price }, to: { i, price }, done: false });
-      else {
-        setMeasure({ ...m, to: { i, price }, done: true });
-        live.current.onToolDone();
-      }
+    const last = p[p.length - 1];
+    if (last && last.time === pt.time && last.price === pt.price) return;
+    const points = [...p, pt];
+    if (points.length >= TOOLS[t].clicks) {
+      setPending([]);
+      setCursor(null);
+      addDrawing(makeDrawing(t, points, col));
+    } else {
+      setPending(points);
     }
+  }
+
+  // ------------------------------------------------------------ selecting, moving, erasing
+
+  function startDrag(e: React.PointerEvent, id: string, handle: number | null) {
+    if (tool === "eraser") {
+      e.stopPropagation();
+      setDrawings((list) => list.filter((d) => d.id !== id));
+      return;
+    }
+    if (tool !== "cross" || locked) return;
+    e.stopPropagation();
+    e.preventDefault();
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    setSelected(id);
+    const d = drawings.find((x) => x.id === id);
+    if (d) drag.current = { id, handle, x: e.clientX, y: e.clientY, orig: d.points, moved: false };
+  }
+  function moveDrag(e: React.PointerEvent) {
+    const g = drag.current;
+    if (!g || !box.current) return;
+    const dx = e.clientX - g.x;
+    const dy = e.clientY - g.y;
+    if (!g.moved && Math.abs(dx) + Math.abs(dy) < 3) return;
+    g.moved = true;
+    setDrawings((list) => list.map((d) => {
+      if (d.id !== g.id) return d;
+      const shift = (p: Point, snap: boolean) => {
+        const x = xOf(p.time);
+        const y = yOf(p.price);
+        return x == null || y == null ? p : pointAt(x + dx, y + dy, snap) ?? p;
+      };
+      if (g.handle == null) return { ...d, points: g.orig.map((p) => shift(p, false)) };
+      const h = g.handle;
+      const moved = shift(g.orig[h], true);
+      const points = g.orig.map((p, i) => (i === h ? moved : p));
+      // A position's target and stop end at the same time
+      if ((d.kind === "long" || d.kind === "short") && h > 0) points[3 - h] = { ...points[3 - h], time: moved.time };
+      return { ...d, points };
+    }));
+  }
+  const endDrag = () => { drag.current = null; };
+
+  const update = (id: string, change: Partial<Drawing>) => setDrawings((list) => list.map((d) => (d.id === id ? { ...d, ...change } : d)));
+  function commitText() {
+    if (!textEdit) return;
+    const text = textEdit.value.trim();
+    if (textEdit.id) {
+      if (text) update(textEdit.id, { text });
+    } else if (text) {
+      addDrawing({ ...makeDrawing("text", [textEdit.point], color), text });
+    }
+    setTextEdit(null);
   }
 
   useImperativeHandle(ref, () => ({
@@ -506,71 +671,124 @@ export function TradingChart({
       return chartRef.current?.takeScreenshot() ?? null;
     },
     clearDrawings() {
-      const empty = { trends: [], hlines: [] };
-      setDrawings(empty);
-      saveDrawings(live.current.storageKey, empty);
-      setPending(null);
-      setMeasure(null);
+      setDrawings(() => []);
+      setPending([]);
+      setSelected(null);
     },
   }));
 
-  // Overlays positioned on the chart's coordinates (they follow scrolling and zooming)
+  // ------------------------------------------------------------ overlays in the chart's coordinates
+
   const chart = chartRef.current;
   const main = mainRef.current?.series;
-  let measureBox: React.ReactNode = null;
-  if (chart && main && measure) {
-    const x1 = chart.timeScale().logicalToCoordinate(measure.from.i as never);
-    const x2 = chart.timeScale().logicalToCoordinate(measure.to.i as never);
-    const y1 = main.priceToCoordinate(measure.from.price);
-    const y2 = main.priceToCoordinate(measure.to.price);
-    if (x1 != null && x2 != null && y1 != null && y2 != null) {
-      const diff = measure.to.price - measure.from.price;
-      const pct = measure.from.price ? (diff / measure.from.price) * 100 : 0;
-      const up = diff >= 0;
-      const color = up ? TV.blue : TV.down;
-      const fmt = new Intl.NumberFormat("id-ID", { maximumSignificantDigits: 6 });
-      const pctFmt = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 });
-      const bars = measure.to.i - measure.from.i;
-      measureBox = (
-        <div className="pointer-events-none absolute" style={{ left: Math.min(x1, x2), top: Math.min(y1, y2), width: Math.max(1, Math.abs(x2 - x1)), height: Math.max(1, Math.abs(y2 - y1)), background: alpha(color, 0.18), outline: `1px solid ${alpha(color, 0.6)}` }}>
-          <div className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded px-2 py-1 text-center text-[11px] font-medium leading-tight text-white tabular-nums"
-            style={{ background: color, [up ? "bottom" : "top"]: "calc(100% + 4px)" }}>
-            {up ? "+" : "−"}{fmt.format(Math.abs(diff))} ({up ? "+" : "−"}{pctFmt.format(Math.abs(pct))}%)
-            <br />{Math.abs(bars)} bar
-          </div>
-        </div>
-      );
-    }
+  const pane = chart?.paneSize(0) ?? { width: 0, height: 0 };
+  const scaleWidth = chart ? chart.priceScale("right").width() : 0;
+  const fmt = new Intl.NumberFormat("id-ID", decimalsRef.current ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : { maximumFractionDigits: 0 });
+  const small = new Intl.NumberFormat("id-ID", { maximumSignificantDigits: 4 });
+  const geo: Geometry = {
+    x: xOf, y: yOf,
+    bars: (a, b) => Math.round(logicalOf(b) - logicalOf(a)),
+    price: (v) => { const p = v * k; return Math.abs(p) > 0 && Math.abs(p) < 1 ? small.format(p) : fmt.format(p); },
+    width: pane.width, height: pane.height, bg: bgRef.current,
+  };
+
+  const interactive = (tool === "cross" && !locked) || tool === "eraser";
+  let preview: Drawing | null = null;
+  if (tool !== "cross" && tool !== "eraser" && tool !== "brush" && pending.length && cursor) {
+    const points = [...pending, cursor];
+    preview = makeDrawing(tool as DrawKind, points.slice(0, Math.max(1, TOOLS[tool].clicks)), color, "preview");
   }
+  if (brushPoints && brushPoints.length > 1) preview = makeDrawing("brush", brushPoints, color, "preview");
+  const selectedDrawing = drawings.find((d) => d.id === selected) ?? null;
+
+  let layer: React.ReactNode = null;
+  if (chart && main && pane.width > 0) {
+    const items = (hidden ? [] : drawings).map((d) => ({ d, art: paint(d, geo) }));
+    layer = (
+      <svg className={interactive ? "absolute left-0 top-0 z-[1]" : "absolute left-0 top-0 z-[1] [&_*]:pointer-events-none!"} width={pane.width + scaleWidth} height={pane.height}
+        style={{ pointerEvents: "none", overflow: "hidden" }} aria-hidden>
+        <defs><clipPath id="wmt-pane"><rect x={0} y={0} width={pane.width} height={pane.height} /></clipPath></defs>
+        <g clipPath="url(#wmt-pane)">
+          {items.map(({ d, art }) => art && (
+            <g key={d.id} className={tool === "eraser" ? "cursor-not-allowed" : "cursor-pointer"}
+              onPointerDown={(e) => startDrag(e, d.id, null)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
+              <g pointerEvents="none" opacity={selected && selected !== d.id ? 0.85 : 1}>{art.picture}</g>
+              {art.hit}
+            </g>
+          ))}
+          {preview && <g pointerEvents="none" opacity={0.85}>{paint(preview, geo)?.picture}</g>}
+        </g>
+        {items.map(({ d, art }) => art?.axis && <g key={`axis-${d.id}`} pointerEvents="none">{art.axis}</g>)}
+        {/* Handles of the selected drawing, drawn last so they stay on top */}
+        {selectedDrawing && !hidden && interactive && tool === "cross" && (paint(selectedDrawing, geo)?.handles ?? []).map(([x, y], i) => (
+          <circle key={i} cx={x} cy={y} r={5} fill={bgRef.current} stroke={TV.blue} strokeWidth={2} pointerEvents="all" className="cursor-move"
+            onPointerDown={(e) => startDrag(e, selectedDrawing.id, i)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag} />
+        ))}
+      </svg>
+    );
+  }
+
   let countdown: React.ReactNode = null;
   if (chart && main && countdownEnd != null && shown.length && now < countdownEnd) {
     const lastBar = shown[shown.length - 1];
     const y = main.priceToCoordinate(lastBar.close);
-    const height = chart.paneSize(0).height;
-    if (y != null && y > 0 && y < height - 24) {
+    if (y != null && y > 0 && y < pane.height - 24) {
       countdown = (
         <div className="pointer-events-none absolute right-0 px-1 text-center text-[11px] leading-[16px] text-white tabular-nums"
-          style={{ top: y + 9, width: chart.priceScale("right").width(), background: lastBar.close >= lastBar.open ? TV.up : TV.down }}>
+          style={{ top: y + 9, width: scaleWidth, background: lastBar.close >= lastBar.open ? TV.up : TV.down }}>
           {formatCountdown(countdownEnd - now)}
         </div>
       );
     }
   }
 
+  const textAt = textEdit ? { x: xOf(textEdit.point.time), y: yOf(textEdit.point.price) } : null;
+
   return (
     <div className={tool === "cross" ? "relative h-full w-full" : "relative h-full w-full [&_canvas]:cursor-crosshair"}>
-      <div ref={box} className="h-full w-full" />
-      {measureBox}
+      {/* isolate: the chart's canvases have their own z-index; they stay under the drawings */}
+      <div ref={box} className="isolate h-full w-full" />
+      {layer}
       {countdown}
+      {pending.length > 0 && TOOLS[tool].clicks > 1 && (
+        <p className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-full bg-foreground/85 px-3 py-1 text-xs text-background">
+          {TOOLS[tool].label}: titik {pending.length + 1} dari {TOOLS[tool].clicks}. Esc membatalkan.
+        </p>
+      )}
+      {textEdit && textAt?.x != null && textAt.y != null && (
+        <input autoFocus value={textEdit.value} placeholder="Ketik catatan" aria-label="Teks di chart" maxLength={120}
+          onChange={(e) => setTextEdit({ ...textEdit, value: e.target.value })}
+          onKeyDown={(e) => { if (e.key === "Enter") commitText(); if (e.key === "Escape") { e.stopPropagation(); setTextEdit(null); } }}
+          onBlur={commitText}
+          className="absolute z-20 w-48 rounded-md border border-[#007AFF] bg-card px-2 py-1 text-sm text-foreground shadow-lg outline-none"
+          style={{ left: textAt.x, top: textAt.y - 22 }} />
+      )}
+      {/* The selected drawing's toolbar: color, text, delete */}
+      {selectedDrawing && tool === "cross" && !locked && !hidden && (
+        <div role="toolbar" aria-label={`Gambar terpilih: ${TOOLS[selectedDrawing.kind].label}`}
+          className="absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-black/[0.08] bg-popover/85 p-1 shadow-lg backdrop-blur-xl dark:border-white/10">
+          <span className="px-2 text-xs font-medium text-muted-foreground max-sm:hidden">{TOOLS[selectedDrawing.kind].label}</span>
+          {DRAW_COLORS.map((c) => (
+            <button key={c} type="button" aria-label={`Warna ${c}`} aria-pressed={selectedDrawing.color === c}
+              onClick={() => { update(selectedDrawing.id, { color: c }); setColor(c); }}
+              className="flex size-7 items-center justify-center rounded-md hover:bg-muted">
+              <span className="size-4 rounded-full ring-offset-2 ring-offset-card" style={{ background: c, boxShadow: selectedDrawing.color === c ? `0 0 0 2px var(--card), 0 0 0 3.5px ${c}` : undefined }} />
+            </button>
+          ))}
+          {selectedDrawing.kind === "text" && (
+            <button type="button" aria-label="Ubah teks" title="Ubah teks" onClick={() => setTextEdit({ id: selectedDrawing.id, point: selectedDrawing.points[0], value: selectedDrawing.text ?? "" })}
+              className="flex size-7 items-center justify-center rounded-md text-foreground hover:bg-muted">
+              <Pencil className="size-4" aria-hidden />
+            </button>
+          )}
+          <span className="mx-0.5 h-5 w-px bg-border" aria-hidden />
+          <button type="button" aria-label="Hapus gambar (Delete)" title="Hapus gambar (Delete)"
+            onClick={() => { setDrawings((list) => list.filter((d) => d.id !== selectedDrawing.id)); setSelected(null); }}
+            className="flex size-7 items-center justify-center rounded-md text-[#F23645] hover:bg-[#F23645]/10">
+            <Trash2 className="size-4" aria-hidden />
+          </button>
+        </div>
+      )}
     </div>
   );
-}
-
-function trendOptions(lib: LWC) {
-  return {
-    color: TV.blue, lineWidth: 2 as const, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
-    pointMarkersVisible: true, pointMarkersRadius: 3, lineStyle: lib.LineStyle.Solid,
-    // Drawings never stretch the price scale
-    autoscaleInfoProvider: () => null,
-  };
 }

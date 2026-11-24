@@ -1,19 +1,21 @@
 "use client";
 
 import React from "react";
-import { ChartLine, ChevronLeft, ChevronRight, Handshake, Inbox, LayoutGrid, LogOut, MessageCircle, MessagesSquare, Plus, ReceiptText, Smartphone, Target, User, Wallet } from "lucide-react";
+import { ChartCandlestick, ChartLine, ChevronLeft, ChevronRight, Handshake, Inbox, LayoutGrid, LogOut, MessageCircle, MessagesSquare, Plus, ReceiptText, Smartphone, Target, User, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMonth, formatPhone } from "@/lib/format";
 import { Button, IconButton, Menu, focusRing, type MenuItem } from "../../common/ui";
 import { ThemeSwitcher } from "../../theme";
 
-export type Tab = "dashboard" | "transactions" | "debts" | "investments" | "chat" | "inbox";
+export type Tab = "dashboard" | "transactions" | "debts" | "investments" | "chart" | "chat" | "inbox";
 
-export const NAV_ITEMS: { id: Tab; label: string; icon: React.ElementType }[] = [
+/** `phone: false`: not in the phone's bottom tabs (six fit); reached from another page there */
+export const NAV_ITEMS: { id: Tab; label: string; icon: React.ElementType; phone?: false }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
   { id: "transactions", label: "Transaksi", icon: ReceiptText },
   { id: "debts", label: "Utang-piutang", icon: Handshake },
   { id: "investments", label: "Investasi", icon: ChartLine },
+  { id: "chart", label: "Chart", icon: ChartCandlestick, phone: false },
   { id: "chat", label: "Chat", icon: MessagesSquare },
   { id: "inbox", label: "Perlu ditinjau", icon: Inbox },
 ];
@@ -55,14 +57,18 @@ function BotDot({ connected }: { connected: boolean | null }) {
 }
 
 /** Persistent sidebar for tablet/desktop: primary navigation stays visible (no hamburger). */
-export function Sidebar({ active, onNavigate, reviewCount, ...status }: StatusProps & {
+export function Sidebar({ active, onNavigate, reviewCount, collapsed, ...status }: StatusProps & {
   active: Tab;
   onNavigate: (tab: Tab) => void;
   reviewCount: number;
+  /** Icons only (w-16), for the chart page which needs the width */
+  collapsed?: boolean;
 }) {
+  if (collapsed) return <RailSidebar active={active} onNavigate={onNavigate} reviewCount={reviewCount} {...status} />;
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border/70 bg-card md:flex">
-      <div className="px-5 pt-6 pb-8 font-heading text-lg font-semibold tracking-tight">WhatsMonTrack</div>
+    // A translucent sidebar as in macOS (Finder, Mail): rows tinted gray when chosen, icons in the system blue
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-black/[0.06] bg-[#F6F6F8]/80 backdrop-blur-2xl backdrop-saturate-150 md:flex dark:border-white/[0.08] dark:bg-[#1C1C1E]/80">
+      <div className="px-5 pt-6 pb-6 font-heading text-[17px] font-semibold tracking-tight">WhatsMonTrack</div>
 
       <nav aria-label="Navigasi utama" className="flex-1 space-y-1 px-3">
         {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
@@ -74,12 +80,12 @@ export function Sidebar({ active, onNavigate, reviewCount, ...status }: StatusPr
               onClick={() => onNavigate(id)}
               aria-current={current ? "page" : undefined}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                "flex w-full items-center gap-3 rounded-lg px-3 py-[7px] text-sm text-foreground transition-colors",
                 focusRing,
-                current ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                current ? "bg-black/[0.07] font-medium dark:bg-white/[0.1]" : "hover:bg-black/[0.035] dark:hover:bg-white/[0.05]",
               )}
             >
-              <Icon className="size-4" aria-hidden />
+              <Icon className="size-[18px] text-[#0071E3] dark:text-[#0A84FF]" aria-hidden />
               <span className="flex-1 text-left">{label}</span>
               {id === "inbox" && <CountBadge count={reviewCount} />}
             </button>
@@ -87,7 +93,7 @@ export function Sidebar({ active, onNavigate, reviewCount, ...status }: StatusPr
         })}
       </nav>
 
-      <div className="space-y-1 border-t border-border/70 p-3">
+      <div className="space-y-1 border-t border-black/[0.06] p-3 dark:border-white/[0.08]">
         <div className="flex items-center justify-between gap-2 px-3 py-2">
           <span className="text-xs text-muted-foreground">Tema</span>
           <ThemeSwitcher compact />
@@ -127,8 +133,31 @@ export function Sidebar({ active, onNavigate, reviewCount, ...status }: StatusPr
   );
 }
 
-/** Account & WhatsApp menu for phones (the sidebar is hidden there). */
-export function MobileAccountMenu(status: StatusProps) {
+/** The sidebar as a narrow rail of icons; names show as tooltips and to screen readers */
+function RailSidebar({ active, onNavigate, reviewCount, ...status }: StatusProps & { active: Tab; onNavigate: (tab: Tab) => void; reviewCount: number }) {
+  return (
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-16 flex-col items-center border-r border-black/[0.06] bg-[#F6F6F8]/80 py-3 backdrop-blur-2xl backdrop-saturate-150 md:flex dark:border-white/[0.08] dark:bg-[#1C1C1E]/80">
+      <span className="mb-4 flex size-9 items-center justify-center rounded-[10px] bg-gradient-to-b from-[#3395FF] to-[#0071E3] font-heading text-sm font-bold text-white shadow-sm" title="WhatsMonTrack" aria-hidden>W</span>
+      <nav aria-label="Navigasi utama" className="flex flex-1 flex-col items-center gap-1">
+        {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
+          const current = active === id;
+          return (
+            <button key={id} type="button" onClick={() => onNavigate(id)} aria-current={current ? "page" : undefined} aria-label={label} title={label}
+              className={cn("relative flex size-10 items-center justify-center rounded-[10px] text-[#0071E3] transition-colors dark:text-[#0A84FF]", focusRing,
+                current ? "bg-black/[0.07] dark:bg-white/[0.1]" : "hover:bg-black/[0.035] dark:hover:bg-white/[0.05]")}>
+              <Icon className="size-[18px]" aria-hidden strokeWidth={current ? 2.25 : 1.75} />
+              {id === "inbox" && <CountBadge count={reviewCount} className="absolute -right-1 -top-1" />}
+            </button>
+          );
+        })}
+      </nav>
+      <MobileAccountMenu {...status} side="top" align="start" />
+    </aside>
+  );
+}
+
+/** Account & WhatsApp menu for phones (the sidebar is hidden there), and at the foot of the narrow sidebar. */
+export function MobileAccountMenu({ side, align = "end", ...status }: StatusProps & { side?: "bottom" | "top"; align?: "start" | "end" }) {
   const items: MenuItem[] = [
     {
       label: status.phoneNumber ? "Nomor WhatsApp" : "Hubungkan WhatsApp",
@@ -149,6 +178,8 @@ export function MobileAccountMenu(status: StatusProps) {
   return (
     <Menu
       items={items}
+      side={side}
+      align={align}
       header={<p className="truncate text-xs text-muted-foreground">{status.email}</p>}
       footer={
         <div className="space-y-2">
@@ -170,14 +201,15 @@ export function BottomTabs({ active, onNavigate, reviewCount }: { active: Tab; o
   return (
     <nav aria-label="Navigasi utama"
       // Hidden while the keyboard is open (see useKeyboardOpen): it shrinks the page, the tabs would sit on top of it
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden [html[data-keyboard=open]_&]:hidden">
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-black/[0.08] bg-[#F9F9F9]/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl backdrop-saturate-150 md:hidden dark:border-white/[0.08] dark:bg-[#1C1C1E]/80 [html[data-keyboard=open]_&]:hidden">
       <div className="grid grid-cols-6">
-        {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
+        {NAV_ITEMS.filter((n) => n.phone !== false).map(({ id, label, icon: Icon }) => {
           const current = active === id;
           return (
             <button key={id} type="button" onClick={() => onNavigate(id)} aria-current={current ? "page" : undefined}
-              className={cn("flex h-16 min-w-0 flex-col items-center justify-center gap-1 text-[11px] tracking-tight transition-colors max-[359px]:text-[10px] max-[359px]:tracking-tighter", focusRing,
-                current ? "font-medium text-foreground" : "text-muted-foreground")}>
+              // iOS tab bar: the chosen tab in the system blue, the others gray
+              className={cn("flex h-[52px] min-w-0 flex-col items-center justify-center gap-0.5 text-[10px] font-medium tracking-tight transition-colors max-[359px]:tracking-tighter", focusRing,
+                current ? "text-[#0071E3] dark:text-[#0A84FF]" : "text-[#8E8E93] active:opacity-60")}>
               <span className="relative">
                 <Icon className="size-5" aria-hidden strokeWidth={current ? 2.25 : 1.75} />
                 {id === "inbox" && <CountBadge count={reviewCount} className="absolute -top-1.5 left-3.5" />}
