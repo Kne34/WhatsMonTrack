@@ -73,7 +73,9 @@ const OPTIONS: { value: ThemePref; label: string; icon: React.ElementType }[] = 
 export function ThemeSwitcher({ compact = false, className }: { compact?: boolean; className?: string }) {
   const pref = useThemePref();
   return (
-    <div role="radiogroup" aria-label={tr("Tema tampilan")} className={cn("inline-flex rounded-lg bg-muted p-0.5", className)}>
+    // Same iOS segmented control as SegmentedControl (common/ui). Apple HIG: equal-width segments, and text
+    // or icons, not both: compact shows icons, otherwise words
+    <div role="radiogroup" aria-label={tr("Tema tampilan")} className={cn("inline-grid auto-cols-fr grid-flow-col rounded-[9px] bg-[#767680]/[0.12] p-0.5 dark:bg-[#767680]/[0.24]", className)}>
       {OPTIONS.map(({ value, label, icon: Icon }) => {
         const active = pref === value;
         return (
@@ -85,13 +87,13 @@ export function ThemeSwitcher({ compact = false, className }: { compact?: boolea
             title={tr(label)}
             onClick={() => setThemePref(value)}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors",
-              compact ? "size-7" : "px-2.5 py-1.5",
+              "flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-[7px] text-[13px] font-medium transition-all duration-200",
+              compact ? "size-7" : "px-3 py-1.5",
               focusRing,
-              active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              active ? "bg-white text-foreground shadow-[0_3px_8px_rgba(0,0,0,0.12),0_3px_1px_rgba(0,0,0,0.04)] dark:bg-[#636366]" : "text-foreground/80 hover:text-foreground",
             )}
           >
-            <Icon className="size-3.5" aria-hidden />
+            {compact && <Icon className="size-3.5" aria-hidden />}
             <span className={compact ? "sr-only" : undefined}>{tr(label)}</span>
           </button>
         );

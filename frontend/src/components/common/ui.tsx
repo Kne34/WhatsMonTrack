@@ -287,7 +287,8 @@ export function SegmentedControl<T extends string>({ label, value, onChange, opt
 }) {
   return (
     // iOS segmented control: a gray track, the chosen segment a raised white thumb
-    <div role="group" aria-label={label} className={cn("inline-flex rounded-[9px] bg-[#767680]/[0.12] p-0.5 dark:bg-[#767680]/[0.24]", className)}>
+    // Apple HIG: equal-width segments (the widest label sets the width)
+    <div role="group" aria-label={label} className={cn("inline-grid auto-cols-fr grid-flow-col rounded-[9px] bg-[#767680]/[0.12] p-0.5 dark:bg-[#767680]/[0.24]", className)}>
       {options.map((o) => {
         const active = o.value === value;
         return (

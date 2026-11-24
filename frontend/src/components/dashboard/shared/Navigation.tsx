@@ -4,7 +4,7 @@ import React, { useSyncExternalStore } from "react";
 import { ChartCandlestick, ChartLine, ChevronLeft, ChevronRight, Handshake, Inbox, LayoutGrid, MessagesSquare, PanelLeftClose, PanelLeftOpen, Plus, ReceiptText, Settings, Target, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMonth } from "@/lib/format";
-import { tr } from "@/lib/i18n";
+import { pick, tr } from "@/lib/i18n";
 import { Button, IconButton, Menu, focusRing } from "../../common/ui";
 
 export type Tab = "dashboard" | "transactions" | "debts" | "investments" | "chart" | "chat" | "inbox" | "settings";
@@ -13,14 +13,14 @@ export type Tab = "dashboard" | "transactions" | "debts" | "investments" | "char
  * Labels are Indonesian sources, translated with tr() where they are shown.
  * `phone: false`: not in the phone's bottom tabs (six fit); reached from another page there.
  */
-export const NAV_ITEMS: { id: Tab; label: string; short?: string; icon: React.ElementType; phone?: false }[] = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutGrid },
-  { id: "transactions", label: "Transaksi", icon: ReceiptText },
-  { id: "debts", label: "Utang-piutang", short: "Utang", icon: Handshake },
-  { id: "investments", label: "Investasi", icon: ChartLine },
+export const NAV_ITEMS: { id: Tab; label: string; short?: string; enShort?: string; icon: React.ElementType; phone?: false }[] = [
+  { id: "dashboard", label: "Dashboard", enShort: "Home", icon: LayoutGrid },
+  { id: "transactions", label: "Transaksi", enShort: "Activity", icon: ReceiptText },
+  { id: "debts", label: "Utang-piutang", short: "Utang", enShort: "Debts", icon: Handshake },
+  { id: "investments", label: "Investasi", enShort: "Invest", icon: ChartLine },
   { id: "chart", label: "Chart", icon: ChartCandlestick, phone: false },
   { id: "chat", label: "Chat", icon: MessagesSquare },
-  { id: "inbox", label: "Perlu ditinjau", short: "Tinjau", icon: Inbox },
+  { id: "inbox", label: "Perlu ditinjau", short: "Tinjau", enShort: "Review", icon: Inbox },
 ];
 /** At the foot of the sidebar; on phones the gear in the top bar */
 export const SETTINGS_ITEM = { id: "settings" as const, label: "Pengaturan", icon: Settings };
@@ -159,11 +159,13 @@ export function BottomTabs({ active, onNavigate, reviewCount }: { active: Tab; o
       // Hidden while the keyboard is open (see useKeyboardOpen): it shrinks the page, the tabs would sit on top of it
       className="fixed inset-x-0 bottom-0 z-30 border-t border-black/[0.08] bg-[#F9F9F9]/80 pb-[env(safe-area-inset-bottom)] backdrop-blur-2xl backdrop-saturate-150 md:hidden dark:border-white/[0.08] dark:bg-[#1C1C1E]/80 [html[data-keyboard=open]_&]:hidden">
       <div className="grid grid-cols-6">
-        {NAV_ITEMS.filter((n) => n.phone !== false).map(({ id, label, short, icon: Icon }) => {
+        {NAV_ITEMS.filter((n) => n.phone !== false).map(({ id, label, short, enShort, icon: Icon }) => {
           const current = active === id;
+          // Apple HIG: tab bar titles are short single words; six tabs fit a 320 px phone only that way
+          const title = pick(short ?? label, enShort ?? tr(label));
           return (
             <button key={id} type="button" onClick={() => onNavigate(id)} aria-current={current ? "page" : undefined}
-              aria-label={short ? tr(label) : undefined}
+              aria-label={title !== tr(label) ? tr(label) : undefined}
               // iOS tab bar: the chosen tab in the system blue, the others gray
               className={cn("flex h-[52px] min-w-0 flex-col items-center justify-center gap-0.5 text-[10px] font-medium tracking-tight transition-colors max-[359px]:tracking-tighter", focusRing,
                 current ? "text-[#0071E3] dark:text-[#0A84FF]" : "text-[#8E8E93] active:opacity-60")}>
@@ -171,7 +173,7 @@ export function BottomTabs({ active, onNavigate, reviewCount }: { active: Tab; o
                 <Icon className="size-5" aria-hidden strokeWidth={current ? 2.25 : 1.75} />
                 {id === "inbox" && <CountBadge count={reviewCount} className="absolute -top-1.5 left-3.5" />}
               </span>
-              <span className="max-w-full truncate px-0.5" aria-hidden={short ? true : undefined}>{tr(short ?? label)}</span>
+              <span className="max-w-full truncate px-0.5" aria-hidden={title !== tr(label) ? true : undefined}>{title}</span>
             </button>
           );
         })}
