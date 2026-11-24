@@ -54,6 +54,8 @@ export interface Quote {
   price: number;
   currency: string;
   priceIdr?: number | null;
+  /** Change since the previous close (stocks) or over 24 hours (crypto), in percent */
+  changePct?: number | null;
   name?: string | null;
   updatedAt: string;
   /** The live source failed; this is the last known price */
@@ -64,7 +66,25 @@ export interface MarketPrices {
   prices: Record<string, Quote | null>;
   /** USD -> IDR */
   fx: Quote | null;
+  /** Price sources the server could not reach just now, by name */
+  unreachable?: string[];
   fetchedAt: string;
+}
+
+export type ChartRange = "1D" | "5D" | "1M" | "3M" | "1Y" | "5Y";
+export interface Candle { time: number; open: number; high: number; low: number; close: number; volume: number }
+export interface PriceHistory {
+  /** Currency of the candles: IDR or USD (crypto charts are in USD) */
+  currency: string;
+  candles: Candle[];
+  /** Where the data came from; null when no source had it */
+  source: string | null;
+}
+
+/** The total market value in rupiah of everything still held (counted in "Saldo total"); null while unknown. */
+export function portfolioValueIdr(holdings: Holding[] | null, prices: MarketPrices | null): number | null {
+  if (!holdings) return null;
+  return holdings.filter((h) => h.quantity > 0).reduce((sum, h) => sum + (valuate(h, prices).valueIdr ?? 0), 0);
 }
 
 /** The current price per share/unit in the holding's own currency, or null if unknown. */
@@ -156,7 +176,7 @@ export function formatMoney(value: number, currency: Currency | string) {
   return (small ? idrSmall : idr).format(value);
 }
 
-/** 0,025 · 1.250 */
+/** 0,025 or 1.250 */
 export const formatQuantity = (value: number) => number(8).format(value);
 
 /** +12,3% / −4,5% */

@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Check, ReceiptText, Target, Wallet } from "lucide-react";
+import { ChartLine, Check, ReceiptText, Target, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { categoryLabel, formatCompact, formatMonth, formatRupiah, inReports } from "@/lib/format";
 import type { DebtSummary } from "@/lib/api";
@@ -35,6 +35,9 @@ interface HomeViewProps {
   debtSummary: DebtSummary | null;
   /** Opens the Utang-piutang page */
   onOpenDebts: () => void;
+  /** Market value in rupiah of the investments still held (counted in "Saldo total"); null while loading or none */
+  investmentValue: number | null;
+  onOpenInvestments: () => void;
   onAddTransaction: () => void;
   onAddAccount: () => void;
   onEditAccount: (account: Account) => void;
@@ -116,7 +119,7 @@ function Onboarding({ hasAccount, phoneLinked, hasTransaction, onAddAccount, onL
 }
 
 export default function HomeView({
-  monthlyTxs, accounts, budgets, month, year, phoneLinked, hasAnyTransaction, debtSummary, onOpenDebts,
+  monthlyTxs, accounts, budgets, month, year, phoneLinked, hasAnyTransaction, debtSummary, onOpenDebts, investmentValue, onOpenInvestments,
   onAddTransaction, onAddAccount, onEditAccount, onAddBudget, onEditBudget, onLinkPhone,
 }: HomeViewProps) {
   // Each section has its own eye (see usePrivacy); showing a hidden one asks for the password
@@ -136,7 +139,11 @@ export default function HomeView({
   // Talangan and debt payments move money but are not income or spending until their record is settled:
   // left out of the totals, charts and budgets
   const counted = useMemo(() => confirmed.filter(inReports), [confirmed]);
-  const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
+  const accountsTotal = accounts.reduce((s, a) => s + a.balance, 0);
+  // Investments count at their live market value, so "Saldo total" is everything the user owns
+  const invested = investmentValue ?? 0;
+  const hasInvestments = investmentValue != null && investmentValue > 0;
+  const totalBalance = accountsTotal + invested;
   const income = counted.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
   const expense = counted.filter((t) => t.type === "EXPENSE").reduce((s, t) => s + t.amount, 0);
   const net = income - expense;
@@ -214,7 +221,7 @@ export default function HomeView({
         <StatTile
           label="Saldo total"
           value={privacy.show("balance", formatRupiah(totalBalance))}
-          sub={`${accounts.length} rekening`}
+          sub={hasInvestments ? `${accounts.length} rekening dan investasi` : `${accounts.length} rekening`}
           action={privacy.eye("balance")}
         />
         <StatTile
@@ -299,7 +306,7 @@ export default function HomeView({
                     <div className="flex items-baseline justify-between gap-3 text-sm">
                       <span className="truncate text-foreground">{c.label}</span>
                       <span className="shrink-0 tabular-nums text-foreground">
-                        {formatRupiah(c.value)} <span className="text-muted-foreground">· {Math.round(c.share * 100)}%</span>
+                        {formatRupiah(c.value)} <span className="text-muted-foreground">({Math.round(c.share * 100)}%)</span>
                       </span>
                     </div>
                     <div className="mt-1.5 h-1.5 rounded-full bg-muted">
@@ -344,6 +351,18 @@ export default function HomeView({
                     </button>
                   </li>
                 ))}
+                {hasInvestments && (
+                  <li className="mt-1 border-t border-border/70 pt-1">
+                    <button type="button" onClick={onOpenInvestments}
+                      className={cn("flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition-colors hover:bg-muted", focusRing)}>
+                      <span className="flex min-w-0 items-center gap-2 text-foreground">
+                        <ChartLine className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                        <span className="truncate" title="Nilai pasar saat ini">Investasi</span>
+                      </span>
+                      <span className="shrink-0 tabular-nums text-foreground">{privacy.show("accounts", formatRupiah(invested))}</span>
+                    </button>
+                  </li>
+                )}
               </ul>
             ) : (
               <EmptyState icon={<Wallet className="size-5" />} title="Belum ada rekening"
@@ -356,7 +375,7 @@ export default function HomeView({
             <Card>
               <CardHeader
                 title="Utang-piutang"
-                description={`${debtSummary.openCount} belum selesai · belum termasuk pengeluaran`}
+                description={`${debtSummary.openCount} belum selesai, belum termasuk pengeluaran`}
                 action={
                   <div className="flex items-center gap-1">
                     {privacy.eye("debt", "size-8")}
@@ -400,7 +419,7 @@ export default function HomeView({
                       {/* Status is never color-only */}
                       {status !== "ok" && (
                         <p className={cn("mt-1 text-xs", status === "over" ? "text-destructive" : "text-foreground")}>
-                          {status === "over" ? `Melebihi ${formatRupiah(spent - budget.limit)}` : `Hampir habis · sisa ${formatRupiah(budget.limit - spent)}`}
+                          {status === "over" ? `Melebihi ${formatRupiah(spent - budget.limit)}` : `Hampir habis, sisa ${formatRupiah(budget.limit - spent)}`}
                         </p>
                       )}
                     </button>

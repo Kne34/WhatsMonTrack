@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { AssetType, Currency, Holding, MarketPrices, Trade, TradeSide } from './portfolio';
+import type { AssetType, ChartRange, Currency, Holding, MarketPrices, PriceHistory, Trade, TradeSide } from './portfolio';
 
 // Since we setup rewrites in next.config.ts, we can just call /api/... directly
 const api = axios.create({
@@ -177,8 +177,10 @@ export const fetchTrades = async (id: string): Promise<Trade[]> => (await api.ge
 export const addTrade = async (id: string, input: { side: TradeSide; quantity: number; price: number; tradedAt?: string; note?: string }) =>
   (await api.post(`/investments/${id}/trades`, input)).data as { holding: Holding; trade: Trade };
 /** refresh: skip the server's 3-minute cache */
-export const fetchMarketPrices = async (refresh = false): Promise<MarketPrices> =>
-  (await api.get('/market/prices', { params: refresh ? { refresh: true } : {} })).data;
+export const fetchMarketPrices = async (): Promise<MarketPrices> => (await api.get('/market/prices')).data;
+
+export const fetchPriceHistory = async (id: string, range: ChartRange): Promise<PriceHistory> =>
+  (await api.get(`/investments/${id}/chart`, { params: { range } })).data;
 
 export const fetchAccounts = async () => {
   const { data } = await api.get('/accounts');

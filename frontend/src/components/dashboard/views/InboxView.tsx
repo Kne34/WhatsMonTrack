@@ -70,7 +70,7 @@ export default function InboxView({ items, onConfirm, onEdit, onDelete, onDelete
               <Card className="p-0">
                 <div className="border-b border-border/70 px-5 py-3">
                   <p className="text-xs text-muted-foreground">
-                    Pesan WhatsApp · {formatDayMonth(tx.createdAt)}, {formatTime(tx.createdAt)}
+                    Pesan WhatsApp {formatDayMonth(tx.createdAt)}, {formatTime(tx.createdAt)}
                   </p>
                   <blockquote className="mt-1 text-sm text-foreground">&ldquo;{tx.rawText || "-"}&rdquo;</blockquote>
                 </div>
@@ -81,7 +81,7 @@ export default function InboxView({ items, onConfirm, onEdit, onDelete, onDelete
                   </div>
                   <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                     <Detail label="Jenis">{TX_TYPE_LABEL[tx.type]}</Detail>
-                    <Detail label="Kategori">{tx.subcategory ? `${categoryLabel(tx.category)} · ${tx.subcategory}` : categoryLabel(tx.category)}</Detail>
+                    <Detail label="Kategori">{tx.subcategory ? `${categoryLabel(tx.category)}, ${tx.subcategory}` : categoryLabel(tx.category)}</Detail>
                     <Detail label="Rekening">{account}</Detail>
                   </dl>
                   <div className="mt-4 flex flex-wrap justify-end gap-2">

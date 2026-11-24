@@ -4,7 +4,7 @@ const compact = new Intl.NumberFormat("id-ID", { notation: "compact", maximumFra
 /** Rp 1.250.000 */
 export const formatRupiah = (value: number) => rupiah.format(value);
 
-/** 1,3 jt · 250 rb — for chart axes, where full amounts don't fit. */
+/** 1,3 jt or 250 rb — for chart axes, where full amounts don't fit. */
 export const formatCompact = (value: number) => (value === 0 ? "0" : compact.format(value));
 
 /** "November 2026" */

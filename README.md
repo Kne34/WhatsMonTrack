@@ -58,7 +58,7 @@ Quick access to every document in this repository.
 ### Web dashboard
 - **Dashboard (overview):** total balance, income, expense and difference (each can be hidden with its eye icon), cash-flow chart, daily spending chart with the daily budget line, spending or income per category, accounts (with their own eye icon) and budget progress, plus a lending/debt card kept apart from the totals.
 - **Utang-piutang page:** talangan (piutang) and debts (utang) with the people involved. Balances move the moment money moves (the talangan leaving, each person paying to whichever account); the real expense (your own share, or what you repaid) is recorded only when the record is settled, without touching a balance again.
-- **Investasi page:** Indonesian stocks (IDX, in lots), US stocks and crypto on Stockbit, Pluang and other platforms, with live prices (Yahoo Finance, CoinGecko) and the live USD/IDR rate. Portfolio value, cost and unrealized profit/loss in rupiah, an allocation donut by asset class or platform, a filterable holdings table, and buy/sell that recomputes the average price. Separate from accounts: balances never change.
+- **Investasi page:** Indonesian stocks (IDX, in lots), US stocks and crypto on Stockbit, Pluang and other platforms, with live prices updated every 10 seconds (Yahoo Finance, Binance, CoinGecko) and the live USD/IDR rate. Portfolio value, cost and unrealized profit/loss in rupiah, an allocation donut by asset class or platform, a filterable holdings table, a TradingView-style candlestick chart per asset (1 day to 5 years), and buy/sell that recomputes the average price. Buying or selling never changes an account balance; the market value is added to **Saldo total** on the Dashboard.
 - **Transaksi (ledger):** calendar day filter, paginated list (10/15/50/100 per page), add, edit and delete.
 - **Chat:** chat with the bot right on the web, with the same results as on WhatsApp (record transactions, `/rekap`). Works without a bot number or a linked phone; the history is saved and can be cleared.
 - **Perlu ditinjau (review inbox):** confirm, edit or delete uncertain bot results, or delete them all.
@@ -117,7 +117,7 @@ graph TD
 | `accounts/` | Bank/e-wallet accounts (CRUD, ownership checks, loose name matching) |
 | `budgets/` | Monthly budget per category |
 | `debts/` | Utang-piutang: records with participants, real-time cash flow (transactions with `inReports: false`) and settling (an expense/income with `affectsBalance: false`) |
-| `investments/` | Investasi: holdings, buy/sell history (`portfolio.ts` has the average-price math) and `market.service.ts`, the live prices from Yahoo Finance and CoinGecko with a 3-minute cache and a database fallback |
+| `investments/` | Investasi: holdings, buy/sell history (`portfolio.ts` has the average-price math) and `market.service.ts`, the live prices and chart history from Yahoo Finance, Binance and CoinGecko with a 10-second cache and a database fallback |
 | `transactions/` | Transactions, monthly summary, `ledger.ts` (the only place that changes balances) |
 | `parser/` | Gemini parsing with regex fallback |
 | `whatsapp/` | `WhatsAppService` (Baileys socket), `BotService` (conversation logic, `/rekap`), `PhoneLinkService` (number linking), session store in PostgreSQL (`db-auth-state.ts`) |
@@ -149,7 +149,8 @@ All endpoints except `/api/auth/register`, `verify-otp`, `login`, `forgot-passwo
 | `POST /api/debts/:id/settle`, `POST /api/debts/:id/reopen` | Settle: records total − paid (talangan) or what was paid (utang) as an expense with `affectsBalance: false`; `{ recordExcessAsIncome }`, `{ recordExpense }`. Reopen removes it |
 | `GET /api/investments`, `POST /api/investments`, `PUT /api/investments/:id`, `DELETE /api/investments/:id` | Holdings: `assetType` (IDX_STOCK / US_STOCK / CRYPTO), `symbol` (BBCA, NVDA, BTC; no `.JK`), `platform`, `currency` (IDR / USD; IDX is always IDR), `quantity` (lots for IDX, decimals allowed otherwise), `avgPrice` (per share/unit), optional `name` and `coingeckoId` (found automatically). An unknown ticker is refused; the same ticker on the same platform is a 409. `PUT` is a direct correction and cannot change the type or ticker |
 | `GET /api/investments/:id/trades`, `POST /api/investments/:id/trades` | Buy/sell history. `{ side: BUY or SELL, quantity, price, tradedAt?, note? }`: a buy recomputes the average price, a sell keeps it and stores the realized P&L. Selling more than you hold is a 400 |
-| `GET /api/market/prices?refresh=true` | Live prices of your own holdings plus `fx` (USD/IDR): `{ prices: { "IDX:BBCA": { price, currency, priceIdr?, updatedAt, stale } }, fx, fetchedAt }`. Cached for 3 minutes (`refresh` still reuses prices younger than 30 seconds). When Yahoo or CoinGecko fail, the last price saved in the database comes back with `stale: true`; a price never seen is `null` |
+| `GET /api/market/prices` | Live prices of your own holdings plus `fx` (USD/IDR): `{ prices: { "IDX:BBCA": { price, currency, priceIdr?, changePct, updatedAt, stale } }, fx, unreachable, fetchedAt }`. `changePct` is the change since the previous close (stocks) or over 24 hours (crypto). Shared 10-second cache. When a source fails, the last price saved in the database comes back with `stale: true` and the source is named in `unreachable` (e.g. `["Yahoo Finance"]`); a price never seen is `null` |
+| `GET /api/investments/:id/chart?range=1D` | Price history of one of your holdings for the chart: `{ currency, source, candles: [{ time, open, high, low, close, volume }] }`, `time` in Unix seconds. `range`: 1D (5-minute bars), 5D, 1M, 3M, 1Y, 5Y (weekly bars). Crypto comes from Binance (USDT pairs) or Yahoo, stocks from Yahoo |
 | `GET /api/transactions?month&year&day&page&limit` | List transactions; month/day boundaries use the user's time zone. Optional filters: `type` (EXPENSE/INCOME/TRANSFER), `category` (code, case-insensitive), `accountId` (money out of or into that account), `q` (text in the description or original message), `status` (CONFIRMED/NEEDS_REVIEW) |
 | `POST /api/transactions/manual` | Add a transaction manually |
 | `PUT /api/transactions/:id`, `DELETE /api/transactions/:id` | Edit or delete (balances are corrected) |
@@ -356,7 +357,7 @@ The **Chat** tab (sidebar; on a phone: the bottom bar) talks to the same bot as 
 
 ### 9. Dashboard (overview)
 - **Month switcher** at the top: go to earlier or later months (transactions can be dated ahead, e.g. December), **Bulan ini** jumps back to the current month.
-- **Saldo total**: the sum of all accounts. Its eye icon hides only this number.
+- **Saldo total**: the sum of all accounts plus the market value of your investments (live, in rupiah). The Rekening card lists **Investasi** under the accounts; click it to open the Investasi page. Its eye icon hides only this number.
 - **Pemasukan / Pengeluaran / Selisih**: income, expenses and their difference for the month. Each has its own eye icon to hide it, separate from the balance toggle and remembered in this browser.
 - **Every section has its own eye**: Saldo total, Pemasukan, Pengeluaran, Selisih, the Rekening card, the Utang-piutang card, on the Utang-piutang page the totals and the list, and on the Investasi page the summary, the allocation and the holdings. Hiding or showing one never changes another; each choice is remembered in this browser.
 - **Showing a hidden amount asks for your password** every time (checked by the server, at most 10 tries per minute). Hiding needs no password. This keeps the numbers from someone glancing at or picking up your screen; it is not encryption, since the data is still loaded in the page.
@@ -399,19 +400,20 @@ Menu **Utang-piutang** (phone: **Utang**). For money you paid for others (**Piut
 - The totals and the list have their own eye icon.
 
 ### 12. Investasi page
-Menu **Investasi**: your stocks and crypto across platforms, with live prices. Like the Utang-piutang page it is separate from your accounts: buying or selling here never changes a balance.
+Menu **Investasi**: your stocks and crypto across platforms, with live prices. Buying or selling here never changes an account balance (record the transfer to Stockbit or Pluang as a normal transaction if you want); the market value of what you hold is counted in **Saldo total**.
 
 - **Tambah aset** (or **Tambah** → **Aset investasi**): choose **Saham Indonesia**, **Saham US** or **Crypto**, the ticker (**BBCA**, **NVDA**, **BTC**; for IDX stocks without `.JK`), the platform (Stockbit, Pluang, ... or any name), the quantity and the average buy price. The name is filled in automatically; an unknown ticker is refused.
   - **Saham Indonesia** is counted in **lots** (1 lot = 100 shares) and priced per share in rupiah. 10 lot at Rp 9.000 is a cost of Rp 9.000.000.
   - **Saham US and crypto** accept decimals (*0,025* BTC, *1,54* NVDA). Choose whether you bought in **USD** or in **Rupiah** (e.g. crypto on Indodax).
   - For crypto the CoinGecko id is found from the ticker (the biggest coin with that symbol). If a ticker is shared by several coins, type the id from the coin's coingecko.com address.
   - The same ticker on another platform is a separate row; on the same platform use **Beli** instead.
-- **Beli / Jual** (the arrows icon; on a phone tap the row): record a buy or a sell with its price and date. A buy recomputes the average price; a sell keeps it and shows the realized profit or loss. The dialog also shows the history. Sold-out assets stay in the list as *Terjual habis*.
+- **Chart** (the candles icon, or click the ticker; on a phone tap the row): the price chart as on TradingView, with candles or a line, volume, ranges **1H** (1 day), **5H**, **1B**, **3B**, **1T** and **5T** (5 years), your average buy price as a dashed line, and the open, high, low and close of the bar under your finger or mouse. The last bar follows the live price. Crypto bought in rupiah is shown in rupiah, converted with the live rate.
+- **Beli/jual** (in the chart window): record a buy or a sell with its price and date. A buy recomputes the average price; a sell keeps it and shows the realized profit or loss. The dialog also shows the history. Sold-out assets stay in the list as *Terjual habis*.
 - **Pencil**: correct the quantity, average price, platform or name directly (not recorded in the history), or delete the asset with its history.
 - **Portofolio**: value, cost and profit/loss in rupiah and percent (green for profit, red for loss), and the USD/IDR rate used. USD assets are converted with the live rate.
 - **Alokasi**: a donut by **Jenis aset** or by **Platform**, with the share and amount of each.
 - **Aset** table: filter by type (IDX / US / Crypto), platform and ticker. Columns: ticker and name, platform, quantity, current and average price, value (in the asset's currency and in rupiah) and profit/loss. On phones and tablets it is a list.
-- **Prices** come from Yahoo Finance (IDX with `.JK`, US stocks, USD/IDR) and CoinGecko (crypto), fetched by the server and kept for 3 minutes. **Perbarui harga** asks again. When a source is down, the last saved price is used and marked with a yellow sign; an asset without any price yet is valued at its buy price.
+- **Prices are live**: the page asks every 10 seconds while it is open (and on the Dashboard, for Saldo total), a price that moves flashes green or red, and each asset shows its change today (24 hours for crypto). There is no refresh button. Sources: Yahoo Finance for IDX (with `.JK`, delayed by the exchange) and US stocks and USD/IDR; Binance for crypto, CoinGecko and then Yahoo for coins Binance doesn't list. When a source is down the page says which one, the last saved price is used and marked with a yellow sign; an asset without any price yet is valued at its buy price.
 
 ### 13. Dashboard: Perlu ditinjau (review inbox)
 Messages the bot was not sure about (confidence below 85%) appear here, with a counter on the menu. Each item shows the original WhatsApp message, the amount, the bot's confidence, the type, category and account.
@@ -586,3 +588,10 @@ A test with 16 injection messages (fake admin, reading other users' data, leakin
 - **Bot:** Gemini and the offline parser mark lending/debt as LEND / BORROW / REPAID / REPAY with the person, and the bot creates the record or ticks the person on their only open record. `/rekap` shows the open totals.
 - **Page:** open totals, Belum selesai / Selesai, type filter and search, a form with a list of people (and an equal split), a checklist with a progress bar, a payment dialog (amount, account, date), and the settle confirmation with the difference.
 - **`deploy/vps/reset-data.sh`:** empties the whole database after a backup and a typed confirmation (used once to start over).
+
+### Phase 16: Live prices, charts, investments in Saldo total
+- **Live prices:** the page polls every 10 seconds (only while the tab is visible) and the server shares one 10-second cache. Yahoo's spark endpoint prices up to 20 stocks per request with the previous close; crypto comes from Binance (`ticker/24hr`, the list of USDT pairs refreshed every 6 hours), then CoinGecko, then Yahoo `XYZ-USD`. The "Perbarui harga" button is gone.
+- **Why a price was missing:** the response names the sources the server could not reach (`unreachable`), and the page says so, so a server that is blocked by a provider is visible instead of a silent "Harga belum tersedia".
+- **Chart:** `GET /api/investments/:id/chart` (Binance klines or Yahoo chart, cached 30 seconds for intraday ranges and 5 minutes for the rest), drawn with TradingView's open-source `lightweight-charts`, loaded only when a chart is opened.
+- **Saldo total** on the Dashboard includes the live market value of the investments.
+- The middle dot separator (·) is gone from the interface; commas instead.

@@ -210,7 +210,7 @@ export function TradeDialog({ holding, livePrice, initialSide = "BUY", onClose, 
   };
 
   return (
-    <AppDialog open onClose={onClose} title={`${holding.symbol} · ${holding.platform}`}
+    <AppDialog open onClose={onClose} title={`${holding.symbol} di ${holding.platform}`}
       description={`Punya ${formatQuantity(holding.quantity)} ${quantityUnit(type)}, rata-rata ${formatMoney(holding.avgPrice, cur)} ${priceLabel(type)}.`}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && <Alert>{error}</Alert>}
@@ -230,10 +230,10 @@ export function TradeDialog({ holding, livePrice, initialSide = "BUY", onClose, 
         {valid && (
           <p className="rounded-xl bg-muted px-3.5 py-2.5 text-sm text-muted-foreground">
             {side === "BUY" ? (
-              <>Total {formatMoney(q * units * p, cur)} · rata-rata baru{" "}
+              <>Total {formatMoney(q * units * p, cur)}, rata-rata baru{" "}
                 <span className="font-medium text-foreground tabular-nums">{formatMoney(avgAfterBuy(holding.quantity, holding.avgPrice, q, p), cur)}</span></>
             ) : (
-              <>Total {formatMoney(q * units * p, cur)} · untung/rugi{" "}
+              <>Total {formatMoney(q * units * p, cur)}, untung/rugi{" "}
                 <span className={cn("font-medium tabular-nums", p >= holding.avgPrice ? "text-income" : "text-expense")}>
                   {formatSigned((p - holding.avgPrice) * q * units, cur)}
                 </span></>
@@ -261,7 +261,7 @@ export function TradeDialog({ holding, livePrice, initialSide = "BUY", onClose, 
                     <span className={cn("font-medium", t.side === "BUY" ? "text-foreground" : "text-expense")}>{t.side === "BUY" ? "Beli" : "Jual"}</span>{" "}
                     {formatQuantity(t.quantity)} {quantityUnit(type)} @ {formatMoney(t.price, cur)}
                   </p>
-                  <p className="text-xs text-muted-foreground">{formatDayMonth(t.tradedAt)} {new Date(t.tradedAt).getFullYear()}{t.note ? ` · ${t.note}` : ""}</p>
+                  <p className="text-xs text-muted-foreground">{formatDayMonth(t.tradedAt)} {new Date(t.tradedAt).getFullYear()}{t.note ? `, ${t.note}` : ""}</p>
                 </div>
                 {t.realizedPnl != null && (
                   <span className={cn("shrink-0 text-xs font-medium tabular-nums", t.realizedPnl >= 0 ? "text-income" : "text-expense")}>

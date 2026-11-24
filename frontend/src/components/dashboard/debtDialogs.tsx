@@ -258,7 +258,7 @@ export function PayDialog({ record, participant, accounts, onClose, onSave }: {
 
   return (
     <AppDialog open onClose={onClose} title={receivable ? `${participant.personName} bayar` : `Bayar ke ${participant.personName}`}
-      description={`${record.title}${participant.expectedAmount ? ` · estimasi ${formatRupiah(participant.expectedAmount)}` : ""}`}>
+      description={`${record.title}${participant.expectedAmount ? `, estimasi ${formatRupiah(participant.expectedAmount)}` : ""}`}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && <Alert>{error}</Alert>}
         <AmountField label="Nominal yang dibayar" digits={amount} onChange={setAmount} error={errors.amount} />

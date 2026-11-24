@@ -143,8 +143,8 @@ function RecordCard({ record: r, money, onEdit, onDelete, onPay, onUnpay, onSett
             {!open && <span className="rounded-md bg-foreground px-1.5 py-0.5 text-[11px] font-medium text-background">Selesai</span>}
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {formatDayMonth(r.date)} {new Date(r.date).getFullYear()} · {categoryLabel(r.category)}
-            {r.account && <> · {receivable ? "dari" : "ke"} {r.account.name}</>}
+            {formatDayMonth(r.date)} {new Date(r.date).getFullYear()}, {categoryLabel(r.category)}
+            {r.account && <>, {receivable ? "dari" : "ke"} {r.account.name}</>}
           </p>
           {r.notes && <p className="mt-1 break-words text-xs text-foreground/80">{r.notes}</p>}
         </div>
@@ -198,7 +198,7 @@ function RecordCard({ record: r, money, onEdit, onDelete, onPay, onUnpay, onSett
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {p.isPaid
-                    ? <>Sudah bayar{p.paidAccount && <> · {receivable ? "ke" : "dari"} {p.paidAccount.name}</>}{p.paidAt && <> · {formatDayMonth(p.paidAt)}</>}</>
+                    ? <>Sudah bayar{p.paidAccount && <>, {receivable ? "ke" : "dari"} {p.paidAccount.name}</>}{p.paidAt && <>, {formatDayMonth(p.paidAt)}</>}</>
                     : <span className="text-warning">Belum bayar</span>}
                 </p>
               </div>
@@ -215,9 +215,9 @@ function RecordCard({ record: r, money, onEdit, onDelete, onPay, onUnpay, onSett
               ? difference >= 0
                 ? <>Estimasi selisih <b className="font-medium text-foreground">{money(difference)}</b> akan jadi pengeluaran</>
                 : <>Kelebihan bayar <b className="font-medium text-foreground">{money(-difference)}</b></>
-              : <>Sisa utang <b className="font-medium text-foreground">{money(r.progress.remaining)}</b>{r.recordExpense && <> · yang dibayar jadi pengeluaran</>}</>
+              : <>Sisa utang <b className="font-medium text-foreground">{money(r.progress.remaining)}</b>{r.recordExpense && <>, yang dibayar jadi pengeluaran</>}</>
           ) : (
-            <>Selesai {r.settledAt ? formatDayMonth(r.settledAt) : ""}{r.linkedTransactionId ? " · dicatat ke laporan" : " · tidak ada yang dicatat"}</>
+            <>Selesai {r.settledAt ? formatDayMonth(r.settledAt) : ""}{r.linkedTransactionId ? ", dicatat ke laporan" : ", tidak ada yang dicatat"}</>
           )}
         </p>
         {open ? (

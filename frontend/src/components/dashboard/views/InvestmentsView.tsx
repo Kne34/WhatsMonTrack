@@ -1,26 +1,26 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { ArrowLeftRight, CircleAlert, LineChart, Pencil, Plus, RefreshCw, Search, SearchX } from "lucide-react";
+import { CandlestickChart, CircleAlert, LineChart, Pencil, Plus, Search, SearchX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRupiah, formatTime } from "@/lib/format";
 import {
   ASSET_TYPE_BUTTON, ASSET_TYPE_LABEL, ASSET_TYPES, formatMoney, formatPercent, formatQuantity, formatSigned, quantityUnit, valuate,
-  type AssetType, type Holding, type MarketPrices, type TradeSide, type Valuation,
+  type AssetType, type Holding, type MarketPrices, type Valuation,
 } from "@/lib/portfolio";
 import { Button, Card, EmptyState, IconButton, SegmentedControl, Skeleton, focusRing, inputBase } from "../../common/ui";
 import { MASK, MASK_PLAIN, usePrivacy } from "../shared/privacy";
+import { LiveBadge } from "../investmentChart";
 
 interface InvestmentsViewProps {
   /** null while loading */
   holdings: Holding[] | null;
   prices: MarketPrices | null;
-  pricesLoading: boolean;
-  onRefresh: () => void;
+  /** Opens the chart of a holding */
+  onOpen: (h: Holding) => void;
   onAdd: () => void;
   onEdit: (h: Holding) => void;
-  onTrade: (h: Holding, side: TradeSide) => void;
 }
 
 type Row = { h: Holding; v: Valuation };
@@ -32,7 +32,26 @@ const SERIES = Array.from({ length: 8 }, (_, i) => `var(--series-${i + 1})`);
 const TYPE_COLOR: Record<AssetType, string> = { IDX_STOCK: SERIES[0], US_STOCK: SERIES[1], CRYPTO: SERIES[2] };
 const OTHER_COLOR = "var(--muted-foreground)";
 
-const pnlTone = (n: number | null) => (n == null || n === 0 ? "text-muted-foreground" : n > 0 ? "text-income" : "text-expense");
+const pnlTone = (n: number | null | undefined) => (n == null || n === 0 ? "text-muted-foreground" : n > 0 ? "text-income" : "text-expense");
+
+/** A live number that briefly lights up green or red when it moves, as on a trading screen */
+function Flash({ value, children }: { value: number; children: React.ReactNode }) {
+  const previous = useRef(value);
+  const [dir, setDir] = useState<"up" | "down" | null>(null);
+  useEffect(() => {
+    if (value === previous.current) return;
+    const next = value > previous.current ? "up" : "down";
+    previous.current = value;
+    setDir(next);
+    const t = setTimeout(() => setDir(null), 1200);
+    return () => clearTimeout(t);
+  }, [value]);
+  return (
+    <span className={cn("rounded px-0.5 transition-colors duration-700", dir === "up" && "bg-income/15 text-income", dir === "down" && "bg-expense/15 text-expense")}>
+      {children}
+    </span>
+  );
+}
 
 function Tile({ label, children, sub, className }: { label: string; children: React.ReactNode; sub?: React.ReactNode; className?: string }) {
   return (
@@ -52,7 +71,7 @@ function AllocationTooltip({ active, payload, hidden }: { active?: boolean; payl
       <p className="flex items-center gap-1.5 text-muted-foreground">
         <span className="size-2 rounded-full" style={{ background: s.color }} aria-hidden /> {s.label}
       </p>
-      <p className="mt-0.5 font-medium text-foreground tabular-nums">{hidden ? MASK : formatRupiah(s.value)} · {formatPercent(s.pct).replace("+", "")}</p>
+      <p className="mt-0.5 font-medium text-foreground tabular-nums">{hidden ? MASK : formatRupiah(s.value)}, {formatPercent(s.pct).replace("+", "")}</p>
     </div>
   );
 }
@@ -141,7 +160,7 @@ function Allocation({ rows, platforms, hidden, eye }: { rows: Row[]; platforms: 
   );
 }
 
-export default function InvestmentsView({ holdings, prices, pricesLoading, onRefresh, onAdd, onEdit, onTrade }: InvestmentsViewProps) {
+export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdit }: InvestmentsViewProps) {
   const privacy = usePrivacy(["portfolio", "allocation", "holdings"] as const);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
   const [platformFilter, setPlatformFilter] = useState("");
@@ -208,10 +227,16 @@ export default function InvestmentsView({ holdings, prices, pricesLoading, onRef
 
   const priceCell = (r: Row) => (
     <span className="inline-flex items-center gap-1">
-      {r.v.hasPrice ? formatMoney(r.v.price, r.h.currency) : <span className="text-muted-foreground">Belum ada</span>}
+      {r.v.hasPrice ? <Flash value={r.v.price}>{formatMoney(r.v.price, r.h.currency)}</Flash> : <span className="text-muted-foreground">Belum ada</span>}
       {r.v.stale && <CircleAlert className="size-3.5 text-warning" aria-label="Harga tersimpan, bukan live" />}
     </span>
   );
+  const changeText = (r: Row) => {
+    const c = prices?.prices[r.h.priceKey]?.changePct;
+    if (c == null || !r.v.hasPrice) return null;
+    return <span className={pnlTone(c)} title={r.h.assetType === "CRYPTO" ? "Perubahan 24 jam" : "Perubahan hari ini"}>{formatPercent(c)}</span>;
+  };
+  const unreachable = prices?.unreachable ?? [];
 
   return (
     <div className="space-y-6">
@@ -223,18 +248,10 @@ export default function InvestmentsView({ holdings, prices, pricesLoading, onRef
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-foreground">Portofolio</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {pricesLoading && !prices ? "Mengambil harga terbaru…" : prices ? `Harga per ${formatTime(prices.fetchedAt)}` : "Harga belum tersedia"}
-              {" · saldo rekening tidak berubah"}
+              {prices ? <LiveBadge stale={stale} /> : "Mengambil harga terbaru…"}
             </p>
           </div>
-          <div className="flex items-center gap-1">
-            <Button variant="secondary" size="sm" onClick={onRefresh} disabled={pricesLoading}>
-              <RefreshCw className={cn("size-4", pricesLoading && "motion-safe:animate-spin")} aria-hidden />
-              <span className="hidden sm:inline">Perbarui harga</span>
-              <span className="sr-only sm:hidden">Perbarui harga</span>
-            </Button>
-            {privacy.eye("portfolio", "size-8")}
-          </div>
+          {privacy.eye("portfolio", "size-8")}
         </div>
 
         {/* One column on the smallest phones, so "Rp 143.041.654" is never split over two lines */}
@@ -245,16 +262,18 @@ export default function InvestmentsView({ holdings, prices, pricesLoading, onRef
             <span className={ph ? undefined : pnlTone(pnl)}>{ph ? MASK : formatSigned(pnl, "IDR")}</span>
           </Tile>
           <Tile label="Kurs USD/IDR"
-            sub={fx ? <>{fx.stale ? "Tersimpan" : "Live"} · {formatTime(fx.updatedAt)}</> : needsFx ? "Belum tersedia" : "Yahoo Finance"}>
+            sub={fx ? (fx.stale ? `Tersimpan ${formatTime(fx.updatedAt)}` : "Live dari Yahoo Finance") : needsFx ? "Belum tersedia" : "Yahoo Finance"}>
             {fx ? formatRupiah(fx.price) : "–"}
           </Tile>
         </div>
 
-        {(stale || missingPrices > 0 || uncounted > 0) && (
+        {(stale || missingPrices > 0 || uncounted > 0 || unreachable.length > 0) && (
           <p className="mt-3 flex items-start gap-2 rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">
             <CircleAlert className="mt-px size-3.5 shrink-0 text-warning" aria-hidden />
             <span>
-              {stale && "Sumber harga sedang tidak bisa dihubungi, sebagian harga memakai data terakhir yang tersimpan. "}
+              {unreachable.length > 0
+                ? `Server tidak bisa menghubungi ${unreachable.join(" dan ")}${stale ? ", sebagian harga memakai data terakhir yang tersimpan" : ""}. `
+                : stale && "Sumber harga sedang tidak bisa dihubungi, sebagian harga memakai data terakhir yang tersimpan. "}
               {missingPrices > 0 && `${missingPrices} aset belum punya harga pasar, dihitung dengan harga beli. `}
               {uncounted > 0 && `${uncounted} aset USD belum masuk total karena kurs belum tersedia.`}
             </span>
@@ -318,15 +337,16 @@ export default function InvestmentsView({ holdings, prices, pricesLoading, onRef
                     return (
                       <tr key={r.h.id} className={cn("align-top", closed && "text-muted-foreground")}>
                         <td className="py-3 pl-5 pr-3">
-                          <p className="font-semibold text-foreground">{r.h.symbol}</p>
-                          <p className="max-w-44 truncate text-xs text-muted-foreground" title={r.h.name ?? undefined}>
+                          <button type="button" onClick={() => onOpen(r.h)} className={cn("rounded font-semibold text-foreground hover:underline", focusRing)}
+                            aria-label={`${r.h.symbol}: lihat chart`}>{r.h.symbol}</button>
+                          <p className="max-w-36 truncate text-xs text-muted-foreground" title={r.h.name ?? undefined}>
                             {closed ? "Terjual habis" : r.h.name || ASSET_TYPE_LABEL[r.h.assetType]}
                           </p>
                         </td>
                         <td className="px-3 py-3"><PlatformBadge name={r.h.platform} /></td>
                         <td className="px-3 py-3 text-right tabular-nums">{qty(r)}</td>
                         <td className="px-3 py-3 text-right tabular-nums">
-                          <p className="text-foreground">{priceCell(r)}</p>
+                          <p className="flex items-center justify-end gap-2 text-foreground">{priceCell(r)}<span className="text-xs">{changeText(r)}</span></p>
                           <p className="text-xs text-muted-foreground">{formatMoney(r.h.avgPrice, r.h.currency)}</p>
                         </td>
                         <td className="px-3 py-3 text-right tabular-nums">
@@ -338,7 +358,7 @@ export default function InvestmentsView({ holdings, prices, pricesLoading, onRef
                         </td>
                         <td className="py-2 pr-3 pl-1">
                           <div className="flex justify-end">
-                            <IconButton label={`Beli atau jual ${r.h.symbol}`} onClick={() => onTrade(r.h, "BUY")}><ArrowLeftRight className="size-4" /></IconButton>
+                            <IconButton label={`Chart ${r.h.symbol}`} onClick={() => onOpen(r.h)}><CandlestickChart className="size-4" /></IconButton>
                             <IconButton label={`Ubah ${r.h.symbol}`} onClick={() => onEdit(r.h)}><Pencil className="size-4" /></IconButton>
                           </div>
                         </td>
@@ -355,8 +375,8 @@ export default function InvestmentsView({ holdings, prices, pricesLoading, onRef
                 const closed = r.h.quantity <= 0;
                 return (
                   <li key={r.h.id} className="flex items-start gap-2 py-3 pr-2 pl-4 sm:pl-5">
-                    <button type="button" onClick={() => onTrade(r.h, "BUY")}
-                      className={cn("min-w-0 flex-1 rounded-lg text-left", focusRing)} aria-label={`${r.h.symbol}: beli atau jual`}>
+                    <button type="button" onClick={() => onOpen(r.h)}
+                      className={cn("min-w-0 flex-1 rounded-lg text-left", focusRing)} aria-label={`${r.h.symbol}: lihat chart, beli atau jual`}>
                       <span className="flex items-baseline justify-between gap-3">
                         <span className="flex min-w-0 items-center gap-2">
                           <span className={cn("font-semibold", closed ? "text-muted-foreground" : "text-foreground")}>{r.h.symbol}</span>
@@ -375,7 +395,7 @@ export default function InvestmentsView({ holdings, prices, pricesLoading, onRef
                         {!closed && <span className={cn("shrink-0", pnlTone(r.v.pnl))}>{r.v.hasPrice ? formatPercent(r.v.pnlPct) : ""}</span>}
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground tabular-nums">
-                        rata-rata {formatMoney(r.h.avgPrice, r.h.currency)} · sekarang {priceCell(r)}
+                        rata-rata {formatMoney(r.h.avgPrice, r.h.currency)}, sekarang {priceCell(r)} {changeText(r)}
                       </span>
                     </button>
                     <IconButton label={`Ubah ${r.h.symbol}`} onClick={() => onEdit(r.h)} className="shrink-0"><Pencil className="size-4" /></IconButton>

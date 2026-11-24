@@ -9,7 +9,7 @@ import {
   type DebtInput, type DebtParticipant, type DebtRecord, type DebtSummary, type DebtType, type PhoneStatus, type WhatsAppStatus,
   addTrade, createHolding, deleteHolding, fetchHoldings, fetchMarketPrices, updateHolding, type HoldingInput,
 } from "@/lib/api";
-import { currentPrice, type Holding, type MarketPrices, type TradeSide } from "@/lib/portfolio";
+import { currentPrice, portfolioValueIdr, type Holding, type MarketPrices, type TradeSide } from "@/lib/portfolio";
 import { categoryLabel, formatRupiah } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useKeyboardOpen } from "@/lib/useKeyboardOpen";
@@ -23,6 +23,7 @@ import DebtsView, { DEFAULT_DEBT_FILTERS, type DebtFilters } from "./dashboard/v
 import { DebtRecordDialog, PayDialog, SettleDialog } from "./dashboard/debtDialogs";
 import InvestmentsView from "./dashboard/views/InvestmentsView";
 import { InvestmentDialog, TradeDialog } from "./dashboard/investmentDialogs";
+import { HoldingChartDialog } from "./dashboard/investmentChart";
 import InboxView, { type ReviewTx } from "./dashboard/views/InboxView";
 import ChatView from "./dashboard/views/ChatView";
 import {
@@ -44,6 +45,7 @@ type DialogState =
   | { kind: "settle"; record: DebtRecord }
   | { kind: "holding"; holding: Holding | null }
   | { kind: "trade"; holding: Holding; side: TradeSide }
+  | { kind: "chart"; holding: Holding }
   | { kind: "budget"; budget: BudgetLike | null }
   | { kind: "confirm"; title: string; description: string; confirmLabel: string; action: () => Promise<void>; destructive?: boolean }
   | { kind: "link" }
@@ -51,8 +53,8 @@ type DialogState =
 
 const PAGE_TITLES: Record<Tab, string> = { dashboard: "Dashboard", transactions: "Transaksi", debts: "Utang-piutang", investments: "Investasi", chat: "Chat", inbox: "Perlu ditinjau" };
 const REFRESH_MS = 15_000;
-/** Prices on the Investasi page; the server caches them for 3 minutes anyway */
-const PRICES_REFRESH_MS = 3 * 60_000;
+/** Live prices on the Investasi page and in "Saldo total"; the server shares one 10-second cache between everyone */
+const PRICES_REFRESH_MS = 10_000;
 
 export default function Dashboard({ user, onLogout }: { user: SessionUser; onLogout: () => void }) {
   const router = useRouter();
@@ -84,7 +86,6 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   const [debtSummary, setDebtSummary] = useState<DebtSummary | null>(null);
   const [holdings, setHoldings] = useState<Holding[] | null>(null);
   const [prices, setPrices] = useState<MarketPrices | null>(null);
-  const [pricesLoading, setPricesLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // Filters the data on screen belongs to. While they differ from the selected filters,
@@ -156,7 +157,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     };
   }, [loadData, month, year, selectedDay, page, limit, filterKey]);
 
-  // ---------- Investasi: holdings, and live prices while the page is open ----------
+  // ---------- Investasi: holdings, and live prices while the page (or the Dashboard, for "Saldo total") is open ----------
   const loadHoldings = useCallback(async () => {
     try {
       setHoldings(await fetchHoldings());
@@ -164,24 +165,36 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       setHoldings((h) => h ?? []);
     }
   }, []);
-  const loadPrices = useCallback(async (refresh = false) => {
-    setPricesLoading(true);
+  const loadPrices = useCallback(async () => {
     try {
-      setPrices(await fetchMarketPrices(refresh));
+      setPrices(await fetchMarketPrices());
     } catch {
-      if (refresh) notify("Gagal mengambil harga. Coba lagi sebentar lagi.");
-    } finally {
-      setPricesLoading(false);
+      // The next tick tries again; the page keeps the last prices meanwhile
     }
-  }, [notify]);
+  }, []);
+  const livePrices = activeTab === "investments" || activeTab === "dashboard";
+  const hasHoldings = (holdings?.length ?? 0) > 0;
   useEffect(() => {
-    if (activeTab !== "investments") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch when the page opens, then poll the prices
+    if (!livePrices) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch when the page opens
     loadHoldings();
-    loadPrices();
-    const interval = setInterval(() => loadPrices(), PRICES_REFRESH_MS);
-    return () => clearInterval(interval);
-  }, [activeTab, loadHoldings, loadPrices]);
+  }, [livePrices, loadHoldings]);
+  useEffect(() => {
+    // Nothing to price on the Dashboard without holdings; the Investasi page still shows the exchange rate
+    if (!livePrices || (activeTab === "dashboard" && !hasHoldings)) return;
+    const tick = () => {
+      if (document.visibilityState === "visible") loadPrices();
+    };
+    tick();
+    const interval = setInterval(tick, PRICES_REFRESH_MS);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, [livePrices, activeTab, hasHoldings, loadPrices]);
+
+  const freshHolding = (h: Holding) => holdings?.find((x) => x.id === h.id) ?? h;
 
   const saveHolding = (holding: Holding | null) => async (input: HoldingInput) => {
     if (holding) {
@@ -502,11 +515,9 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
             <InvestmentsView
               holdings={holdings}
               prices={prices}
-              pricesLoading={pricesLoading}
-              onRefresh={() => loadPrices(true)}
+              onOpen={(holding) => setDialog({ kind: "chart", holding })}
               onAdd={addActions.onAddInvestment}
               onEdit={(holding) => setDialog({ kind: "holding", holding })}
-              onTrade={(holding, side) => setDialog({ kind: "trade", holding, side })}
             />
           ) : !loaded || monthPending ? (
             <PageSkeleton tab={activeTab} />
@@ -520,6 +531,8 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
               phoneLinked={!!phoneStatus?.phoneNumber}
               hasAnyTransaction={hasAnyTransaction || monthlyTxs.length > 0}
               debtSummary={debtSummary}
+              investmentValue={portfolioValueIdr(holdings, prices)}
+              onOpenInvestments={() => navigate("investments")}
               onOpenDebts={() => navigate("debts")}
               onEditAccount={(account) => setDialog({ kind: "account", account })}
               onEditBudget={(budget) => setDialog({ kind: "budget", budget })}
@@ -634,6 +647,16 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
           livePrice={currentPrice(dialog.holding, prices?.prices[dialog.holding.priceKey], prices?.fx?.price ?? null)}
           onClose={closeDialog}
           onSave={saveTrade(dialog.holding)}
+        />
+      )}
+      {dialog.kind === "chart" && (
+        <HoldingChartDialog
+          // The holding as it is now (a trade made from here changes its average price)
+          holding={freshHolding(dialog.holding)}
+          prices={prices}
+          onClose={closeDialog}
+          onTrade={() => setDialog({ kind: "trade", holding: freshHolding(dialog.holding), side: "BUY" })}
+          onEdit={() => setDialog({ kind: "holding", holding: freshHolding(dialog.holding) })}
         />
       )}
       {dialog.kind === "budget" && (

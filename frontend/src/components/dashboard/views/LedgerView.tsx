@@ -155,7 +155,7 @@ function RowActions({ tx, onEdit, onDelete, onOpenDebts }: { tx: LedgerTx; onEdi
 
 function Meta({ tx }: { tx: LedgerTx }) {
   const parts = [tx.type === "TRANSFER" ? null : tx.subcategory ? categoryLabel(tx.category) : TX_TYPE_LABEL[tx.type], accountLabel(tx)];
-  return <>{parts.filter(Boolean).join(" · ")}</>;
+  return <>{parts.filter(Boolean).join(", ")}</>;
 }
 
 export default function LedgerView({
@@ -267,8 +267,8 @@ export default function LedgerView({
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border/70 px-5 py-2.5 text-xs text-muted-foreground">
             <p className="tabular-nums">
               {shownRows.length} transaksi
-              {selOut > 0 && <> · Pengeluaran <span className="text-foreground">{formatRupiah(selOut)}</span></>}
-              {selIn > 0 && <> · Pemasukan <span className="text-income">{formatRupiah(selIn)}</span></>}
+              {selOut > 0 && <>, Pengeluaran <span className="text-foreground">{formatRupiah(selOut)}</span></>}
+              {selIn > 0 && <>, Pemasukan <span className="text-income">{formatRupiah(selIn)}</span></>}
             </p>
             <Button variant="ghost" size="sm" onClick={() => onFiltersChange(NO_FILTERS)}>
               <X className="size-3.5" aria-hidden /> Hapus filter
@@ -344,7 +344,7 @@ export default function LedgerView({
                       <span className="shrink-0 text-sm"><Amount tx={tx} /></span>
                     </div>
                     <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {formatDayMonth(tx.createdAt)}, {formatTime(tx.createdAt)} · <Meta tx={tx} />
+                      {formatDayMonth(tx.createdAt)}, {formatTime(tx.createdAt)}, <Meta tx={tx} />
                     </p>
                   </div>
                   <RowActions tx={tx} onEdit={onEdit} onDelete={onDelete} onOpenDebts={onOpenDebts} />
