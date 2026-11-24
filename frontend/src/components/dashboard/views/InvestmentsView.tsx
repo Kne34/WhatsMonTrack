@@ -9,7 +9,7 @@ import {
   ASSET_TYPE_BUTTON, ASSET_TYPE_LABEL, ASSET_TYPES, formatMoney, formatPercent, formatQuantity, formatSigned, quantityUnit, valuate,
   type AssetType, type Holding, type MarketPrices, type Valuation,
 } from "@/lib/portfolio";
-import { Button, Card, EmptyState, IconButton, SegmentedControl, Skeleton, focusRing, inputBase } from "../../common/ui";
+import { Button, Card, EmptyState, IconButton, SegmentedControl, Select, Skeleton, focusRing, inputBase } from "../../common/ui";
 import { MASK, MASK_PLAIN, usePrivacy } from "../shared/privacy";
 import { LiveBadge } from "../liveBadge";
 
@@ -299,11 +299,10 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
             options={[{ value: "ALL", label: "Semua" }, ...ASSET_TYPES.map((t) => ({ value: t, label: ASSET_TYPE_BUTTON[t] }))]} />
           {/* Phones: search and platform stacked, each full width */}
           <div className="grid grid-cols-1 gap-2 sm:flex lg:ml-auto">
-            <select aria-label="Platform" value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)}
-              className={cn(inputBase, "h-9 border-border pr-8 sm:w-44 sm:shrink-0")}>
+            <Select aria-label="Platform" value={platformFilter} onValueChange={setPlatformFilter} className="sm:w-44 sm:shrink-0">
               <option value="">Semua platform</option>
               {platforms.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
+            </Select>
             <div className="relative min-w-0 flex-1 lg:w-48 lg:flex-none">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
               <input type="search" aria-label="Cari ticker" placeholder="Cari ticker" value={query} onChange={(e) => setQuery(e.target.value)}

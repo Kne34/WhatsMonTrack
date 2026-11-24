@@ -141,7 +141,7 @@ export function DebtRecordDialog({ record, defaultType = "RECEIVABLE", accounts,
           placeholder={receivable ? "Makan malam bareng" : "Ditalangin tiket konser"} error={errors.title} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <AmountField label="Total awal" digits={total} onChange={setTotal} error={errors.total} />
-          <SelectField label="Kategori pengeluaran" value={category} onChange={(e) => setCategory(e.target.value)}
+          <SelectField label="Kategori pengeluaran" value={category} onValueChange={setCategory}
             hint="Dipakai saat dicatat ke laporan">
             {SPENDING_CATEGORIES.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
           </SelectField>
@@ -159,7 +159,7 @@ export function DebtRecordDialog({ record, defaultType = "RECEIVABLE", accounts,
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {usesAccount && (
             <SelectField label={receivable ? "Ditalangi pakai" : "Masuk ke rekening"} value={accountId}
-              onChange={(e) => setAccountId(e.target.value)} error={errors.account}>
+              onValueChange={setAccountId} error={errors.account}>
               <option value="">Pilih rekening</option>
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </SelectField>
@@ -263,7 +263,7 @@ export function PayDialog({ record, participant, accounts, onClose, onSave }: {
         {error && <Alert>{error}</Alert>}
         <AmountField label="Nominal yang dibayar" digits={amount} onChange={setAmount} error={errors.amount} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <SelectField label={receivable ? "Masuk ke rekening" : "Dibayar dari rekening"} value={accountId} onChange={(e) => setAccountId(e.target.value)} error={errors.account}>
+          <SelectField label={receivable ? "Masuk ke rekening" : "Dibayar dari rekening"} value={accountId} onValueChange={setAccountId} error={errors.account}>
             <option value="">Pilih rekening</option>
             {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </SelectField>

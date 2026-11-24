@@ -1,13 +1,17 @@
 "use client";
 
 /**
- * Small, consistent building blocks for the whole app (auth screens, dashboard, dialogs).
- * Black-and-white theme via the shared tokens in globals.css (background, card, foreground,
- * muted-foreground, border, primary, destructive).
+ * Small, consistent building blocks for the whole app (auth screens, dashboard, dialogs), after
+ * Apple's Human Interface Guidelines: the system blue for actions, rounded pill buttons that dim
+ * when pressed, grouped white cards on a light gray page, a soft blue focus ring, iOS-style
+ * segmented controls. Colors come from the shared tokens in globals.css.
  */
 import React, { useEffect, useId, useRef, useState } from "react";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Select, menuSurface } from "./select";
+
+export { Select } from "./select";
 
 // ---------- Buttons ----------
 
@@ -15,24 +19,25 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md" | "lg";
 
 const buttonVariants: Record<ButtonVariant, string> = {
-  primary: "bg-primary text-primary-foreground hover:bg-primary/90",
-  secondary: "border border-border bg-card text-foreground hover:bg-muted",
-  ghost: "text-muted-foreground hover:bg-muted hover:text-foreground",
-  danger: "border border-destructive/30 bg-card text-destructive hover:bg-destructive/5",
+  primary: "bg-primary text-primary-foreground shadow-[0_1px_2px_rgba(0,0,0,0.08)] hover:bg-primary/90",
+  secondary: "bg-secondary text-foreground hover:bg-secondary/70",
+  ghost: "text-primary hover:bg-primary/8 dark:text-[#0A84FF]",
+  danger: "bg-destructive/10 text-destructive hover:bg-destructive/15",
 };
 
 const buttonSizes: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-sm gap-1.5 rounded-lg",
-  md: "h-10 px-4 text-sm gap-2 rounded-xl",
-  lg: "h-11 px-5 text-sm gap-2 rounded-xl",
+  sm: "h-8 px-3.5 text-sm gap-1.5 rounded-full",
+  md: "h-10 px-5 text-sm gap-2 rounded-full",
+  lg: "h-11 px-6 text-[15px] gap-2 rounded-full",
 };
 
+/** Apple's focus ring: a soft glow in the system blue around the control */
 export const focusRing =
-  "outline-none focus-visible:ring-2 focus-visible:ring-foreground/20 focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "outline-none focus-visible:ring-[3px] focus-visible:ring-[#0071E3]/45 dark:focus-visible:ring-[#0A84FF]/55";
 
 export function buttonClass(variant: ButtonVariant = "primary", size: ButtonSize = "md", className?: string) {
   return cn(
-    "inline-flex items-center justify-center font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
+    "inline-flex select-none items-center justify-center font-medium transition-[background-color,color,opacity,transform] duration-150 active:opacity-80 motion-safe:active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40",
     focusRing,
     buttonVariants[variant],
     buttonSizes[size],
@@ -70,7 +75,7 @@ export function IconButton({ label, className, children, ...props }: React.Butto
       aria-label={label}
       title={label}
       className={cn(
-        "inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40 disabled:pointer-events-none",
+        "inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/[0.06] hover:text-foreground active:opacity-70 disabled:opacity-40 disabled:pointer-events-none",
         focusRing,
         className,
       )}
@@ -85,7 +90,7 @@ export function IconButton({ label, className, children, ...props }: React.Butto
 
 // min-w-0: date/time inputs have a wide built-in minimum width. text-base below sm: iOS zooms into fields under 16px.
 export const inputBase =
-  "h-11 w-full min-w-0 rounded-xl border bg-card px-3.5 text-base sm:text-sm text-foreground placeholder:text-muted-foreground/60 transition-colors outline-none focus:border-foreground/40 focus:ring-2 focus:ring-foreground/5 disabled:opacity-60";
+  "h-11 w-full min-w-0 rounded-xl border bg-card px-3.5 text-base sm:text-sm text-foreground placeholder:text-muted-foreground/70 transition-[border-color,box-shadow] outline-none focus:border-[#0071E3] focus:ring-[3px] focus:ring-[#0071E3]/20 dark:focus:border-[#0A84FF] dark:focus:ring-[#0A84FF]/25 disabled:opacity-60";
 
 interface FieldShellProps {
   id: string;
@@ -176,26 +181,35 @@ export function PasswordField(props: Omit<TextFieldProps, "type" | "trailing">) 
   );
 }
 
-interface SelectFieldProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+interface SelectFieldProps {
   label: string;
   hint?: React.ReactNode;
   error?: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  disabled?: boolean;
+  id?: string;
+  className?: string;
+  /** `<option>` elements, as with a native select */
+  children: React.ReactNode;
 }
 
+/** A labelled pop-up button (see Select): one choice out of a list */
 export function SelectField({ label, hint, error, className, children, id: idProp, ...props }: SelectFieldProps) {
   const autoId = useId();
   const id = idProp ?? autoId;
   return (
     <FieldShell id={id} label={label} hint={hint} error={error}>
-      <select
+      <Select
         id={id}
+        size="lg"
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-error` : hint ? `${id}-hint` : undefined}
-        className={cn(inputBase, error ? "border-destructive/60" : "border-border", "pr-8", className)}
+        className={className}
         {...props}
       >
         {children}
-      </select>
+      </Select>
     </FieldShell>
   );
 }
@@ -221,7 +235,7 @@ export function Alert({ tone = "error", children, className }: { tone?: "error" 
 
 export function Card({ className, children, ...props }: React.HTMLAttributes<HTMLElement>) {
   return (
-    <section className={cn("rounded-2xl border border-border/70 bg-card p-5 shadow-sm", className)} {...props}>
+    <section className={cn("rounded-2xl border border-black/[0.04] bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_16px_-8px_rgba(0,0,0,0.06)] dark:border-white/[0.06] dark:shadow-none", className)} {...props}>
       {children}
     </section>
   );
@@ -271,7 +285,8 @@ export function SegmentedControl<T extends string>({ label, value, onChange, opt
   className?: string;
 }) {
   return (
-    <div role="group" aria-label={label} className={cn("inline-flex rounded-lg bg-muted p-0.5", className)}>
+    // iOS segmented control: a gray track, the chosen segment a raised white thumb
+    <div role="group" aria-label={label} className={cn("inline-flex rounded-[9px] bg-[#767680]/[0.12] p-0.5 dark:bg-[#767680]/[0.24]", className)}>
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -281,9 +296,9 @@ export function SegmentedControl<T extends string>({ label, value, onChange, opt
             aria-pressed={active}
             onClick={() => onChange(o.value)}
             className={cn(
-              "flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              "flex-1 whitespace-nowrap rounded-[7px] px-3 py-1.5 text-[13px] font-medium transition-all duration-200",
               focusRing,
-              active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+              active ? "bg-white text-foreground shadow-[0_3px_8px_rgba(0,0,0,0.12),0_3px_1px_rgba(0,0,0,0.04)] dark:bg-[#636366]" : "text-foreground/80 hover:text-foreground",
             )}
           >
             {o.label}
@@ -305,11 +320,13 @@ export interface MenuItem {
 }
 
 /** Minimal accessible dropdown: closes on outside click, Escape, or selection. */
-export function Menu({ trigger, items, align = "end", header, footer, className }: {
+export function Menu({ trigger, items, align = "end", side = "bottom", header, footer, className }: {
   /** Render the trigger button and spread `triggerProps` onto it (onClick + ARIA state). */
   trigger: (props: { open: boolean; triggerProps: { onClick: () => void; "aria-expanded": boolean; "aria-haspopup": "menu" } }) => React.ReactNode;
   items: MenuItem[];
   align?: "start" | "end";
+  /** "top" opens above the trigger (for a trigger at the foot of the screen) */
+  side?: "bottom" | "top";
   header?: React.ReactNode;
   footer?: React.ReactNode;
   className?: string;
@@ -338,8 +355,11 @@ export function Menu({ trigger, items, align = "end", header, footer, className 
         <div
           role="menu"
           className={cn(
-            "absolute z-50 mt-2 w-max min-w-56 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card p-1 shadow-lg",
+            "absolute z-50 w-max min-w-56 max-w-[calc(100vw-2rem)] overflow-hidden animate-[menu-in_150ms_ease-out] motion-reduce:animate-none",
+            menuSurface,
             align === "end" ? "right-0" : "left-0",
+            side === "top" ? "bottom-full mb-2" : "mt-2",
+            side === "top" ? (align === "end" ? "origin-bottom-right" : "origin-bottom-left") : align === "end" ? "origin-top-right" : "origin-top-left",
           )}
         >
           {header && <div className="border-b border-border px-3 py-2.5">{header}</div>}
@@ -353,15 +373,15 @@ export function Menu({ trigger, items, align = "end", header, footer, className 
                 item.onSelect();
               }}
               className={cn(
-                "flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-muted",
-                focusRing,
-                item.danger ? "text-destructive" : "text-foreground",
+                "group flex w-full items-start gap-3 rounded-md px-3 py-2 text-left text-sm outline-none [@media(pointer:coarse)]:min-h-11",
+                "focus-visible:bg-[#007AFF] focus-visible:text-white dark:focus-visible:bg-[#0A84FF]",
+                item.danger ? "text-destructive hover:bg-destructive hover:text-white" : "text-foreground hover:bg-[#007AFF] hover:text-white dark:hover:bg-[#0A84FF]",
               )}
             >
-              {item.icon && <span className="mt-0.5 shrink-0 text-muted-foreground">{item.icon}</span>}
+              {item.icon && <span className="mt-0.5 shrink-0 text-muted-foreground group-hover:text-current group-focus-visible:text-current">{item.icon}</span>}
               <span className="min-w-0">
                 <span className="block">{item.label}</span>
-                {item.description && <span className="block truncate text-xs text-muted-foreground">{item.description}</span>}
+                {item.description && <span className="block truncate text-xs text-muted-foreground group-hover:text-white/80 group-focus-visible:text-white/80">{item.description}</span>}
               </span>
             </button>
           ))}

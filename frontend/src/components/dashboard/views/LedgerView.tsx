@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Handshake, Pencil, ReceiptText, Search, SearchX, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { categoryLabel, formatDayMonth, formatMonth, formatRupiah, formatTime, TX_TYPE_LABEL, type TxType } from "@/lib/format";
-import { Button, Card, EmptyState, IconButton, focusRing, inputBase } from "../../common/ui";
+import { Button, Card, EmptyState, IconButton, Select, focusRing, inputBase } from "../../common/ui";
 import { activeFilterCount, matchesFilters, NO_FILTERS, type TxFilters } from "@/lib/txFilters";
 import { LedgerRowsSkeleton } from "../skeletons";
 
@@ -74,7 +74,6 @@ function FilterBar({ filters, onChange, categories, accounts }: {
   // Phones: the three selects fold away behind a "Filter" button; from md they are always shown
   const [open, setOpen] = useState(false);
   const selectCount = [filters.type, filters.category, filters.accountId].filter(Boolean).length;
-  const select = cn(inputBase, "h-10 border-border pr-8", focusRing);
   const set = (patch: Partial<TxFilters>) => onChange({ ...filters, ...patch });
   return (
     <div className="space-y-2 border-b border-border/70 px-5 py-3 md:grid md:grid-cols-4 md:gap-2 md:space-y-0">
@@ -89,18 +88,18 @@ function FilterBar({ filters, onChange, categories, accounts }: {
         </Button>
       </div>
       <div id="ledger-filters" className={cn("grid-cols-1 gap-2 md:col-span-3 md:grid md:grid-cols-3", open ? "grid" : "hidden")}>
-      <select aria-label="Jenis" value={filters.type} onChange={(e) => set({ type: e.target.value as TxFilters["type"] })} className={select}>
+      <Select aria-label="Jenis" value={filters.type} onValueChange={(v) => set({ type: v as TxFilters["type"] })} size="lg" className="h-10">
         <option value="">Semua jenis</option>
         {(["EXPENSE", "INCOME", "TRANSFER"] as TxType[]).map((t) => <option key={t} value={t}>{TX_TYPE_LABEL[t]}</option>)}
-      </select>
-      <select aria-label="Kategori" value={filters.category} onChange={(e) => set({ category: e.target.value })} className={select}>
+      </Select>
+      <Select aria-label="Kategori" value={filters.category} onValueChange={(v) => set({ category: v })} size="lg" className="h-10">
         <option value="">Semua kategori</option>
         {categories.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
-      </select>
-      <select aria-label="Rekening" value={filters.accountId} onChange={(e) => set({ accountId: e.target.value })} className={select}>
+      </Select>
+      <Select aria-label="Rekening" value={filters.accountId} onValueChange={(v) => set({ accountId: v })} size="lg" className="h-10">
         <option value="">Semua rekening</option>
         {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-      </select>
+      </Select>
       </div>
     </div>
   );
@@ -252,13 +251,8 @@ export default function LedgerView({
           </div>
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Per halaman
-            <select
-              value={limit}
-              onChange={(e) => onLimitChange(Number(e.target.value))}
-              className={cn("h-8 rounded-lg border border-border bg-card px-2 text-base text-foreground sm:text-sm", focusRing)}
-            >
-              {[10, 15, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
+            <Select aria-label="Transaksi per halaman" value={String(limit)} onValueChange={(v) => onLimitChange(Number(v))} size="sm" className="w-20"
+              options={[10, 15, 50, 100].map((n) => ({ value: String(n), label: String(n) }))} />
           </label>
         </div>
 

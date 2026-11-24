@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+/* Apple's San Francisco where the system has it (Mac, iPhone, iPad); Inter, its closest open relative, elsewhere */
+@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -9,9 +10,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: 'Inter', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-  --font-heading: 'Space Grotesk', sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', monospace;
+  --font-heading: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', system-ui, sans-serif;
   
   --color-whatsapp: var(--whatsapp);
   --color-income: var(--income);
@@ -60,31 +61,31 @@
 
 :root {
   color-scheme: light;
-  /* Default to dark theme logic since the user wants dark mode mostly, but let's keep light mode available */
-  --background: #F8FAFC;
-  --foreground: #0B101E;
+  /* Apple's system colors (iOS/macOS): grouped background, white cards, the system blue for actions,
+     separators in light gray. Text tokens use Apple's darker accessible shades so they pass WCAG AA. */
+  --background: #F2F2F7;
+  --foreground: #1D1D1F;
   --card: #FFFFFF;
-  --card-foreground: #0B101E;
+  --card-foreground: #1D1D1F;
   --popover: #FFFFFF;
-  --popover-foreground: #0B101E;
-  --primary: #0B101E;
-  --primary-foreground: #F8FAFC;
-  --secondary: #E2E8F0;
-  --secondary-foreground: #0B101E;
-  --muted: #F1F5F9;
-  --muted-foreground: #64748B;
-  --accent: #E2E8F0;
-  --accent-foreground: #0B101E;
-  --destructive: #DC2626; /* 4.8:1 on white (was #F43F5E, 3.7:1) */
-  --border: #E2E8F0;
-  --input: #E2E8F0;
-  --ring: #94A3B8;
+  --popover-foreground: #1D1D1F;
+  --primary: #0071E3;           /* system blue, 4.6:1 with white text */
+  --primary-foreground: #FFFFFF;
+  --secondary: #E8E8ED;
+  --secondary-foreground: #1D1D1F;
+  --muted: #F2F2F7;
+  --muted-foreground: #6E6E73; /* 5.0:1 on white */
+  --accent: #E8E8ED;
+  --accent-foreground: #1D1D1F;
+  --destructive: #D70015;       /* accessible system red */
+  --border: #E5E5EA;            /* systemGray5 */
+  --input: #D2D2D7;
+  --ring: #0071E3;
 
-  /* Brand Colors */
   --whatsapp: #25D366;
-  --income: #047857; /* 5.5:1 on white (was #10B981, 2.5:1) */
-  --expense: #DC2626;
-  --warning: #F59E0B;
+  --income: #248A3D;  /* accessible system green, 4.6:1 on white */
+  --expense: #D70015; /* accessible system red */
+  --warning: #FF9500;
 
   --chart-1: #10B981;
   --chart-2: #F43F5E;
@@ -105,32 +106,32 @@
 }
 
 .dark {
-  /* Neutral near-black (not navy) to keep the minimalist black-and-white look.
+  /* Apple's dark appearance: black behind, elevated gray cards, lighter grays for separators.
      All text tokens pass WCAG AA on background, card and muted surfaces. */
   color-scheme: dark;
-  --background: #0A0A0A;
-  --foreground: #FAFAFA;   /* 17.6:1 on card */
-  --card: #141414;
-  --card-foreground: #FAFAFA;
-  --popover: #141414;
-  --popover-foreground: #FAFAFA;
-  --primary: #FAFAFA;
-  --primary-foreground: #0A0A0A;
-  --secondary: #1F1F1F;
-  --secondary-foreground: #FAFAFA;
-  --muted: #1F1F1F;
-  --muted-foreground: #A3A3A3; /* 7.3:1 on card */
-  --accent: #1F1F1F;
-  --accent-foreground: #FAFAFA;
-  --destructive: #F87171;      /* 6.7:1 on card */
-  --border: #2A2A2A;           /* surfaces are separated by borders: shadows don't read on dark */
-  --input: #3A3A3A;
-  --ring: #737373;
+  --background: #000000;
+  --foreground: #F5F5F7;
+  --card: #1C1C1E;
+  --card-foreground: #F5F5F7;
+  --popover: #2C2C2E;
+  --popover-foreground: #F5F5F7;
+  --primary: #0071E3;
+  --primary-foreground: #FFFFFF;
+  --secondary: #2C2C2E;
+  --secondary-foreground: #F5F5F7;
+  --muted: #2C2C2E;
+  --muted-foreground: #98989D; /* 6.1:1 on card */
+  --accent: #2C2C2E;
+  --accent-foreground: #F5F5F7;
+  --destructive: #FF6961;      /* accessible system red, dark */
+  --border: #38383A;           /* separator */
+  --input: #48484A;
+  --ring: #0A84FF;
 
   --whatsapp: #25D366;
-  --income: #34D399;           /* 9.6:1 on card */
-  --expense: #F87171;
-  --warning: #FBBF24;
+  --income: #30D158;           /* system green, dark */
+  --expense: #FF6961;
+  --warning: #FF9F0A;
 
   --chart-1: #34D399;
   --chart-2: #F87171;
@@ -160,8 +161,20 @@
   }
   body {
     @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Inter set a little tighter reads like San Francisco */
+    letter-spacing: -0.006em;
+    font-feature-settings: "cv11", "ss03";
   }
+  /* Apple's tap highlight is none; the pressed state shows instead */
+  button, a { -webkit-tap-highlight-color: transparent; }
   html {
     @apply font-sans;
   }
+}
+/* Menus open with a short fade and scale, as on macOS and iOS */
+@keyframes menu-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
 }

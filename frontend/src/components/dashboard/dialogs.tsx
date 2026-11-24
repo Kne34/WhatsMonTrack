@@ -258,7 +258,7 @@ export function BudgetDialog({ budget, categories, onClose, onSave, onDelete }: 
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && <Alert>{error}</Alert>}
-        <SelectField label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)}
+        <SelectField label="Kategori" value={category} onValueChange={setCategory}
           disabled={!!budget} error={errors.category}>
           <option value="">Pilih kategori</option>
           {categories.filter((c) => c !== "INCOME").map((c) => (
@@ -385,7 +385,7 @@ export function TransactionDialog({ transaction, accounts, categories, onClose, 
         />
         <AmountField label="Jumlah" digits={amount} onChange={setAmount} error={errors.amount} />
         {type !== "TRANSFER" && (
-          <SelectField label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)}>
+          <SelectField label="Kategori" value={category} onValueChange={setCategory}>
             <option value="">{type === "INCOME" ? "Pemasukan" : "Tanpa kategori"}</option>
             {categories.filter((c) => (type === "INCOME" ? true : c !== "INCOME")).map((c) => (
               <option key={c} value={c}>{categoryLabel(c)}</option>
@@ -397,14 +397,14 @@ export function TransactionDialog({ transaction, accounts, categories, onClose, 
         <div className={type === "TRANSFER" ? "grid gap-4 sm:grid-cols-2" : "space-y-4"}>
           {needsFrom && (
             <SelectField label={type === "TRANSFER" ? "Dari rekening" : "Rekening"} value={fromAccountId}
-              onChange={(e) => setFromAccountId(e.target.value)} error={errors.from}>
+              onValueChange={setFromAccountId} error={errors.from}>
               <option value="">Pilih rekening</option>
               {accountOptions}
             </SelectField>
           )}
           {needsTo && (
             <SelectField label={type === "TRANSFER" ? "Ke rekening" : "Rekening"} value={toAccountId}
-              onChange={(e) => setToAccountId(e.target.value)} error={errors.to}>
+              onValueChange={setToAccountId} error={errors.to}>
               <option value="">Pilih rekening</option>
               {accountOptions}
             </SelectField>
