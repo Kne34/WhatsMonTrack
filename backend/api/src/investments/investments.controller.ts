@@ -3,7 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 import { AuthGuard } from '../common/auth.guard';
 import type { JwtUser } from '../common/config';
 import { CurrentUser } from '../common/current-user.decorator';
-import { CreateInvestmentDto, CreateTradeDto, PricesQueryDto, UpdateInvestmentDto } from './investments.dto';
+import { ChartQueryDto, CreateInvestmentDto, CreateTradeDto, UpdateInvestmentDto } from './investments.dto';
 import { InvestmentsService } from './investments.service';
 
 @UseGuards(AuthGuard)
@@ -38,6 +38,13 @@ export class InvestmentsController {
     return this.investments.trades(user.id, id);
   }
 
+  // Fetches from Yahoo/Binance on a cache miss
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  @Get(':id/chart')
+  chart(@CurrentUser() user: JwtUser, @Param('id', ParseUUIDPipe) id: string, @Query() query: ChartQueryDto) {
+    return this.investments.chart(user.id, id, query.range ?? '1D');
+  }
+
   @Post(':id/trades')
   addTrade(@CurrentUser() user: JwtUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: CreateTradeDto) {
     return this.investments.addTrade(user.id, id, body);
@@ -50,9 +57,10 @@ export class InvestmentsController {
 export class MarketController {
   constructor(private readonly investments: InvestmentsService) {}
 
-  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  // The page asks every 10 seconds (plus the dashboard); the shared cache keeps the sources calm
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @Get('prices')
-  prices(@CurrentUser() user: JwtUser, @Query() query: PricesQueryDto) {
-    return this.investments.prices(user.id, query.refresh);
+  prices(@CurrentUser() user: JwtUser) {
+    return this.investments.prices(user.id);
   }
 }

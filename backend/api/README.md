@@ -14,7 +14,7 @@ src/
   accounts/      bank / e-wallet / cash accounts
   budgets/       monthly budget per category
   debts/         utang-piutang: talangan/debts with participants, real-time cash flow, settle/reopen
-  investments/   Investasi: holdings, buy/sell, live prices (Yahoo Finance, CoinGecko) with cache
+  investments/   Investasi: holdings, buy/sell, live prices and charts (Yahoo Finance, Binance, CoinGecko) with cache
   transactions/  transactions, monthly summary, ledger.ts (the only code that changes balances)
   parser/        Gemini parsing (rules in systemInstruction) with an offline regex fallback
   whatsapp/      Baileys socket (link / change / unlink the bot), bot conversation logic,

@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsDateString, IsIn, IsNumber, IsOptional, IsPositive, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { CHART_RANGES, type ChartRange } from './market.service';
 import { ASSET_TYPES, CURRENCIES, TRADE_SIDES, type AssetType, type Currency, type TradeSide } from './portfolio';
 
 /** Far above any real holding; keeps values inside the DECIMAL(30,10) columns */
@@ -88,10 +89,8 @@ export class CreateTradeDto {
   note?: string;
 }
 
-export class PricesQueryDto {
-  /** "Refresh prices": skip the 3-minute cache (prices younger than 30 seconds are still reused) */
+export class ChartQueryDto {
   @IsOptional()
-  @Transform(({ value }) => value === true || value === 'true' || value === '1')
-  @IsBoolean()
-  refresh?: boolean;
+  @IsIn(CHART_RANGES)
+  range?: ChartRange;
 }

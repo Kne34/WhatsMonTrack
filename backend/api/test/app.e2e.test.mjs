@@ -68,11 +68,14 @@ const fakeMarket = {
     if (type === 'CRYPTO') return { name: 'Bitcoin', coingeckoId: 'bitcoin' };
     return { name: `${symbol} Corp` };
   },
-  async quotes(sources, force) {
-    this.lastForce = force;
+  async chart(source, range) {
+    this.lastChart = { key: source.key, range };
+    return { currency: 'IDR', source: 'Yahoo Finance', candles: [{ time: 1, open: 1, high: 2, low: 1, close: 2, volume: 3 }] };
+  },
+  async quotes(sources) {
     const at = '2026-11-23T09:00:00.000Z';
     const prices = Object.fromEntries(sources.map((s) => [s.key, { price: 9000, currency: s.key.startsWith('IDX') ? 'IDR' : 'USD', updatedAt: at, stale: false }]));
-    return { prices, fx: { price: 16000, currency: 'IDR', updatedAt: at, stale: false } };
+    return { prices, fx: { price: 16000, currency: 'IDR', updatedAt: at, stale: false }, unreachable: [] };
   },
 };
 
@@ -590,14 +593,23 @@ describe('investments (Investasi page)', () => {
     await http().get('/api/investments').expect(401);
   });
 
-  test('prices: only the tickers of this user plus USD/IDR; refresh is passed through', async () => {
-    const res = (await http().get('/api/market/prices?refresh=true').set(auth(bob)).expect(200)).body;
+  test('prices: only the tickers of this user plus USD/IDR', async () => {
+    const res = (await http().get('/api/market/prices').set(auth(bob)).expect(200)).body;
     assert.deepEqual(Object.keys(res.prices).sort(), ['CRYPTO:bitcoin', 'IDX:BBCA']);
     assert.equal(res.fx.price, 16000);
-    assert.equal(fakeMarket.lastForce, true);
-    await http().get('/api/market/prices').set(auth(bob)).expect(200);
-    assert.equal(fakeMarket.lastForce, false);
+    assert.deepEqual(res.unreachable, []);
     assert.deepEqual((await http().get('/api/market/prices').set(auth(alice)).expect(200)).body.prices, {});
+  });
+
+  test('chart: only for own holdings, range validated', async () => {
+    const h = (await http().get('/api/investments').set(auth(bob)).expect(200)).body.find((x) => x.symbol === 'BBCA');
+    const res = (await http().get(`/api/investments/${h.id}/chart?range=1Y`).set(auth(bob)).expect(200)).body;
+    assert.equal(res.candles.length, 1);
+    assert.deepEqual(fakeMarket.lastChart, { key: 'IDX:BBCA', range: '1Y' });
+    await http().get(`/api/investments/${h.id}/chart`).set(auth(bob)).expect(200);
+    assert.equal(fakeMarket.lastChart.range, '1D');
+    await http().get(`/api/investments/${h.id}/chart?range=2W`).set(auth(bob)).expect(400);
+    await http().get(`/api/investments/${h.id}/chart`).set(auth(alice)).expect(404);
   });
 
   test('buying or selling never changes account balances', async () => {

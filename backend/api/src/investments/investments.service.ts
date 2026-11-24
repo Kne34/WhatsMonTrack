@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { CreateInvestmentDto, CreateTradeDto, UpdateInvestmentDto } from './investments.dto';
-import { MarketService, SymbolNotFoundError, sourceFor } from './market.service';
+import { MarketService, SymbolNotFoundError, sourceFor, type ChartRange } from './market.service';
 import { applyBuy, applySell, normalizeSymbol, SellTooLargeError, type AssetType, type Currency } from './portfolio';
 
 const NOT_FOUND = 'Aset tidak ditemukan';
@@ -32,10 +32,17 @@ export class InvestmentsService {
   }
 
   /** Live prices for the user's own holdings (plus USD/IDR). Only their tickers, so this is no open proxy. */
-  async prices(userId: string, refresh = false) {
+  async prices(userId: string) {
     const rows = await this.prisma.investment.findMany({ where: { userId }, select: { assetType: true, symbol: true, coingeckoId: true } });
-    const { prices, fx } = await this.market.quotes(rows.map((r) => sourceFor(r.assetType, r.symbol, r.coingeckoId)), refresh);
-    return { prices, fx, fetchedAt: new Date().toISOString() };
+    const { prices, fx, unreachable } = await this.market.quotes(rows.map((r) => sourceFor(r.assetType, r.symbol, r.coingeckoId)));
+    return { prices, fx, unreachable, fetchedAt: new Date().toISOString() };
+  }
+
+  /** Price history of one of the user's holdings, for the chart */
+  async chart(userId: string, id: string, range: ChartRange) {
+    const row = await this.own(userId, id);
+    const chart = await this.market.chart(sourceFor(row.assetType, row.symbol, row.coingeckoId), range);
+    return chart ?? { currency: row.assetType === 'IDX_STOCK' ? 'IDR' : 'USD', candles: [], source: null };
   }
 
   async create(userId: string, dto: CreateInvestmentDto) {
