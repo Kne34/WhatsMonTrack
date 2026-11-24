@@ -1,23 +1,30 @@
+import { locale, tr } from "./i18n";
+
 const rupiah = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 });
-const compact = new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 });
+const compacts = new Map<string, Intl.NumberFormat>();
+const compact = () => {
+  const l = locale();
+  if (!compacts.has(l)) compacts.set(l, new Intl.NumberFormat(l, { notation: "compact", maximumFractionDigits: 1 }));
+  return compacts.get(l)!;
+};
 
 /** Rp 1.250.000 */
 export const formatRupiah = (value: number) => rupiah.format(value);
 
-/** 1,3 jt or 250 rb — for chart axes, where full amounts don't fit. */
-export const formatCompact = (value: number) => (value === 0 ? "0" : compact.format(value));
+/** 1,3 jt or 250 rb (English: 1,3M, 250K), for chart axes, where full amounts don't fit. */
+export const formatCompact = (value: number) => (value === 0 ? "0" : compact().format(value));
 
 /** "November 2026" */
 export const formatMonth = (month: number, year: number) =>
-  new Date(year, month - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+  new Date(year, month - 1, 1).toLocaleDateString(locale(), { month: "long", year: "numeric" });
 
 /** "5 Nov" */
 export const formatDayMonth = (date: Date | string) =>
-  new Date(date).toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+  new Date(date).toLocaleDateString(locale(), { day: "numeric", month: "short" });
 
 /** "14.05" */
 export const formatTime = (date: Date | string) =>
-  new Date(date).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  new Date(date).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
 
 /** 6281234567890 -> +62 812-3456-7890 */
 export const formatPhone = (phone: string) => {
@@ -26,17 +33,17 @@ export const formatPhone = (phone: string) => {
   return groups ? `+62 ${groups[1]}-${groups[2]}-${groups[3]}` : `+${phone}`;
 };
 
-/** Category codes produced by the WhatsApp parser, with Indonesian labels. */
+/** Category codes produced by the WhatsApp parser, with their labels (translated on read). */
 export const CATEGORIES: Record<string, string> = {
-  FOOD: "Makanan",
-  TRANSPORT: "Transportasi",
-  SHOPPING: "Belanja",
-  BILLS: "Tagihan",
-  HEALTH: "Kesehatan",
-  ENTERTAINMENT: "Hiburan",
-  INCOME: "Pemasukan",
-  OTHER: "Lainnya",
-  UNCATEGORIZED: "Tanpa kategori",
+  get FOOD() { return tr("Makanan"); },
+  get TRANSPORT() { return tr("Transportasi"); },
+  get SHOPPING() { return tr("Belanja"); },
+  get BILLS() { return tr("Tagihan"); },
+  get HEALTH() { return tr("Kesehatan"); },
+  get ENTERTAINMENT() { return tr("Hiburan"); },
+  get INCOME() { return tr("Pemasukan"); },
+  get OTHER() { return tr("Lainnya"); },
+  get UNCATEGORIZED() { return tr("Tanpa kategori"); },
 };
 
 export const categoryLabel = (code: string | null | undefined) => {
@@ -57,7 +64,7 @@ export const inReports = (t: { inReports?: boolean }) => t.inReports !== false;
 export type TxType = "EXPENSE" | "INCOME" | "TRANSFER";
 
 export const TX_TYPE_LABEL: Record<TxType, string> = {
-  EXPENSE: "Pengeluaran",
-  INCOME: "Pemasukan",
-  TRANSFER: "Transfer",
+  get EXPENSE() { return tr("Pengeluaran"); },
+  get INCOME() { return tr("Pemasukan"); },
+  get TRANSFER() { return tr("Transfer"); },
 };

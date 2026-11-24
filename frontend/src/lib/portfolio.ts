@@ -1,13 +1,14 @@
 /** Investasi page: types, units and valuation. Mirrors backend/api/src/investments/portfolio.ts. */
+import { tr } from "./i18n";
 
 export type AssetType = "IDX_STOCK" | "US_STOCK" | "CRYPTO";
 export type Currency = "IDR" | "USD";
 export type TradeSide = "BUY" | "SELL";
 
 export const ASSET_TYPE_LABEL: Record<AssetType, string> = {
-  IDX_STOCK: "Saham Indonesia",
-  US_STOCK: "Saham US",
-  CRYPTO: "Crypto",
+  get IDX_STOCK() { return tr("Saham Indonesia"); },
+  get US_STOCK() { return tr("Saham US"); },
+  get CRYPTO() { return tr("Crypto"); },
 };
 /** Filter buttons: they must fit a 320px phone side by side */
 export const ASSET_TYPE_BUTTON: Record<AssetType, string> = { IDX_STOCK: "IDX", US_STOCK: "US", CRYPTO: "Crypto" };

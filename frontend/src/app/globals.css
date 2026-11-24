@@ -87,11 +87,12 @@
   --expense: #D70015; /* accessible system red */
   --warning: #FF9500;
 
-  --chart-1: #10B981;
-  --chart-2: #F43F5E;
-  --chart-3: #F59E0B;
-  --chart-4: #3B82F6;
-  --chart-5: #8B5CF6;
+  /* Apple system colors: green, red, orange, blue, purple */
+  --chart-1: #34C759;
+  --chart-2: #FF3B30;
+  --chart-3: #FF9500;
+  --chart-4: #007AFF;
+  --chart-5: #AF52DE;
   /* Categorical series (allocation donut). Fixed order, validated for color-vision deficiency on the
      card surface; the lighter slots sit below 3:1, so every chart using them also shows a labeled legend. */
   --series-1: #2a78d6;
@@ -133,11 +134,11 @@
   --expense: #FF6961;
   --warning: #FF9F0A;
 
-  --chart-1: #34D399;
-  --chart-2: #F87171;
-  --chart-3: #FBBF24;
-  --chart-4: #60A5FA;
-  --chart-5: #A78BFA;
+  --chart-1: #30D158;
+  --chart-2: #FF453A;
+  --chart-3: #FF9F0A;
+  --chart-4: #0A84FF;
+  --chart-5: #BF5AF2;
   /* Same hues, stepped for the dark card (all >= 3:1) */
   --series-1: #3987e5;
   --series-2: #d95926;

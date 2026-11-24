@@ -3,6 +3,7 @@
  * lines for the chart, a TradingView-style rating (oscillators and moving averages), pivot
  * points, and performance/statistics. Not investment advice: plain arithmetic on past prices.
  */
+import { tr } from "./i18n";
 import type { Candle } from "./portfolio";
 
 export type Series = (number | null)[];
@@ -247,13 +248,13 @@ export function heikinAshi(candles: Candle[]): Candle[] {
 export type Signal = "BUY" | "SELL" | "NEUTRAL";
 export type RatingLabel = "STRONG_SELL" | "SELL" | "NEUTRAL" | "BUY" | "STRONG_BUY";
 export const RATING_TEXT: Record<RatingLabel, string> = {
-  STRONG_SELL: "Jual kuat",
-  SELL: "Jual",
-  NEUTRAL: "Netral",
-  BUY: "Beli",
-  STRONG_BUY: "Beli kuat",
+  get STRONG_SELL() { return tr("Jual kuat"); },
+  get SELL() { return tr("Jual"); },
+  get NEUTRAL() { return tr("Netral"); },
+  get BUY() { return tr("Beli"); },
+  get STRONG_BUY() { return tr("Beli kuat"); },
 };
-export const SIGNAL_TEXT: Record<Signal, string> = { BUY: "Beli", SELL: "Jual", NEUTRAL: "Netral" };
+export const SIGNAL_TEXT: Record<Signal, string> = { get BUY() { return tr("Beli"); }, get SELL() { return tr("Jual"); }, get NEUTRAL() { return tr("Netral"); } };
 
 export interface IndicatorRow { name: string; value: number | null; signal: Signal | null }
 export interface Rating { score: number; label: RatingLabel; buy: number; sell: number; neutral: number }
@@ -375,12 +376,12 @@ function closeAt(daily: Candle[], time: number): number | null {
 }
 
 export const PERFORMANCE_PERIODS = [
-  { key: "1W", label: "1 minggu", days: 7 },
-  { key: "1M", label: "1 bulan", days: 30 },
-  { key: "3M", label: "3 bulan", days: 91 },
-  { key: "6M", label: "6 bulan", days: 182 },
-  { key: "YTD", label: "Sejak awal tahun", days: null },
-  { key: "1Y", label: "1 tahun", days: 365 },
+  { key: "1W", get label() { return tr("1 minggu"); }, days: 7 },
+  { key: "1M", get label() { return tr("1 bulan"); }, days: 30 },
+  { key: "3M", get label() { return tr("3 bulan"); }, days: 91 },
+  { key: "6M", get label() { return tr("6 bulan"); }, days: 182 },
+  { key: "YTD", get label() { return tr("Sejak awal tahun"); }, days: null },
+  { key: "1Y", get label() { return tr("1 tahun"); }, days: 365 },
 ] as const;
 
 export interface DailyStats {

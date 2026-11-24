@@ -5,6 +5,7 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { focusRing } from "./common/ui";
 import { DARK_QUERY, THEME_STORAGE_KEY } from "@/lib/theme-script";
+import { tr } from "@/lib/i18n";
 
 export type ThemePref = "system" | "light" | "dark";
 
@@ -61,6 +62,7 @@ export function ThemeWatcher() {
   return null;
 }
 
+/** Labels are Indonesian sources, shown through tr() */
 const OPTIONS: { value: ThemePref; label: string; icon: React.ElementType }[] = [
   { value: "system", label: "Sistem", icon: Monitor },
   { value: "light", label: "Terang", icon: Sun },
@@ -71,7 +73,7 @@ const OPTIONS: { value: ThemePref; label: string; icon: React.ElementType }[] = 
 export function ThemeSwitcher({ compact = false, className }: { compact?: boolean; className?: string }) {
   const pref = useThemePref();
   return (
-    <div role="radiogroup" aria-label="Tema tampilan" className={cn("inline-flex rounded-lg bg-muted p-0.5", className)}>
+    <div role="radiogroup" aria-label={tr("Tema tampilan")} className={cn("inline-flex rounded-lg bg-muted p-0.5", className)}>
       {OPTIONS.map(({ value, label, icon: Icon }) => {
         const active = pref === value;
         return (
@@ -80,7 +82,7 @@ export function ThemeSwitcher({ compact = false, className }: { compact?: boolea
             type="button"
             role="radio"
             aria-checked={active}
-            title={label}
+            title={tr(label)}
             onClick={() => setThemePref(value)}
             className={cn(
               "flex flex-1 items-center justify-center gap-1.5 rounded-md text-xs font-medium transition-colors",
@@ -90,7 +92,7 @@ export function ThemeSwitcher({ compact = false, className }: { compact?: boolea
             )}
           >
             <Icon className="size-3.5" aria-hidden />
-            <span className={compact ? "sr-only" : undefined}>{label}</span>
+            <span className={compact ? "sr-only" : undefined}>{tr(label)}</span>
           </button>
         );
       })}
