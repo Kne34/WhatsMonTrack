@@ -71,7 +71,8 @@ export interface MarketPrices {
   fetchedAt: string;
 }
 
-export type ChartRange = "1D" | "5D" | "1M" | "3M" | "1Y" | "5Y";
+/** Bar intervals of the chart page, as on TradingView */
+export type ChartInterval = "5m" | "15m" | "1h" | "4h" | "1D" | "1W" | "1M";
 export interface Candle { time: number; open: number; high: number; low: number; close: number; volume: number }
 export interface PriceHistory {
   /** Currency of the candles: IDR or USD (crypto charts are in USD) */
@@ -79,6 +80,32 @@ export interface PriceHistory {
   candles: Candle[];
   /** Where the data came from; null when no source had it */
   source: string | null;
+}
+
+/** Facts about an asset for the chart page (GET /investments/:id/profile); prices in `currency` */
+export interface AssetProfile {
+  name: string | null;
+  exchange: string | null;
+  currency: string;
+  market: "OPEN" | "CLOSED" | "ALWAYS" | null;
+  session: { start: number; end: number; timezone: string } | null;
+  previousClose: number | null;
+  dayHigh: number | null;
+  dayLow: number | null;
+  volume: number | null;
+  turnover: number | null;
+  yearHigh: number | null;
+  yearLow: number | null;
+  marketCap: number | null;
+  rank: number | null;
+  circulatingSupply: number | null;
+  maxSupply: number | null;
+  allTimeHigh: number | null;
+  allTimeHighDate: string | null;
+  description: string | null;
+  homepage: string | null;
+  categories: string[];
+  sources: string[];
 }
 
 /** The total market value in rupiah of everything still held (counted in "Saldo total"); null while unknown. */

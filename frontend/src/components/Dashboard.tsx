@@ -23,7 +23,7 @@ import DebtsView, { DEFAULT_DEBT_FILTERS, type DebtFilters } from "./dashboard/v
 import { DebtRecordDialog, PayDialog, SettleDialog } from "./dashboard/debtDialogs";
 import InvestmentsView from "./dashboard/views/InvestmentsView";
 import { InvestmentDialog, TradeDialog } from "./dashboard/investmentDialogs";
-import { HoldingChartDialog } from "./dashboard/investmentChart";
+import { ChartPage } from "./dashboard/chart/ChartPage";
 import InboxView, { type ReviewTx } from "./dashboard/views/InboxView";
 import ChatView from "./dashboard/views/ChatView";
 import {
@@ -45,7 +45,6 @@ type DialogState =
   | { kind: "settle"; record: DebtRecord }
   | { kind: "holding"; holding: Holding | null }
   | { kind: "trade"; holding: Holding; side: TradeSide }
-  | { kind: "chart"; holding: Holding }
   | { kind: "budget"; budget: BudgetLike | null }
   | { kind: "confirm"; title: string; description: string; confirmLabel: string; action: () => Promise<void>; destructive?: boolean }
   | { kind: "link" }
@@ -63,6 +62,9 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
   const tabParam = searchParams.get("tab") as Tab | null;
   const activeTab: Tab = NAV_ITEMS.some((n) => n.id === tabParam) ? (tabParam as Tab) : "dashboard";
   const navigate = (tab: Tab) => router.push(`/?tab=${tab}`);
+  /** The chart page of one holding (full screen, like TradingView): /?tab=investments&chart=<id> */
+  const chartId = activeTab === "investments" ? searchParams.get("chart") : null;
+  const openChart = (h: Holding) => router.push(`/?tab=investments&chart=${h.id}`);
 
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
@@ -194,8 +196,6 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     };
   }, [livePrices, activeTab, hasHoldings, loadPrices]);
 
-  const freshHolding = (h: Holding) => holdings?.find((x) => x.id === h.id) ?? h;
-
   const saveHolding = (holding: Holding | null) => async (input: HoldingInput) => {
     if (holding) {
       const { name, platform, currency, quantity, avgPrice, coingeckoId, note } = input;
@@ -221,6 +221,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
       confirmLabel: "Hapus aset",
       action: async () => {
         await deleteHolding(holding.id);
+        if (chartId === holding.id) router.push("/?tab=investments");
         await loadHoldings();
         notify(`${holding.symbol} dihapus`);
       },
@@ -463,131 +464,146 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     // Phones, Chat tab: exactly the visible screen (dvh, not 100vh which ignores the browser's address bar),
     // so nothing behind the full-screen chat can scroll the top bar away
     <div className={cn("min-h-screen bg-background text-foreground", activeTab === "chat" && "max-md:h-dvh max-md:min-h-0 max-md:overflow-hidden")}>
-      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:px-3 focus:py-2 focus:shadow">
-        Lewati ke konten
-      </a>
+      {chartId ? (
+        <ChartPage
+          holdings={holdings}
+          prices={prices}
+          holdingId={chartId}
+          onBack={() => navigate("investments")}
+          // replace: switching assets shouldn't fill the back button's history
+          onSelect={(h) => router.replace(`/?tab=investments&chart=${h.id}`)}
+          onTrade={(h, side) => setDialog({ kind: "trade", holding: h, side })}
+          onEdit={(h) => setDialog({ kind: "holding", holding: h })}
+        />
+      ) : (
+        <>
+        <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-card focus:px-3 focus:py-2 focus:shadow">
+          Lewati ke konten
+        </a>
 
-      <Sidebar active={activeTab} onNavigate={navigate} reviewCount={reviewItems.length} {...statusProps} />
+        <Sidebar active={activeTab} onNavigate={navigate} reviewCount={reviewItems.length} {...statusProps} />
 
-      <div className="md:pl-60">
-        {/* Phone top bar */}
-        <div className="flex h-12 items-center justify-between border-b border-border/70 bg-card px-4 md:hidden">
-          <span className="font-heading text-base font-semibold tracking-tight">WhatsMonTrack</span>
-          <MobileAccountMenu {...statusProps} />
+        <div className="md:pl-60">
+          {/* Phone top bar */}
+          <div className="flex h-12 items-center justify-between border-b border-border/70 bg-card px-4 md:hidden">
+            <span className="font-heading text-base font-semibold tracking-tight">WhatsMonTrack</span>
+            <MobileAccountMenu {...statusProps} />
+          </div>
+
+          <main id="main" className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-8 md:pb-12">
+            {/* On phones the chat fills the screen like a messaging app, without the page title */}
+            <header className={cn("mb-6 flex flex-wrap items-center justify-between gap-3", activeTab === "chat" && "max-md:hidden")}>
+              <h1 className="font-heading text-2xl font-semibold tracking-tight">{PAGE_TITLES[activeTab]}</h1>
+              {/* Phones: month switcher left, add button right (its menu opens leftwards and stays on screen) */}
+              {/* Pages not tied to a month have no switcher: the add button then sits next to the title */}
+              <div className={cn("flex items-center justify-between gap-2 sm:w-auto sm:justify-end", monthly && "w-full")}>
+                {monthly && <MonthSwitcher month={month} year={year} onChange={changeMonth} />}
+                <AddMenu {...addActions} />
+              </div>
+            </header>
+
+            {loadError && loaded && (
+              <div role="alert" className="mb-6 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+                Gagal memuat data terbaru. Kami akan mencoba lagi otomatis.
+              </div>
+            )}
+
+            {activeTab === "chat" ? (
+              // Loads its own history; recording refreshes balances and the review badge
+              <ChatView
+                onRecorded={loadData}
+                onAskClear={(clear) =>
+                  setDialog({
+                    kind: "confirm",
+                    title: "Hapus riwayat chat?",
+                    description: "Semua pesan di chat ini dihapus. Transaksi yang sudah tercatat tetap ada.",
+                    confirmLabel: "Hapus riwayat",
+                    action: async () => {
+                      await clear();
+                      notify("Riwayat chat dihapus");
+                    },
+                  })}
+              />
+            ) : activeTab === "investments" ? (
+              // Not tied to a month; loads its own data (see loadHoldings/loadPrices)
+              <InvestmentsView
+                holdings={holdings}
+                prices={prices}
+                onOpen={openChart}
+                onAdd={addActions.onAddInvestment}
+                onEdit={(holding) => setDialog({ kind: "holding", holding })}
+              />
+            ) : !loaded || monthPending ? (
+              <PageSkeleton tab={activeTab} />
+            ) : activeTab === "dashboard" ? (
+              <HomeView
+                monthlyTxs={monthlyTxs}
+                accounts={accounts}
+                budgets={budgets}
+                month={month}
+                year={year}
+                phoneLinked={!!phoneStatus?.phoneNumber}
+                hasAnyTransaction={hasAnyTransaction || monthlyTxs.length > 0}
+                debtSummary={debtSummary}
+                investmentValue={portfolioValueIdr(holdings, prices)}
+                onOpenInvestments={() => navigate("investments")}
+                onOpenDebts={() => navigate("debts")}
+                onEditAccount={(account) => setDialog({ kind: "account", account })}
+                onEditBudget={(budget) => setDialog({ kind: "budget", budget })}
+                onLinkPhone={() => setDialog({ kind: "link" })}
+                {...addActions}
+              />
+            ) : activeTab === "debts" ? (
+              <DebtsView
+                data={debts}
+                filters={debtFilters}
+                onFiltersChange={setDebtFilters}
+                onAdd={() => setDialog({ kind: "debt", record: null, type: debtFilters.type || undefined })}
+                onEdit={(record) => setDialog({ kind: "debt", record })}
+                onDelete={askDeleteDebt}
+                onPay={(record, participant) => setDialog({ kind: "pay", record, participant })}
+                onUnpay={unpay}
+                onSettle={(record) => setDialog({ kind: "settle", record })}
+                onReopen={askReopen}
+              />
+            ) : activeTab === "transactions" ? (
+              <LedgerView
+                onOpenDebts={() => navigate("debts")}
+                month={month}
+                year={year}
+                monthlyTxs={confirmedMonthly as LedgerTx[]}
+                pageTxs={pageTxs as LedgerTx[]}
+                listLoading={listPending}
+                selectedDay={selectedDay}
+                onSelectDay={(d) => { setSelectedDay(d); setPage(1); }}
+                page={page}
+                totalPages={totalPages}
+                limit={limit}
+                onPageChange={setPage}
+                onLimitChange={(l) => { setLimit(l); setPage(1); }}
+                filters={filters}
+                onFiltersChange={(f) => { setFilters(f); setPage(1); }}
+                categories={categories}
+                accounts={accounts}
+                onAdd={addActions.onAddTransaction}
+                onEdit={(tx) => setDialog({ kind: "transaction", tx: tx as unknown as TransactionLike })}
+                onDelete={askDeleteTransaction}
+              />
+            ) : (
+              <InboxView
+                items={reviewItems as ReviewTx[]}
+                onConfirm={confirmReview}
+                onEdit={(tx) => setDialog({ kind: "transaction", tx: tx as unknown as TransactionLike })}
+                onDelete={askDeleteTransaction}
+                onDeleteAll={askDeleteAllReview}
+              />
+            )}
+          </main>
         </div>
 
-        <main id="main" className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-8 md:pb-12">
-          {/* On phones the chat fills the screen like a messaging app, without the page title */}
-          <header className={cn("mb-6 flex flex-wrap items-center justify-between gap-3", activeTab === "chat" && "max-md:hidden")}>
-            <h1 className="font-heading text-2xl font-semibold tracking-tight">{PAGE_TITLES[activeTab]}</h1>
-            {/* Phones: month switcher left, add button right (its menu opens leftwards and stays on screen) */}
-            {/* Pages not tied to a month have no switcher: the add button then sits next to the title */}
-            <div className={cn("flex items-center justify-between gap-2 sm:w-auto sm:justify-end", monthly && "w-full")}>
-              {monthly && <MonthSwitcher month={month} year={year} onChange={changeMonth} />}
-              <AddMenu {...addActions} />
-            </div>
-          </header>
-
-          {loadError && loaded && (
-            <div role="alert" className="mb-6 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-              Gagal memuat data terbaru. Kami akan mencoba lagi otomatis.
-            </div>
-          )}
-
-          {activeTab === "chat" ? (
-            // Loads its own history; recording refreshes balances and the review badge
-            <ChatView
-              onRecorded={loadData}
-              onAskClear={(clear) =>
-                setDialog({
-                  kind: "confirm",
-                  title: "Hapus riwayat chat?",
-                  description: "Semua pesan di chat ini dihapus. Transaksi yang sudah tercatat tetap ada.",
-                  confirmLabel: "Hapus riwayat",
-                  action: async () => {
-                    await clear();
-                    notify("Riwayat chat dihapus");
-                  },
-                })}
-            />
-          ) : activeTab === "investments" ? (
-            // Not tied to a month; loads its own data (see loadHoldings/loadPrices)
-            <InvestmentsView
-              holdings={holdings}
-              prices={prices}
-              onOpen={(holding) => setDialog({ kind: "chart", holding })}
-              onAdd={addActions.onAddInvestment}
-              onEdit={(holding) => setDialog({ kind: "holding", holding })}
-            />
-          ) : !loaded || monthPending ? (
-            <PageSkeleton tab={activeTab} />
-          ) : activeTab === "dashboard" ? (
-            <HomeView
-              monthlyTxs={monthlyTxs}
-              accounts={accounts}
-              budgets={budgets}
-              month={month}
-              year={year}
-              phoneLinked={!!phoneStatus?.phoneNumber}
-              hasAnyTransaction={hasAnyTransaction || monthlyTxs.length > 0}
-              debtSummary={debtSummary}
-              investmentValue={portfolioValueIdr(holdings, prices)}
-              onOpenInvestments={() => navigate("investments")}
-              onOpenDebts={() => navigate("debts")}
-              onEditAccount={(account) => setDialog({ kind: "account", account })}
-              onEditBudget={(budget) => setDialog({ kind: "budget", budget })}
-              onLinkPhone={() => setDialog({ kind: "link" })}
-              {...addActions}
-            />
-          ) : activeTab === "debts" ? (
-            <DebtsView
-              data={debts}
-              filters={debtFilters}
-              onFiltersChange={setDebtFilters}
-              onAdd={() => setDialog({ kind: "debt", record: null, type: debtFilters.type || undefined })}
-              onEdit={(record) => setDialog({ kind: "debt", record })}
-              onDelete={askDeleteDebt}
-              onPay={(record, participant) => setDialog({ kind: "pay", record, participant })}
-              onUnpay={unpay}
-              onSettle={(record) => setDialog({ kind: "settle", record })}
-              onReopen={askReopen}
-            />
-          ) : activeTab === "transactions" ? (
-            <LedgerView
-              onOpenDebts={() => navigate("debts")}
-              month={month}
-              year={year}
-              monthlyTxs={confirmedMonthly as LedgerTx[]}
-              pageTxs={pageTxs as LedgerTx[]}
-              listLoading={listPending}
-              selectedDay={selectedDay}
-              onSelectDay={(d) => { setSelectedDay(d); setPage(1); }}
-              page={page}
-              totalPages={totalPages}
-              limit={limit}
-              onPageChange={setPage}
-              onLimitChange={(l) => { setLimit(l); setPage(1); }}
-              filters={filters}
-              onFiltersChange={(f) => { setFilters(f); setPage(1); }}
-              categories={categories}
-              accounts={accounts}
-              onAdd={addActions.onAddTransaction}
-              onEdit={(tx) => setDialog({ kind: "transaction", tx: tx as unknown as TransactionLike })}
-              onDelete={askDeleteTransaction}
-            />
-          ) : (
-            <InboxView
-              items={reviewItems as ReviewTx[]}
-              onConfirm={confirmReview}
-              onEdit={(tx) => setDialog({ kind: "transaction", tx: tx as unknown as TransactionLike })}
-              onDelete={askDeleteTransaction}
-              onDeleteAll={askDeleteAllReview}
-            />
-          )}
-        </main>
-      </div>
-
-      <BottomTabs active={activeTab} onNavigate={navigate} reviewCount={reviewItems.length} />
+        <BottomTabs active={activeTab} onNavigate={navigate} reviewCount={reviewItems.length} />
+        </>
+      )}
 
       {/* Feedback after actions */}
       <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4 md:bottom-6 md:pl-60">
@@ -647,16 +663,6 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
           livePrice={currentPrice(dialog.holding, prices?.prices[dialog.holding.priceKey], prices?.fx?.price ?? null)}
           onClose={closeDialog}
           onSave={saveTrade(dialog.holding)}
-        />
-      )}
-      {dialog.kind === "chart" && (
-        <HoldingChartDialog
-          // The holding as it is now (a trade made from here changes its average price)
-          holding={freshHolding(dialog.holding)}
-          prices={prices}
-          onClose={closeDialog}
-          onTrade={() => setDialog({ kind: "trade", holding: freshHolding(dialog.holding), side: "BUY" })}
-          onEdit={() => setDialog({ kind: "holding", holding: freshHolding(dialog.holding) })}
         />
       )}
       {dialog.kind === "budget" && (

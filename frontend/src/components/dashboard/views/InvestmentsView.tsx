@@ -11,7 +11,7 @@ import {
 } from "@/lib/portfolio";
 import { Button, Card, EmptyState, IconButton, SegmentedControl, Skeleton, focusRing, inputBase } from "../../common/ui";
 import { MASK, MASK_PLAIN, usePrivacy } from "../shared/privacy";
-import { LiveBadge } from "../investmentChart";
+import { LiveBadge } from "../liveBadge";
 
 interface InvestmentsViewProps {
   /** null while loading */
@@ -338,7 +338,7 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
                       <tr key={r.h.id} className={cn("align-top", closed && "text-muted-foreground")}>
                         <td className="py-3 pl-5 pr-3">
                           <button type="button" onClick={() => onOpen(r.h)} className={cn("rounded font-semibold text-foreground hover:underline", focusRing)}
-                            aria-label={`${r.h.symbol}: lihat chart`}>{r.h.symbol}</button>
+                            aria-label={`${r.h.symbol}: buka chart`}>{r.h.symbol}</button>
                           <p className="max-w-36 truncate text-xs text-muted-foreground" title={r.h.name ?? undefined}>
                             {closed ? "Terjual habis" : r.h.name || ASSET_TYPE_LABEL[r.h.assetType]}
                           </p>
@@ -376,7 +376,7 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
                 return (
                   <li key={r.h.id} className="flex items-start gap-2 py-3 pr-2 pl-4 sm:pl-5">
                     <button type="button" onClick={() => onOpen(r.h)}
-                      className={cn("min-w-0 flex-1 rounded-lg text-left", focusRing)} aria-label={`${r.h.symbol}: lihat chart, beli atau jual`}>
+                      className={cn("min-w-0 flex-1 rounded-lg text-left", focusRing)} aria-label={`${r.h.symbol}: buka chart`}>
                       <span className="flex items-baseline justify-between gap-3">
                         <span className="flex min-w-0 items-center gap-2">
                           <span className={cn("font-semibold", closed ? "text-muted-foreground" : "text-foreground")}>{r.h.symbol}</span>
