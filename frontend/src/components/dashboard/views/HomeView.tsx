@@ -9,6 +9,7 @@ import type { DebtSummary } from "@/lib/api";
 import { Button, Card, CardHeader, EmptyState, SegmentedControl, focusRing } from "../../common/ui";
 import { usePrivacy } from "../shared/privacy";
 
+import { locale, pick, tr } from "@/lib/i18n";
 interface Tx {
   id: string;
   type: "EXPENSE" | "INCOME" | "TRANSFER";
@@ -58,7 +59,7 @@ function ChartTooltip({ active, payload, label, month, year }: {
 }) {
   const value = payload?.[0]?.value;
   if (!active || value == null) return null;
-  const date = new Date(year, month - 1, Number(label)).toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+  const date = new Date(year, month - 1, Number(label)).toLocaleDateString(locale(), { day: "numeric", month: "short" });
   return (
     <div className="rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-md">
       <p className="text-muted-foreground">{date}</p>
@@ -91,20 +92,20 @@ function Onboarding({ hasAccount, phoneLinked, hasTransaction, onAddAccount, onL
   onAddTransaction: () => void;
 }) {
   const steps = [
-    { done: hasAccount, title: "Tambah rekening", text: "Bank, e-wallet, atau tunai beserta saldonya.", action: "Tambah rekening", onClick: onAddAccount },
-    { done: phoneLinked, title: "Hubungkan WhatsApp", text: "Agar bisa mencatat lewat WhatsApp. Belum ada bot? Pakai tab Chat di web.", action: "Hubungkan", onClick: onLinkPhone },
-    { done: hasTransaction, title: "Catat transaksi pertama", text: 'Kirim chat seperti "makan siang 25rb pakai BCA".', action: "Tambah manual", onClick: onAddTransaction },
+    { done: hasAccount, title: tr("Tambah rekening"), text: tr("Bank, e-wallet, atau tunai beserta saldonya."), action: tr("Tambah rekening"), onClick: onAddAccount },
+    { done: phoneLinked, title: tr("Hubungkan WhatsApp"), text: tr("Agar bisa mencatat lewat WhatsApp. Belum ada bot? Pakai tab Chat di web."), action: tr("Hubungkan"), onClick: onLinkPhone },
+    { done: hasTransaction, title: tr("Catat transaksi pertama"), text: tr("Kirim chat seperti \"makan siang 25rb pakai BCA\"."), action: tr("Tambah manual"), onClick: onAddTransaction },
   ];
   const done = steps.filter((s) => s.done).length;
   return (
     <Card>
-      <CardHeader title="Mulai menggunakan WhatsMonTrack" description={`${done} dari ${steps.length} langkah selesai`} />
+      <CardHeader title={tr("Mulai menggunakan WhatsMonTrack")} description={tr("{done} dari {length} langkah selesai", { done: done, length: steps.length })} />
       <ol className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {steps.map((s, i) => (
           <li key={s.title} className="flex gap-3 rounded-xl border border-border/70 p-4">
             <span className={cn("flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium",
               s.done ? "bg-foreground text-background" : "border border-border text-muted-foreground")}>
-              {s.done ? <Check className="size-3.5" aria-label="Selesai" /> : i + 1}
+              {s.done ? <Check className="size-3.5" aria-label={tr("Selesai")} /> : i + 1}
             </span>
             <div className="min-w-0">
               <p className={cn("text-sm font-medium", s.done ? "text-muted-foreground line-through" : "text-foreground")}>{s.title}</p>
@@ -184,7 +185,7 @@ export default function HomeView({
     const sorted = [...totals.entries()].sort((a, b) => b[1] - a[1]);
     const top = sorted.slice(0, 5).map(([code, value]) => ({ label: categoryLabel(code), value }));
     const rest = sorted.slice(5).reduce((s, [, v]) => s + v, 0);
-    if (rest > 0) top.push({ label: "Lainnya", value: rest });
+    if (rest > 0) top.push({ label: tr("Lainnya"), value: rest });
     const sum = top.reduce((s, c) => s + c.value, 0);
     return top.map((c) => ({ ...c, share: sum ? c.value / sum : 0 }));
   }, [counted, breakdown]);
@@ -202,9 +203,9 @@ export default function HomeView({
   const noTxState = (
     <EmptyState
       icon={<ReceiptText className="size-5" />}
-      title={`Belum ada transaksi di ${monthName}`}
-      description="Catat lewat chat WhatsApp ke bot, atau tambahkan secara manual."
-      action={<Button variant="secondary" size="sm" onClick={onAddTransaction}>Tambah transaksi</Button>}
+      title={tr("Belum ada transaksi di {monthName}", { monthName: monthName })}
+      description={tr("Catat lewat chat WhatsApp ke bot, atau tambahkan secara manual.")}
+      action={<Button variant="secondary" size="sm" onClick={onAddTransaction}>{tr("Tambah transaksi")}</Button>}
     />
   );
 
@@ -219,27 +220,27 @@ export default function HomeView({
       {/* Key numbers */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
-          label="Saldo total"
+          label={tr("Saldo total")}
           value={privacy.show("balance", formatRupiah(totalBalance))}
-          sub={hasInvestments ? `${accounts.length} rekening dan investasi` : `${accounts.length} rekening`}
+          sub={hasInvestments ? tr("{length} rekening dan investasi", { length: accounts.length }) : tr("{length} rekening", { length: accounts.length })}
           action={privacy.eye("balance")}
         />
         <StatTile
-          label="Pemasukan"
+          label={tr("Pemasukan")}
           value={privacy.show("income", formatRupiah(income))}
           sub={monthName}
           action={privacy.eye("income")}
         />
         <StatTile
-          label="Pengeluaran"
+          label={tr("Pengeluaran")}
           value={privacy.show("expense", formatRupiah(expense))}
           sub={monthName}
           action={privacy.eye("expense")}
         />
         <StatTile
-          label="Selisih"
+          label={tr("Selisih")}
           value={privacy.show("net", `${net > 0 ? "+" : ""}${formatRupiah(net)}`)}
-          sub="Pemasukan dikurangi pengeluaran"
+          sub={tr("Pemasukan dikurangi pengeluaran")}
           action={privacy.eye("net")}
         />
       </div>
@@ -249,9 +250,9 @@ export default function HomeView({
           {hasTransactions ? (
             <>
           <Card>
-            <CardHeader title="Arus kas" description={`Akumulasi pemasukan dikurangi pengeluaran, ${monthName}`} />
+            <CardHeader title={tr("Arus kas")} description={tr("Akumulasi pemasukan dikurangi pengeluaran, {monthName}", { monthName: monthName })} />
             {hasTransactions ? (
-              <div className="h-56" role="img" aria-label={`Arus kas ${monthName}: akhir periode ${formatRupiah(daily[lastDay - 1]?.net ?? 0)}`}>
+              <div className="h-56" role="img" aria-label={tr("Arus kas {monthName}: akhir periode {formatRupiah}", { monthName: monthName, formatRupiah: formatRupiah(daily[lastDay - 1]?.net ?? 0) })}>
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={daily} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -269,11 +270,11 @@ export default function HomeView({
 
           <Card>
             <CardHeader
-              title="Pengeluaran harian"
-              description={dailyBudget > 0 ? `Garis putus-putus: rata-rata anggaran per hari (${formatRupiah(Math.round(dailyBudget))})` : monthName}
+              title={tr("Pengeluaran harian")}
+              description={dailyBudget > 0 ? tr("Garis putus-putus: rata-rata anggaran per hari ({formatRupiah})", { formatRupiah: formatRupiah(Math.round(dailyBudget)) }) : monthName}
             />
             {expense > 0 ? (
-              <div className="h-56" role="img" aria-label={`Pengeluaran harian ${monthName}, total ${formatRupiah(expense)}`}>
+              <div className="h-56" role="img" aria-label={tr("Pengeluaran harian {monthName}, total {expense}", { monthName: monthName, expense: formatRupiah(expense) })}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={daily} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -286,17 +287,17 @@ export default function HomeView({
                 </ResponsiveContainer>
               </div>
             ) : (
-              <EmptyState icon={<ReceiptText className="size-5" />} title={`Belum ada pengeluaran di ${monthName}`} />
+              <EmptyState icon={<ReceiptText className="size-5" />} title={tr("Belum ada pengeluaran di {monthName}", { monthName: monthName })} />
             )}
           </Card>
 
           <Card>
             <CardHeader
-              title="Per kategori"
+              title={tr("Per kategori")}
               description={monthName}
               action={
-                <SegmentedControl label="Jenis" value={breakdown} onChange={setBreakdown}
-                  options={[{ value: "EXPENSE", label: "Pengeluaran" }, { value: "INCOME", label: "Pemasukan" }]} />
+                <SegmentedControl label={tr("Jenis")} value={breakdown} onChange={setBreakdown}
+                  options={[{ value: "EXPENSE", label: tr("Pengeluaran") }, { value: "INCOME", label: tr("Pemasukan") }]} />
               }
             />
             {categories.length > 0 ? (
@@ -316,13 +317,13 @@ export default function HomeView({
                 ))}
               </ul>
             ) : (
-              <EmptyState title={breakdown === "EXPENSE" ? "Belum ada pengeluaran" : "Belum ada pemasukan"} description={`Untuk ${monthName}.`} />
+              <EmptyState title={breakdown === "EXPENSE" ? tr("Belum ada pengeluaran") : tr("Belum ada pemasukan")} description={tr("Untuk {monthName}.", { monthName: monthName })} />
             )}
           </Card>
             </>
           ) : (
             <Card>
-              <CardHeader title="Aktivitas bulan ini" description="Arus kas, pengeluaran harian, dan kategori akan tampil di sini." />
+              <CardHeader title={tr("Aktivitas bulan ini")} description={tr("Arus kas, pengeluaran harian, dan kategori akan tampil di sini.")} />
               {noTxState}
             </Card>
           )}
@@ -331,12 +332,12 @@ export default function HomeView({
         <div className="space-y-6">
           <Card>
             <CardHeader
-              title="Rekening"
+              title={pick("Rekening", "Accounts")}
               action={accounts.length > 0 && (
                 <div className="flex items-center gap-1">
                   {/* Its own eye, independent of "Saldo total" */}
                   {privacy.eye("accounts", "size-8")}
-                  <Button variant="ghost" size="sm" onClick={onAddAccount}>Tambah</Button>
+                  <Button variant="ghost" size="sm" onClick={onAddAccount}>{tr("Tambah")}</Button>
                 </div>
               )}
             />
@@ -357,7 +358,7 @@ export default function HomeView({
                       className={cn("flex w-full items-center justify-between gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition-colors hover:bg-muted", focusRing)}>
                       <span className="flex min-w-0 items-center gap-2 text-foreground">
                         <ChartLine className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                        <span className="truncate" title="Nilai pasar saat ini">Investasi</span>
+                        <span className="truncate" title={tr("Nilai pasar saat ini")}>{tr("Investasi")}</span>
                       </span>
                       <span className="shrink-0 tabular-nums text-foreground">{privacy.show("accounts", formatRupiah(invested))}</span>
                     </button>
@@ -365,31 +366,31 @@ export default function HomeView({
                 )}
               </ul>
             ) : (
-              <EmptyState icon={<Wallet className="size-5" />} title="Belum ada rekening"
-                description="Tambahkan rekening bank, e-wallet, atau tunai."
-                action={<Button variant="secondary" size="sm" onClick={onAddAccount}>Tambah rekening</Button>} />
+              <EmptyState icon={<Wallet className="size-5" />} title={tr("Belum ada rekening")}
+                description={tr("Tambahkan rekening bank, e-wallet, atau tunai.")}
+                action={<Button variant="secondary" size="sm" onClick={onAddAccount}>{tr("Tambah rekening")}</Button>} />
             )}
           </Card>
 
           {!!debtSummary?.openCount && (
             <Card>
               <CardHeader
-                title="Utang-piutang"
-                description={`${debtSummary.openCount} belum selesai, belum termasuk pengeluaran`}
+                title={tr("Utang-piutang")}
+                description={tr("{openCount} belum selesai, belum termasuk pengeluaran", { openCount: debtSummary.openCount })}
                 action={
                   <div className="flex items-center gap-1">
                     {privacy.eye("debt", "size-8")}
-                    <Button variant="ghost" size="sm" onClick={onOpenDebts}>Detail</Button>
+                    <Button variant="ghost" size="sm" onClick={onOpenDebts}>{tr("Detail")}</Button>
                   </div>
                 }
               />
               <dl className="space-y-2 text-sm">
                 <div className="flex items-baseline justify-between gap-3">
-                  <dt className="text-muted-foreground">Orang utang ke kamu</dt>
+                  <dt className="text-muted-foreground">{tr("Orang utang ke kamu")}</dt>
                   <dd className="shrink-0 tabular-nums text-foreground">{privacy.show("debt", formatRupiah(debtSummary.receivable))}</dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-3">
-                  <dt className="text-muted-foreground">Kamu utang</dt>
+                  <dt className="text-muted-foreground">{tr("Kamu utang")}</dt>
                   <dd className="shrink-0 tabular-nums text-foreground">{privacy.show("debt", formatRupiah(debtSummary.payable))}</dd>
                 </div>
               </dl>
@@ -397,7 +398,7 @@ export default function HomeView({
           )}
 
           <Card>
-            <CardHeader title="Anggaran" description={monthName} action={budgets.length > 0 && <Button variant="ghost" size="sm" onClick={onAddBudget}>Tambah</Button>} />
+            <CardHeader title={tr("Anggaran")} description={monthName} action={budgets.length > 0 && <Button variant="ghost" size="sm" onClick={onAddBudget}>{tr("Tambah")}</Button>} />
             {budgetRows.length > 0 ? (
               <ul className="-mx-2 space-y-1">
                 {budgetRows.map(({ budget, spent, ratio, status }) => (
@@ -419,7 +420,7 @@ export default function HomeView({
                       {/* Status is never color-only */}
                       {status !== "ok" && (
                         <p className={cn("mt-1 text-xs", status === "over" ? "text-destructive" : "text-foreground")}>
-                          {status === "over" ? `Melebihi ${formatRupiah(spent - budget.limit)}` : `Hampir habis, sisa ${formatRupiah(budget.limit - spent)}`}
+                          {status === "over" ? tr("Melebihi {formatRupiah}", { formatRupiah: formatRupiah(spent - budget.limit) }) : tr("Hampir habis, sisa {formatRupiah}", { formatRupiah: formatRupiah(budget.limit - spent) })}
                         </p>
                       )}
                     </button>
@@ -427,9 +428,9 @@ export default function HomeView({
                 ))}
               </ul>
             ) : (
-              <EmptyState icon={<Target className="size-5" />} title="Belum ada anggaran"
-                description="Tetapkan batas pengeluaran per kategori, misalnya makanan."
-                action={<Button variant="secondary" size="sm" onClick={onAddBudget}>Atur anggaran</Button>} />
+              <EmptyState icon={<Target className="size-5" />} title={tr("Belum ada anggaran")}
+                description={tr("Tetapkan batas pengeluaran per kategori, misalnya makanan.")}
+                action={<Button variant="secondary" size="sm" onClick={onAddBudget}>{tr("Atur anggaran")}</Button>} />
             )}
           </Card>
         </div>

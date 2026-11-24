@@ -7,7 +7,8 @@ import { fetchPhoneStatus, startPhoneLink, unlinkPhone, type PhoneLinkInfo, type
 import { formatPhone, formatTime } from "@/lib/format";
 import { Alert, Button, TextField, buttonClass } from "../../common/ui";
 import { AppDialog } from "../dialogs";
-
+
+import { tr } from "@/lib/i18n";
 interface LinkWhatsAppModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -44,7 +45,7 @@ export default function LinkWhatsAppModal({ isOpen, onClose, status, onChanged }
     const interval = setInterval(async () => {
       if (Date.now() >= expiresAt) {
         setLink(null);
-        setError("Kode sudah kedaluwarsa. Buat QR baru.");
+        setError(tr("Kode sudah kedaluwarsa. Buat QR baru."));
         return;
       }
       try {
@@ -68,7 +69,7 @@ export default function LinkWhatsAppModal({ isOpen, onClose, status, onChanged }
     try {
       setLink(await startPhoneLink(phoneInput.trim() || undefined));
     } catch (err) {
-      setError(apiError(err, "Gagal membuat kode. Coba lagi."));
+      setError(apiError(err, tr("Gagal membuat kode. Coba lagi.")));
     } finally {
       setBusy(false);
     }
@@ -82,7 +83,7 @@ export default function LinkWhatsAppModal({ isOpen, onClose, status, onChanged }
       onChanged();
       onClose();
     } catch (err) {
-      setError(apiError(err, "Gagal memutuskan nomor. Coba lagi."));
+      setError(apiError(err, tr("Gagal memutuskan nomor. Coba lagi.")));
     } finally {
       setBusy(false);
     }
@@ -92,16 +93,16 @@ export default function LinkWhatsAppModal({ isOpen, onClose, status, onChanged }
   const showForm = !link && !linkedPhone && (!currentPhone || changing);
 
   return (
-    <AppDialog open={isOpen} onClose={onClose} title="Hubungkan WhatsApp"
-      description="Catat transaksi cukup dengan chat ke bot WhatsMonTrack dari nomor ini.">
+    <AppDialog open={isOpen} onClose={onClose} title={tr("Hubungkan WhatsApp")}
+      description={tr("Catat transaksi cukup dengan chat ke bot WhatsMonTrack dari nomor ini.")}>
       <div className="space-y-4">
         {error && <Alert>{error}</Alert>}
 
         {/* Just linked */}
         {linkedPhone && (
           <>
-            <Alert tone="info">Berhasil. Nomor <span className="font-medium">{formatPhone(linkedPhone)}</span> sudah terhubung.</Alert>
-            <Button className="w-full" size="lg" onClick={onClose}>Selesai</Button>
+            <Alert tone="info">{tr("Berhasil. Nomor")} <span className="font-medium">{formatPhone(linkedPhone)}</span> {tr("sudah terhubung.")}</Alert>
+            <Button className="w-full" size="lg" onClick={onClose}>{tr("Selesai")}</Button>
           </>
         )}
 
@@ -109,12 +110,12 @@ export default function LinkWhatsAppModal({ isOpen, onClose, status, onChanged }
         {!linkedPhone && !link && currentPhone && !changing && (
           <>
             <div className="rounded-xl border border-border px-3.5 py-3">
-              <p className="text-xs text-muted-foreground">Nomor terhubung</p>
+              <p className="text-xs text-muted-foreground">{tr("Nomor terhubung")}</p>
               <p className="mt-0.5 text-sm font-medium text-foreground">{formatPhone(currentPhone)}</p>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="secondary" onClick={() => setChanging(true)} disabled={busy}>Ganti nomor</Button>
-              <Button variant="danger" onClick={handleUnlink} loading={busy}>Putuskan</Button>
+              <Button variant="secondary" onClick={() => setChanging(true)} disabled={busy}>{tr("Ganti nomor")}</Button>
+              <Button variant="danger" onClick={handleUnlink} loading={busy}>{tr("Putuskan")}</Button>
             </div>
           </>
         )}
@@ -123,27 +124,27 @@ export default function LinkWhatsAppModal({ isOpen, onClose, status, onChanged }
         {showForm && status && !status.botConnected && (
           <>
             <Alert tone="info">
-              Bot WhatsApp sedang offline, jadi nomor belum bisa dihubungkan. Hubungi admin untuk menghubungkan bot terlebih dahulu. Sementara itu, catat transaksi lewat tab Chat di web.
+              {tr("Bot WhatsApp sedang offline, jadi nomor belum bisa dihubungkan. Hubungi admin untuk menghubungkan bot terlebih dahulu. Sementara itu, catat transaksi lewat tab Chat di web.")}
             </Alert>
-            <Button variant="secondary" className="w-full" onClick={onClose}>Tutup</Button>
+            <Button variant="secondary" className="w-full" onClick={onClose}>{tr("Tutup")}</Button>
           </>
         )}
 
         {showForm && (!status || status.botConnected) && (
           <form onSubmit={handleStart} className="space-y-4">
             <TextField
-              label="Nomor WhatsApp (opsional)"
+              label={tr("Nomor WhatsApp (opsional)")}
               type="tel"
               autoComplete="tel"
               inputMode="tel"
               value={phoneInput}
               onChange={(e) => setPhoneInput(e.target.value)}
               placeholder="0812 3456 7890"
-              hint="Isi agar kode hanya bisa dipakai dari nomor ini. Boleh dikosongkan."
+              hint={tr("Isi agar kode hanya bisa dipakai dari nomor ini. Boleh dikosongkan.")}
             />
-            <Button type="submit" size="lg" className="w-full" loading={busy}>Buat QR</Button>
+            <Button type="submit" size="lg" className="w-full" loading={busy}>{tr("Buat QR")}</Button>
             {changing && (
-              <Button variant="ghost" className="w-full" onClick={() => setChanging(false)}>Batal</Button>
+              <Button variant="ghost" className="w-full" onClick={() => setChanging(false)}>{tr("Batal")}</Button>
             )}
           </form>
         )}
@@ -157,22 +158,22 @@ export default function LinkWhatsAppModal({ isOpen, onClose, status, onChanged }
               </div>
             </div>
             <ol className="list-decimal space-y-1.5 pl-5 text-sm text-foreground">
-              <li>Scan QR dengan kamera HP{link.pendingPhone ? ` bernomor ${formatPhone(link.pendingPhone)}` : ""}.</li>
-              <li>WhatsApp terbuka dengan pesan yang sudah terisi.</li>
-              <li>Tekan <span className="font-medium">Kirim</span>.</li>
+              <li>{tr("Scan QR dengan kamera HP")}{link.pendingPhone ? tr(" bernomor {pendingPhone}", { pendingPhone: formatPhone(link.pendingPhone) }) : ""}.</li>
+              <li>{tr("WhatsApp terbuka dengan pesan yang sudah terisi.")}</li>
+              <li>{tr("Tekan")} <span className="font-medium">{tr("Kirim")}</span>.</li>
             </ol>
             <p className="text-xs text-muted-foreground">
-              Atau kirim pesan <span className="font-medium text-foreground">{link.message}</span> ke{" "}
-              <span className="font-medium text-foreground">{formatPhone(link.botPhone)}</span>. Berlaku sampai {formatTime(link.expiresAt)}.
+              {tr("Atau kirim pesan")} <span className="font-medium text-foreground">{link.message}</span> {tr("ke")}{" "}
+              <span className="font-medium text-foreground">{formatPhone(link.botPhone)}</span>{tr(". Berlaku sampai")} {formatTime(link.expiresAt)}.
             </p>
             {/* For users already on their phone, where scanning their own screen isn't possible */}
             <a href={link.waLink} target="_blank" rel="noopener noreferrer" className={buttonClass("secondary", "lg", "w-full")}>
-              Buka WhatsApp
+              {tr("Buka WhatsApp")}
             </a>
             <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground" role="status">
-              <Loader2 className="size-3.5 animate-spin" aria-hidden /> Menunggu pesan dari WhatsApp
+              <Loader2 className="size-3.5 animate-spin" aria-hidden /> {tr("Menunggu pesan dari WhatsApp")}
             </p>
-            <Button variant="ghost" className="w-full" onClick={() => setLink(null)}>Ganti nomor atau buat kode baru</Button>
+            <Button variant="ghost" className="w-full" onClick={() => setLink(null)}>{tr("Ganti nomor atau buat kode baru")}</Button>
           </>
         )}
       </div>

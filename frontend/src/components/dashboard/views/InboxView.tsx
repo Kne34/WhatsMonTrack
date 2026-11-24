@@ -4,7 +4,8 @@ import React, { useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { categoryLabel, formatDayMonth, formatRupiah, formatTime, TX_TYPE_LABEL, type TxType } from "@/lib/format";
 import { Button, Card, EmptyState } from "../../common/ui";
-
+
+import { tr } from "@/lib/i18n";
 export interface ReviewTx {
   id: string;
   type: TxType;
@@ -44,8 +45,8 @@ export default function InboxView({ items, onConfirm, onEdit, onDelete, onDelete
         <EmptyState
           className="py-14"
           icon={<CheckCircle2 className="size-5" />}
-          title="Tidak ada yang perlu ditinjau"
-          description="Transaksi dari WhatsApp yang belum yakin dibaca bot akan muncul di sini untuk Anda periksa."
+          title={tr("Tidak ada yang perlu ditinjau")}
+          description={tr("Transaksi dari WhatsApp yang belum yakin dibaca bot akan muncul di sini untuk Anda periksa.")}
         />
       </Card>
     );
@@ -55,38 +56,38 @@ export default function InboxView({ items, onConfirm, onEdit, onDelete, onDelete
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-xl text-sm text-muted-foreground">
-          Bot belum yakin membaca {items.length} pesan berikut. Periksa, ubah jika perlu, lalu konfirmasi agar saldo diperbarui.
+          {tr("Bot belum yakin membaca")} {items.length} {tr("pesan berikut. Periksa, ubah jika perlu, lalu konfirmasi agar saldo diperbarui.")}
         </p>
-        <Button variant="danger" size="sm" onClick={onDeleteAll}>Hapus semua</Button>
+        <Button variant="danger" size="sm" onClick={onDeleteAll}>{tr("Hapus semua")}</Button>
       </div>
 
       <ul className="space-y-3">
         {items.map((tx) => {
           const account = tx.type === "TRANSFER"
             ? `${tx.fromAccount?.name ?? "?"} → ${tx.toAccount?.name ?? "?"}`
-            : tx.fromAccount?.name ?? tx.toAccount?.name ?? "Belum diketahui";
+            : tx.fromAccount?.name ?? tx.toAccount?.name ?? tr("Belum diketahui");
           return (
             <li key={tx.id}>
               <Card className="p-0">
                 <div className="border-b border-border/70 px-5 py-3">
                   <p className="text-xs text-muted-foreground">
-                    Pesan WhatsApp {formatDayMonth(tx.createdAt)}, {formatTime(tx.createdAt)}
+                    {tr("Pesan WhatsApp")} {formatDayMonth(tx.createdAt)}, {formatTime(tx.createdAt)}
                   </p>
                   <blockquote className="mt-1 text-sm text-foreground">&ldquo;{tx.rawText || "-"}&rdquo;</blockquote>
                 </div>
                 <div className="px-5 py-4">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <p className="text-xl font-semibold tracking-tight text-foreground">{formatRupiah(tx.amount)}</p>
-                    <p className="text-xs text-muted-foreground">Keyakinan bot {Math.round(tx.confidenceScore * 100)}%</p>
+                    <p className="text-xs text-muted-foreground">{tr("Keyakinan bot")} {Math.round(tx.confidenceScore * 100)}%</p>
                   </div>
                   <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    <Detail label="Jenis">{TX_TYPE_LABEL[tx.type]}</Detail>
-                    <Detail label="Kategori">{tx.subcategory ? `${categoryLabel(tx.category)}, ${tx.subcategory}` : categoryLabel(tx.category)}</Detail>
-                    <Detail label="Rekening">{account}</Detail>
+                    <Detail label={tr("Jenis")}>{TX_TYPE_LABEL[tx.type]}</Detail>
+                    <Detail label={tr("Kategori")}>{tx.subcategory ? `${categoryLabel(tx.category)}, ${tx.subcategory}` : categoryLabel(tx.category)}</Detail>
+                    <Detail label={tr("Rekening")}>{account}</Detail>
                   </dl>
                   <div className="mt-4 flex flex-wrap justify-end gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => onDelete(tx)} className="hover:text-destructive">Hapus</Button>
-                    <Button variant="secondary" size="sm" onClick={() => onEdit(tx)}>Ubah</Button>
+                    <Button variant="ghost" size="sm" onClick={() => onDelete(tx)} className="hover:text-destructive">{tr("Hapus")}</Button>
+                    <Button variant="secondary" size="sm" onClick={() => onEdit(tx)}>{tr("Ubah")}</Button>
                     <Button
                       size="sm"
                       loading={confirming === tx.id}
@@ -95,7 +96,7 @@ export default function InboxView({ items, onConfirm, onEdit, onDelete, onDelete
                         try { await onConfirm(tx); } finally { setConfirming(null); }
                       }}
                     >
-                      Konfirmasi
+                      {tr("Konfirmasi")}
                     </Button>
                   </div>
                 </div>

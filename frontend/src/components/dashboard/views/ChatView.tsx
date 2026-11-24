@@ -8,7 +8,8 @@ import { formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Alert, Card, IconButton, focusRing } from "../../common/ui";
 import { ChatSkeleton } from "../skeletons";
-
+
+import { tr } from "@/lib/i18n";
 const MAX_LENGTH = 500;
 
 const SUGGESTIONS = [
@@ -46,7 +47,7 @@ function Bubble({ message, pending }: { message: Pick<ChatMessage, "fromBot" | "
         <span className="sr-only">{mine ? "Anda: " : "Bot: "}</span>
         {mine ? message.text : <BotText text={message.text} />}
         <span className={cn("mt-1 block text-right text-[11px] tabular-nums", mine ? "text-background/60" : "text-muted-foreground")}>
-          {pending ? "Mengirim…" : formatTime(message.createdAt)}
+          {pending ? tr("Mengirim…") : formatTime(message.createdAt)}
         </span>
       </div>
     </li>
@@ -56,7 +57,7 @@ function Bubble({ message, pending }: { message: Pick<ChatMessage, "fromBot" | "
 function Typing() {
   return (
     <li className="flex justify-start">
-      <div className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-muted px-3.5 py-3" role="status" aria-label="Bot sedang membalas">
+      <div className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-muted px-3.5 py-3" role="status" aria-label={tr("Bot sedang membalas")}>
         {[0, 1, 2].map((i) => (
           <span key={i} className="size-1.5 rounded-full bg-muted-foreground/60 motion-safe:animate-bounce" style={{ animationDelay: `${i * 150}ms` }} aria-hidden />
         ))}
@@ -132,8 +133,8 @@ export default function ChatView({ onRecorded, onAskClear }: {
       setText(value); // nothing is lost: the text goes back into the input
       setError(
         isAxiosError(err) && err.response?.status === 429
-          ? "Terlalu banyak pesan dalam satu menit. Tunggu sebentar, lalu kirim lagi."
-          : "Pesan gagal terkirim. Periksa koneksi, lalu coba lagi.",
+          ? tr("Terlalu banyak pesan dalam satu menit. Tunggu sebentar, lalu kirim lagi.")
+          : tr("Pesan gagal terkirim. Periksa koneksi, lalu coba lagi."),
       );
     } finally {
       setPending(null);
@@ -163,28 +164,28 @@ export default function ChatView({ onRecorded, onAskClear }: {
     >
       <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-2.5 md:items-start md:px-5 md:py-3.5">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-foreground">Chat dengan bot</h2>
+          <h2 className="text-sm font-semibold text-foreground">{tr("Chat dengan bot")}</h2>
           <p className="mt-0.5 hidden text-xs text-muted-foreground sm:block">
-            Sama seperti chat ke bot WhatsApp: catat transaksi, atau ketik <span className="font-medium text-foreground">/rekap</span>.
+            {tr("Sama seperti chat ke bot WhatsApp: catat transaksi, atau ketik")} <span className="font-medium text-foreground">{tr("/rekap")}</span>.
           </p>
         </div>
         {messages && messages.length > 0 && (
-          <IconButton label="Hapus riwayat chat" onClick={() => onAskClear(clear)} disabled={!!pending}>
+          <IconButton label={tr("Hapus riwayat chat")} onClick={() => onAskClear(clear)} disabled={!!pending}>
             <Trash2 className="size-4" />
           </IconButton>
         )}
       </div>
 
       <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-5" aria-live="polite">
-        {loadError && <Alert>Gagal memuat riwayat chat. Muat ulang halaman untuk mencoba lagi.</Alert>}
+        {loadError && <Alert>{tr("Gagal memuat riwayat chat. Muat ulang halaman untuk mencoba lagi.")}</Alert>}
         {empty && (
           <div className="flex h-full flex-col items-center justify-center px-2 text-center">
             <div className="mb-3 flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
               <MessagesSquare className="size-5" aria-hidden />
             </div>
-            <p className="text-sm font-medium text-foreground">Catat keuangan cukup dengan chat</p>
+            <p className="text-sm font-medium text-foreground">{tr("Catat keuangan cukup dengan chat")}</p>
             <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-              Tulis seperti biasa, bot yang mengisi jumlah, kategori, dan rekeningnya. Coba salah satu:
+              {tr("Tulis seperti biasa, bot yang mengisi jumlah, kategori, dan rekeningnya. Coba salah satu:")}
             </p>
             <div className="mt-4 flex max-w-md flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((s) => (
@@ -215,7 +216,7 @@ export default function ChatView({ onRecorded, onAskClear }: {
       >
         {error && <Alert className="mb-2">{error}</Alert>}
         <div className="flex items-end gap-2">
-          <label htmlFor="chat-input" className="sr-only">Pesan untuk bot</label>
+          <label htmlFor="chat-input" className="sr-only">{tr("Pesan untuk bot")}</label>
           <textarea
             id="chat-input"
             ref={inputRef}
@@ -229,7 +230,7 @@ export default function ChatView({ onRecorded, onAskClear }: {
                 if (!tooLong) send(text);
               }
             }}
-            placeholder="Contoh: kopi 18rb pakai GoPay"
+            placeholder={tr("Contoh: kopi 18rb pakai GoPay")}
             aria-invalid={tooLong || undefined}
             aria-describedby={tooLong ? "chat-too-long" : undefined}
             className={cn(
@@ -240,7 +241,7 @@ export default function ChatView({ onRecorded, onAskClear }: {
             )}
           />
           <IconButton
-            label="Kirim"
+            label={tr("Kirim")}
             type="submit"
             disabled={!text.trim() || !!pending || tooLong}
             // Keep the focus (and the phone keyboard) in the input when tapping send
@@ -252,7 +253,7 @@ export default function ChatView({ onRecorded, onAskClear }: {
         </div>
         {tooLong && (
           <p id="chat-too-long" className="mt-1.5 text-xs text-destructive">
-            Maksimal {MAX_LENGTH} karakter ({text.length}/{MAX_LENGTH}).
+            {tr("Maksimal")} {MAX_LENGTH} {tr("karakter (")}{text.length}/{MAX_LENGTH}).
           </p>
         )}
       </form>

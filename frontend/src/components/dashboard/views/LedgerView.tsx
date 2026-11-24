@@ -7,7 +7,8 @@ import { categoryLabel, formatDayMonth, formatMonth, formatRupiah, formatTime, T
 import { Button, Card, EmptyState, IconButton, Select, focusRing, inputBase } from "../../common/ui";
 import { activeFilterCount, matchesFilters, NO_FILTERS, type TxFilters } from "@/lib/txFilters";
 import { LedgerRowsSkeleton } from "../skeletons";
-
+
+import { locale, tr } from "@/lib/i18n";
 export interface LedgerTx {
   id: string;
   type: TxType;
@@ -80,24 +81,24 @@ function FilterBar({ filters, onChange, categories, accounts }: {
       <div className="flex gap-2">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari"
-            aria-label="Cari transaksi" maxLength={100} className={cn(inputBase, "h-10 border-border pl-9")} />
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={tr("Cari")}
+            aria-label={tr("Cari transaksi")} maxLength={100} className={cn(inputBase, "h-10 border-border pl-9")} />
         </div>
         <Button variant="secondary" className="h-10 shrink-0 md:hidden" aria-expanded={open} aria-controls="ledger-filters" onClick={() => setOpen((o) => !o)}>
-          <SlidersHorizontal className="size-4" aria-hidden /> Filter{selectCount > 0 && ` (${selectCount})`}
+          <SlidersHorizontal className="size-4" aria-hidden /> {tr("Filter")}{selectCount > 0 && ` (${selectCount})`}
         </Button>
       </div>
       <div id="ledger-filters" className={cn("grid-cols-1 gap-2 md:col-span-3 md:grid md:grid-cols-3", open ? "grid" : "hidden")}>
-      <Select aria-label="Jenis" value={filters.type} onValueChange={(v) => set({ type: v as TxFilters["type"] })} size="lg" className="h-10">
-        <option value="">Semua jenis</option>
+      <Select aria-label={tr("Jenis")} value={filters.type} onValueChange={(v) => set({ type: v as TxFilters["type"] })} size="lg" className="h-10">
+        <option value="">{tr("Semua jenis")}</option>
         {(["EXPENSE", "INCOME", "TRANSFER"] as TxType[]).map((t) => <option key={t} value={t}>{TX_TYPE_LABEL[t]}</option>)}
       </Select>
-      <Select aria-label="Kategori" value={filters.category} onValueChange={(v) => set({ category: v })} size="lg" className="h-10">
-        <option value="">Semua kategori</option>
+      <Select aria-label={tr("Kategori")} value={filters.category} onValueChange={(v) => set({ category: v })} size="lg" className="h-10">
+        <option value="">{tr("Semua kategori")}</option>
         {categories.map((c) => <option key={c} value={c}>{categoryLabel(c)}</option>)}
       </Select>
-      <Select aria-label="Rekening" value={filters.accountId} onValueChange={(v) => set({ accountId: v })} size="lg" className="h-10">
-        <option value="">Semua rekening</option>
+      <Select aria-label={tr("Rekening")} value={filters.accountId} onValueChange={(v) => set({ accountId: v })} size="lg" className="h-10">
+        <option value="">{tr("Semua rekening")}</option>
         {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
       </Select>
       </div>
@@ -105,7 +106,8 @@ function FilterBar({ filters, onChange, categories, accounts }: {
   );
 }
 
-const WEEKDAYS = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+/** Mon..Sun, short, in the chosen language (1 January 2024 was a Monday) */
+const weekdays = () => Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 1 + i).toLocaleDateString(locale(), { weekday: "short" }));
 
 const accountLabel = (tx: LedgerTx) =>
   tx.type === "TRANSFER" ? `${tx.fromAccount?.name ?? "?"} → ${tx.toAccount?.name ?? "?"}` : tx.fromAccount?.name ?? tx.toAccount?.name ?? "-";
@@ -122,7 +124,7 @@ function Amount({ tx }: { tx: LedgerTx }) {
 function Title({ tx }: { tx: LedgerTx }) {
   return (
     <>
-      {tx.type === "TRANSFER" ? "Transfer" : tx.subcategory || categoryLabel(tx.category)}
+      {tx.type === "TRANSFER" ? tr("Transfer") : tx.subcategory || categoryLabel(tx.category)}
       <DebtBadge tx={tx} />
     </>
   );
@@ -133,21 +135,21 @@ function DebtBadge({ tx }: { tx: LedgerTx }) {
   if (!tx.debtRecord) return null;
   const movement = tx.inReports === false;
   return (
-    <span title={movement ? "Saldo berubah, belum dihitung sebagai pemasukan/pengeluaran" : "Masuk laporan, saldo tidak berubah lagi"}
+    <span title={movement ? tr("Saldo berubah, belum dihitung sebagai pemasukan/pengeluaran") : tr("Masuk laporan, saldo tidak berubah lagi")}
       className="ml-2 inline-block rounded-md bg-muted px-1.5 py-0.5 align-middle text-[11px] font-medium text-muted-foreground">
-      {movement ? (tx.debtRecord.type === "RECEIVABLE" ? "Talangan" : "Utang") : "Utang-piutang selesai"}
+      {movement ? (tx.debtRecord.type === "RECEIVABLE" ? tr("Talangan") : tr("Utang")) : tr("Utang-piutang selesai")}
     </span>
   );
 }
 
 function RowActions({ tx, onEdit, onDelete, onOpenDebts }: { tx: LedgerTx; onEdit: (tx: LedgerTx) => void; onDelete: (tx: LedgerTx) => void; onOpenDebts: () => void }) {
   if (tx.debtRecord) {
-    return <IconButton label="Kelola di halaman Utang-piutang" onClick={onOpenDebts}><Handshake className="size-4" /></IconButton>;
+    return <IconButton label={tr("Kelola di halaman Utang-piutang")} onClick={onOpenDebts}><Handshake className="size-4" /></IconButton>;
   }
   return (
     <>
-      <IconButton label="Ubah transaksi" onClick={() => onEdit(tx)}><Pencil className="size-4" /></IconButton>
-      <IconButton label="Hapus transaksi" onClick={() => onDelete(tx)} className="hover:text-destructive"><Trash2 className="size-4" /></IconButton>
+      <IconButton label={tr("Ubah transaksi")} onClick={() => onEdit(tx)}><Pencil className="size-4" /></IconButton>
+      <IconButton label={tr("Hapus transaksi")} onClick={() => onDelete(tx)} className="hover:text-destructive"><Trash2 className="size-4" /></IconButton>
     </>
   );
 }
@@ -190,7 +192,7 @@ export default function LedgerView({
   const selIn = selection.filter((t) => t.type === "INCOME").reduce((s, t) => s + t.amount, 0);
 
   const period = selectedDay
-    ? new Date(year, month - 1, selectedDay).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
+    ? new Date(year, month - 1, selectedDay).toLocaleDateString(locale(), { day: "numeric", month: "long", year: "numeric" })
     : formatMonth(month, year);
 
   return (
@@ -198,15 +200,15 @@ export default function LedgerView({
       {/* Day filter */}
       <Card className="p-4 xl:sticky xl:top-6">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-sm font-semibold text-foreground">Pilih tanggal</p>
+          <p className="text-sm font-semibold text-foreground">{tr("Pilih tanggal")}</p>
           {selectedDay && (
             <Button variant="ghost" size="sm" onClick={() => onSelectDay(null)}>
-              <X className="size-3.5" aria-hidden /> Semua tanggal
+              <X className="size-3.5" aria-hidden /> {tr("Semua tanggal")}
             </Button>
           )}
         </div>
         <div className="grid grid-cols-7 gap-1 text-center">
-          {WEEKDAYS.map((d) => (
+          {weekdays().map((d) => (
             <div key={d} className="pb-1 text-xs text-muted-foreground" aria-hidden>{d}</div>
           ))}
           {Array.from({ length: firstWeekday }).map((_, i) => <div key={`b${i}`} />)}
@@ -220,7 +222,7 @@ export default function LedgerView({
                 type="button"
                 onClick={() => onSelectDay(selected ? null : day)}
                 aria-pressed={selected}
-                aria-label={`${day} ${formatMonth(month, year)}${info ? `, ${info.count} transaksi` : ", tidak ada transaksi"}`}
+                aria-label={`${day} ${formatMonth(month, year)}${info ? tr(", {count} transaksi", { count: info.count }) : tr(", tidak ada transaksi")}`}
                 className={cn(
                   "flex h-11 flex-col items-center justify-center rounded-lg text-sm transition-colors",
                   focusRing,
@@ -238,20 +240,20 @@ export default function LedgerView({
           })}
         </div>
         <p className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-foreground" /> Pengeluaran</span>
-          <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-income" /> Pemasukan</span>
+          <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-foreground" /> {tr("Pengeluaran")}</span>
+          <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-income" /> {tr("Pemasukan")}</span>
         </p>
       </Card>
 
       <Card className="p-0">
         <div className="flex items-center justify-between gap-3 border-b border-border/70 px-5 py-4">
           <div>
-            <h2 className="text-sm font-semibold text-foreground">Daftar transaksi</h2>
+            <h2 className="text-sm font-semibold text-foreground">{tr("Daftar transaksi")}</h2>
             <p className="mt-0.5 text-xs capitalize text-muted-foreground">{period}</p>
           </div>
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            Per halaman
-            <Select aria-label="Transaksi per halaman" value={String(limit)} onValueChange={(v) => onLimitChange(Number(v))} size="sm" className="w-20"
+            {tr("Per halaman")}
+            <Select aria-label={tr("Transaksi per halaman")} value={String(limit)} onValueChange={(v) => onLimitChange(Number(v))} size="sm" className="w-20"
               options={[10, 15, 50, 100].map((n) => ({ value: String(n), label: String(n) }))} />
           </label>
         </div>
@@ -260,12 +262,12 @@ export default function LedgerView({
         {filterCount > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border/70 px-5 py-2.5 text-xs text-muted-foreground">
             <p className="tabular-nums">
-              {shownRows.length} transaksi
-              {selOut > 0 && <>, Pengeluaran <span className="text-foreground">{formatRupiah(selOut)}</span></>}
-              {selIn > 0 && <>, Pemasukan <span className="text-income">{formatRupiah(selIn)}</span></>}
+              {shownRows.length} {tr("transaksi")}
+              {selOut > 0 && <>{tr(", Pengeluaran")} <span className="text-foreground">{formatRupiah(selOut)}</span></>}
+              {selIn > 0 && <>{tr(", Pemasukan")} <span className="text-income">{formatRupiah(selIn)}</span></>}
             </p>
             <Button variant="ghost" size="sm" onClick={() => onFiltersChange(NO_FILTERS)}>
-              <X className="size-3.5" aria-hidden /> Hapus filter
+              <X className="size-3.5" aria-hidden /> {tr("Hapus filter")}
             </Button>
           </div>
         )}
@@ -276,17 +278,17 @@ export default function LedgerView({
           <EmptyState
             className="py-12"
             icon={<SearchX className="size-5" />}
-            title="Tidak ada transaksi yang cocok"
-            description={`Coba ubah atau hapus filter untuk ${period}.`}
-            action={<Button variant="secondary" size="sm" onClick={() => onFiltersChange(NO_FILTERS)}>Hapus filter</Button>}
+            title={tr("Tidak ada transaksi yang cocok")}
+            description={tr("Coba ubah atau hapus filter untuk {period}.", { period: period })}
+            action={<Button variant="secondary" size="sm" onClick={() => onFiltersChange(NO_FILTERS)}>{tr("Hapus filter")}</Button>}
           />
         ) : pageTxs.length === 0 ? (
           <EmptyState
             className="py-12"
             icon={<ReceiptText className="size-5" />}
-            title={`Tidak ada transaksi pada ${period}`}
-            description="Transaksi dari WhatsApp yang belum yakin dibaca ada di menu Perlu ditinjau."
-            action={<Button variant="secondary" size="sm" onClick={onAdd}>Tambah transaksi</Button>}
+            title={tr("Tidak ada transaksi pada {period}", { period: period })}
+            description={tr("Transaksi dari WhatsApp yang belum yakin dibaca ada di menu Perlu ditinjau.")}
+            action={<Button variant="secondary" size="sm" onClick={onAdd}>{tr("Tambah transaksi")}</Button>}
           />
         ) : (
           <>
@@ -295,11 +297,11 @@ export default function LedgerView({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border/70 text-left text-xs text-muted-foreground">
-                  <th scope="col" className="px-4 py-2.5 font-medium">Tanggal</th>
-                  <th scope="col" className="px-4 py-2.5 font-medium">Keterangan</th>
-                  <th scope="col" className="px-4 py-2.5 font-medium">Rekening</th>
-                  <th scope="col" className="px-4 py-2.5 text-right font-medium">Jumlah</th>
-                  <th scope="col" className="w-24 px-4 py-2.5"><span className="sr-only">Aksi</span></th>
+                  <th scope="col" className="px-4 py-2.5 font-medium">{tr("Tanggal")}</th>
+                  <th scope="col" className="px-4 py-2.5 font-medium">{tr("Keterangan")}</th>
+                  <th scope="col" className="px-4 py-2.5 font-medium">{tr("Rekening")}</th>
+                  <th scope="col" className="px-4 py-2.5 text-right font-medium">{tr("Jumlah")}</th>
+                  <th scope="col" className="w-24 px-4 py-2.5"><span className="sr-only">{tr("Aksi")}</span></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/70">
@@ -312,7 +314,7 @@ export default function LedgerView({
                     <td className="px-4 py-3">
                       <p className="text-foreground"><Title tx={tx} /></p>
                       <p className="text-xs text-muted-foreground">
-                        {tx.type === "TRANSFER" ? "Transfer antar rekening" : tx.subcategory ? categoryLabel(tx.category) : TX_TYPE_LABEL[tx.type]}
+                        {tx.type === "TRANSFER" ? tr("Transfer antar rekening") : tx.subcategory ? categoryLabel(tx.category) : TX_TYPE_LABEL[tx.type]}
                       </p>
                     </td>
                     <td className="max-w-40 break-words px-4 py-3 text-muted-foreground">{accountLabel(tx)}</td>
@@ -348,12 +350,12 @@ export default function LedgerView({
 
             {/* Small phones: icon-only buttons so the row fits 320px */}
             <div className="flex items-center justify-between gap-2 border-t border-border/70 px-3 py-3 sm:px-5">
-              <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)} aria-label="Halaman sebelumnya">
-                <ChevronLeft className="size-4" aria-hidden /> <span className="hidden sm:inline">Sebelumnya</span>
+              <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => onPageChange(page - 1)} aria-label={tr("Halaman sebelumnya")}>
+                <ChevronLeft className="size-4" aria-hidden /> <span className="hidden sm:inline">{tr("Sebelumnya")}</span>
               </Button>
-              <span className="text-xs text-muted-foreground tabular-nums">Halaman {page} dari {Math.max(1, totalPages)}</span>
-              <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} aria-label="Halaman berikutnya">
-                <span className="hidden sm:inline">Berikutnya</span> <ChevronRight className="size-4" aria-hidden />
+              <span className="text-xs text-muted-foreground tabular-nums">{tr("Halaman")} {page} {tr("dari")} {Math.max(1, totalPages)}</span>
+              <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} aria-label={tr("Halaman berikutnya")}>
+                <span className="hidden sm:inline">{tr("Berikutnya")}</span> <ChevronRight className="size-4" aria-hidden />
               </Button>
             </div>
           </>

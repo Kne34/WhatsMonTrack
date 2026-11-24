@@ -12,7 +12,8 @@ import {
 import { Button, Card, EmptyState, IconButton, SegmentedControl, Select, Skeleton, focusRing, inputBase } from "../../common/ui";
 import { MASK, MASK_PLAIN, usePrivacy } from "../shared/privacy";
 import { LiveBadge } from "../liveBadge";
-
+
+import { tr } from "@/lib/i18n";
 interface InvestmentsViewProps {
   /** null while loading */
   holdings: Holding[] | null;
@@ -107,7 +108,7 @@ function Allocation({ rows, platforms, hidden, eye }: { rows: Row[]; platforms: 
       if (other.length > 1) {
         const rest = list.filter((s) => s.color !== OTHER_COLOR);
         const value = other.reduce((a, s) => a + s.value, 0);
-        return [...rest, { key: "__other", label: "Lainnya", value, pct: total ? (value / total) * 100 : 0, color: OTHER_COLOR }];
+        return [...rest, { key: "__other", label: tr("Lainnya"), value, pct: total ? (value / total) * 100 : 0, color: OTHER_COLOR }];
       }
     }
     // Fixed order for asset classes; platforms by size
@@ -118,17 +119,17 @@ function Allocation({ rows, platforms, hidden, eye }: { rows: Row[]; platforms: 
     <Card>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-foreground">Alokasi</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">Berdasarkan nilai pasar dalam rupiah</p>
+          <h2 className="text-sm font-semibold text-foreground">{tr("Alokasi")}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">{tr("Berdasarkan nilai pasar dalam rupiah")}</p>
         </div>
         <div className="flex items-center gap-1">
-          <SegmentedControl label="Kelompokkan" value={by} onChange={setBy}
-            options={[{ value: "type", label: "Jenis aset" }, { value: "platform", label: "Platform" }]} />
+          <SegmentedControl label={tr("Kelompokkan")} value={by} onChange={setBy}
+            options={[{ value: "type", label: tr("Jenis aset") }, { value: "platform", label: tr("Platform") }]} />
           {eye}
         </div>
       </div>
       {slices.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">Belum ada nilai untuk ditampilkan.</p>
+        <p className="py-8 text-center text-sm text-muted-foreground">{tr("Belum ada nilai untuk ditampilkan.")}</p>
       ) : (
         <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center">
           <div className="h-48 w-48 shrink-0" role="img" aria-label={`Alokasi: ${slices.map((s) => `${s.label} ${Math.round(s.pct)}%`).join(", ")}`}>
@@ -197,13 +198,13 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
   const money = (n: number, currency: string) => (hh ? (currency === "IDR" ? MASK : MASK_PLAIN) : formatMoney(n, currency));
   const signed = (n: number, currency: string) => (hh ? (currency === "IDR" ? MASK : MASK_PLAIN) : formatSigned(n, currency));
   // No market price yet: the P&L would be a meaningless 0
-  const pnlText = (r: Row) => (r.v.hasPrice ? signed(r.v.pnl, r.h.currency) : "Belum ada harga");
+  const pnlText = (r: Row) => (r.v.hasPrice ? signed(r.v.pnl, r.h.currency) : tr("Belum ada harga"));
   const qty = (r: Row) => (hh ? MASK_PLAIN : `${formatQuantity(r.h.quantity)} ${quantityUnit(r.h.assetType)}`);
 
   if (holdings == null) {
     return (
       <div className="space-y-6" aria-busy="true">
-        <span role="status" className="sr-only">Memuat investasi</span>
+        <span role="status" className="sr-only">{tr("Memuat investasi")}</span>
         <Card><Skeleton className="h-4 w-28 rounded-md" /><div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}</div></Card>
         <Card><Skeleton className="h-48" /></Card>
         <Card><Skeleton className="h-64" /></Card>
@@ -217,9 +218,9 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
         <EmptyState
           className="py-14"
           icon={<LineChart className="size-5" />}
-          title="Belum ada aset investasi"
-          description="Catat saham Indonesia, saham US, atau crypto dari Stockbit, Pluang, dan lainnya. Harganya diperbarui otomatis."
-          action={<Button size="sm" onClick={onAdd}><Plus className="size-4" aria-hidden /> Tambah aset</Button>}
+          title={tr("Belum ada aset investasi")}
+          description={tr("Catat saham Indonesia, saham US, atau crypto dari Stockbit, Pluang, dan lainnya. Harganya diperbarui otomatis.")}
+          action={<Button size="sm" onClick={onAdd}><Plus className="size-4" aria-hidden /> {tr("Tambah aset")}</Button>}
         />
       </Card>
     );
@@ -227,14 +228,14 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
 
   const priceCell = (r: Row) => (
     <span className="inline-flex items-center gap-1">
-      {r.v.hasPrice ? <Flash value={r.v.price}>{formatMoney(r.v.price, r.h.currency)}</Flash> : <span className="text-muted-foreground">Belum ada</span>}
-      {r.v.stale && <CircleAlert className="size-3.5 text-warning" aria-label="Harga tersimpan, bukan live" />}
+      {r.v.hasPrice ? <Flash value={r.v.price}>{formatMoney(r.v.price, r.h.currency)}</Flash> : <span className="text-muted-foreground">{tr("Belum ada")}</span>}
+      {r.v.stale && <CircleAlert className="size-3.5 text-warning" aria-label={tr("Harga tersimpan, bukan live")} />}
     </span>
   );
   const changeText = (r: Row) => {
     const c = prices?.prices[r.h.priceKey]?.changePct;
     if (c == null || !r.v.hasPrice) return null;
-    return <span className={pnlTone(c)} title={r.h.assetType === "CRYPTO" ? "Perubahan 24 jam" : "Perubahan hari ini"}>{formatPercent(c)}</span>;
+    return <span className={pnlTone(c)} title={r.h.assetType === "CRYPTO" ? tr("Perubahan 24 jam") : tr("Perubahan hari ini")}>{formatPercent(c)}</span>;
   };
   const unreachable = prices?.unreachable ?? [];
 
@@ -246,9 +247,9 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
       <Card>
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-foreground">Portofolio</h2>
+            <h2 className="text-sm font-semibold text-foreground">{tr("Portofolio")}</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {prices ? <LiveBadge stale={stale} /> : "Mengambil harga terbaru…"}
+              {prices ? <LiveBadge stale={stale} /> : tr("Mengambil harga terbaru…")}
             </p>
           </div>
           {privacy.eye("portfolio", "size-8")}
@@ -256,13 +257,13 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
 
         {/* One column on the smallest phones, so "Rp 143.041.654" is never split over two lines */}
         <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
-          <Tile label="Nilai portofolio">{ph ? MASK : formatRupiah(value)}</Tile>
-          <Tile label="Modal">{ph ? MASK : formatRupiah(cost)}</Tile>
-          <Tile label="Untung/rugi" sub={<span className={pnlTone(pnl)}>{formatPercent(cost > 0 ? (pnl / cost) * 100 : null)}</span>}>
+          <Tile label={tr("Nilai portofolio")}>{ph ? MASK : formatRupiah(value)}</Tile>
+          <Tile label={tr("Modal")}>{ph ? MASK : formatRupiah(cost)}</Tile>
+          <Tile label={tr("Untung/rugi")} sub={<span className={pnlTone(pnl)}>{formatPercent(cost > 0 ? (pnl / cost) * 100 : null)}</span>}>
             <span className={ph ? undefined : pnlTone(pnl)}>{ph ? MASK : formatSigned(pnl, "IDR")}</span>
           </Tile>
-          <Tile label="Kurs USD/IDR"
-            sub={fx ? (fx.stale ? `Tersimpan ${formatTime(fx.updatedAt)}` : "Live dari Yahoo Finance") : needsFx ? "Belum tersedia" : "Yahoo Finance"}>
+          <Tile label={tr("Kurs USD/IDR")}
+            sub={fx ? (fx.stale ? tr("Tersimpan {updatedAt}", { updatedAt: formatTime(fx.updatedAt) }) : tr("Live dari Yahoo Finance")) : needsFx ? tr("Belum tersedia") : tr("Yahoo Finance")}>
             {fx ? formatRupiah(fx.price) : "–"}
           </Tile>
         </div>
@@ -272,10 +273,10 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
             <CircleAlert className="mt-px size-3.5 shrink-0 text-warning" aria-hidden />
             <span>
               {unreachable.length > 0
-                ? `Server tidak bisa menghubungi ${unreachable.join(" dan ")}${stale ? ", sebagian harga memakai data terakhir yang tersimpan" : ""}. `
-                : stale && "Sumber harga sedang tidak bisa dihubungi, sebagian harga memakai data terakhir yang tersimpan. "}
-              {missingPrices > 0 && `${missingPrices} aset belum punya harga pasar, dihitung dengan harga beli. `}
-              {uncounted > 0 && `${uncounted} aset USD belum masuk total karena kurs belum tersedia.`}
+                ? tr("Server tidak bisa menghubungi {unreachable}{v}. ", { unreachable: unreachable.join(tr(" dan ")), v: stale ? tr(", sebagian harga memakai data terakhir yang tersimpan") : "" })
+                : stale && tr("Sumber harga sedang tidak bisa dihubungi, sebagian harga memakai data terakhir yang tersimpan. ")}
+              {missingPrices > 0 && tr("{missingPrices} aset belum punya harga pasar, dihitung dengan harga beli. ", { missingPrices: missingPrices })}
+              {uncounted > 0 && tr("{uncounted} aset USD belum masuk total karena kurs belum tersedia.", { uncounted: uncounted })}
             </span>
           </p>
         )}
@@ -287,33 +288,33 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
       {/* ---------- Holdings ---------- */}
       <Card className="p-0">
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5">
-          <h2 className="text-sm font-semibold text-foreground">Aset <span className="font-normal text-muted-foreground">({open.length})</span></h2>
+          <h2 className="text-sm font-semibold text-foreground">{tr("Aset")} <span className="font-normal text-muted-foreground">({open.length})</span></h2>
           <div className="flex items-center gap-1">
             {privacy.eye("holdings", "size-8")}
-            <Button size="sm" onClick={onAdd}><Plus className="size-4" aria-hidden /> Tambah aset</Button>
+            <Button size="sm" onClick={onAdd}><Plus className="size-4" aria-hidden /> {tr("Tambah aset")}</Button>
           </div>
         </div>
 
         <div className="flex flex-col gap-2 px-5 pt-4 pb-4 lg:flex-row lg:items-center">
-          <SegmentedControl<TypeFilter> label="Jenis aset" value={typeFilter} onChange={setTypeFilter} className="flex w-full lg:inline-flex lg:w-auto"
-            options={[{ value: "ALL", label: "Semua" }, ...ASSET_TYPES.map((t) => ({ value: t, label: ASSET_TYPE_BUTTON[t] }))]} />
+          <SegmentedControl<TypeFilter> label={tr("Jenis aset")} value={typeFilter} onChange={setTypeFilter} className="flex w-full lg:inline-flex lg:w-auto"
+            options={[{ value: "ALL", label: tr("Semua") }, ...ASSET_TYPES.map((t) => ({ value: t, label: ASSET_TYPE_BUTTON[t] }))]} />
           {/* Phones: search and platform stacked, each full width */}
           <div className="grid grid-cols-1 gap-2 sm:flex lg:ml-auto">
-            <Select aria-label="Platform" value={platformFilter} onValueChange={setPlatformFilter} className="sm:w-44 sm:shrink-0">
-              <option value="">Semua platform</option>
+            <Select aria-label={tr("Platform")} value={platformFilter} onValueChange={setPlatformFilter} className="sm:w-44 sm:shrink-0">
+              <option value="">{tr("Semua platform")}</option>
               {platforms.map((p) => <option key={p} value={p}>{p}</option>)}
             </Select>
             <div className="relative min-w-0 flex-1 lg:w-48 lg:flex-none">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-              <input type="search" aria-label="Cari ticker" placeholder="Cari ticker" value={query} onChange={(e) => setQuery(e.target.value)}
+              <input type="search" aria-label={tr("Cari ticker")} placeholder={tr("Cari ticker")} value={query} onChange={(e) => setQuery(e.target.value)}
                 className={cn(inputBase, "h-9 border-border pl-9")} />
             </div>
           </div>
         </div>
 
         {shown.length === 0 ? (
-          <EmptyState className="border-t border-border/70 pb-10" icon={<SearchX className="size-5" />} title="Tidak ada aset yang cocok"
-            action={filtering ? <Button variant="secondary" size="sm" onClick={() => { setTypeFilter("ALL"); setPlatformFilter(""); setQuery(""); }}>Hapus filter</Button> : undefined} />
+          <EmptyState className="border-t border-border/70 pb-10" icon={<SearchX className="size-5" />} title={tr("Tidak ada aset yang cocok")}
+            action={filtering ? <Button variant="secondary" size="sm" onClick={() => { setTypeFilter("ALL"); setPlatformFilter(""); setQuery(""); }}>{tr("Hapus filter")}</Button> : undefined} />
         ) : (
           <>
             {/* Wide screens: a table */}
@@ -321,13 +322,13 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground">
-                    <th scope="col" className="py-2.5 pl-5 pr-3 font-medium">Aset</th>
-                    <th scope="col" className="px-3 py-2.5 font-medium">Platform</th>
-                    <th scope="col" className="px-3 py-2.5 text-right font-medium">Jumlah</th>
-                    <th scope="col" className="px-3 py-2.5 text-right font-medium">Harga sekarang<span className="block font-normal">rata-rata beli</span></th>
-                    <th scope="col" className="px-3 py-2.5 text-right font-medium">Nilai</th>
-                    <th scope="col" className="px-3 py-2.5 text-right font-medium">Untung/rugi</th>
-                    <th scope="col" className="py-2.5 pr-3 pl-1"><span className="sr-only">Aksi</span></th>
+                    <th scope="col" className="py-2.5 pl-5 pr-3 font-medium">{tr("Aset")}</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">{tr("Platform")}</th>
+                    <th scope="col" className="px-3 py-2.5 text-right font-medium">{tr("Jumlah")}</th>
+                    <th scope="col" className="px-3 py-2.5 text-right font-medium">{tr("Harga sekarang")}<span className="block font-normal">{tr("rata-rata beli")}</span></th>
+                    <th scope="col" className="px-3 py-2.5 text-right font-medium">{tr("Nilai")}</th>
+                    <th scope="col" className="px-3 py-2.5 text-right font-medium">{tr("Untung/rugi")}</th>
+                    <th scope="col" className="py-2.5 pr-3 pl-1"><span className="sr-only">{tr("Aksi")}</span></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/70 border-t border-border/70">
@@ -337,9 +338,9 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
                       <tr key={r.h.id} className={cn("align-top", closed && "text-muted-foreground")}>
                         <td className="py-3 pl-5 pr-3">
                           <button type="button" onClick={() => onOpen(r.h)} className={cn("rounded font-semibold text-foreground hover:underline", focusRing)}
-                            aria-label={`${r.h.symbol}: buka chart`}>{r.h.symbol}</button>
+                            aria-label={tr("{symbol}: buka chart", { symbol: r.h.symbol })}>{r.h.symbol}</button>
                           <p className="max-w-36 truncate text-xs text-muted-foreground" title={r.h.name ?? undefined}>
-                            {closed ? "Terjual habis" : r.h.name || ASSET_TYPE_LABEL[r.h.assetType]}
+                            {closed ? tr("Terjual habis") : r.h.name || ASSET_TYPE_LABEL[r.h.assetType]}
                           </p>
                         </td>
                         <td className="px-3 py-3"><PlatformBadge name={r.h.platform} /></td>
@@ -357,8 +358,8 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
                         </td>
                         <td className="py-2 pr-3 pl-1">
                           <div className="flex justify-end">
-                            <IconButton label={`Chart ${r.h.symbol}`} onClick={() => onOpen(r.h)}><CandlestickChart className="size-4" /></IconButton>
-                            <IconButton label={`Ubah ${r.h.symbol}`} onClick={() => onEdit(r.h)}><Pencil className="size-4" /></IconButton>
+                            <IconButton label={tr("Chart {symbol}", { symbol: r.h.symbol })} onClick={() => onOpen(r.h)}><CandlestickChart className="size-4" /></IconButton>
+                            <IconButton label={tr("Ubah {symbol}", { symbol: r.h.symbol })} onClick={() => onEdit(r.h)}><Pencil className="size-4" /></IconButton>
                           </div>
                         </td>
                       </tr>
@@ -375,14 +376,14 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
                 return (
                   <li key={r.h.id} className="flex items-start gap-2 py-3 pr-2 pl-4 sm:pl-5">
                     <button type="button" onClick={() => onOpen(r.h)}
-                      className={cn("min-w-0 flex-1 rounded-lg text-left", focusRing)} aria-label={`${r.h.symbol}: buka chart`}>
+                      className={cn("min-w-0 flex-1 rounded-lg text-left", focusRing)} aria-label={tr("{symbol}: buka chart", { symbol: r.h.symbol })}>
                       <span className="flex items-baseline justify-between gap-3">
                         <span className="flex min-w-0 items-center gap-2">
                           <span className={cn("font-semibold", closed ? "text-muted-foreground" : "text-foreground")}>{r.h.symbol}</span>
                           <PlatformBadge name={r.h.platform} />
                         </span>
                         <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-                          {closed ? <span className="font-normal text-muted-foreground">Terjual habis</span> : r.v.valueIdr == null ? money(r.v.value, r.h.currency) : money(r.v.valueIdr, "IDR")}
+                          {closed ? <span className="font-normal text-muted-foreground">{tr("Terjual habis")}</span> : r.v.valueIdr == null ? money(r.v.value, r.h.currency) : money(r.v.valueIdr, "IDR")}
                         </span>
                       </span>
                       <span className="mt-0.5 flex items-baseline justify-between gap-3 text-xs">
@@ -394,10 +395,10 @@ export default function InvestmentsView({ holdings, prices, onOpen, onAdd, onEdi
                         {!closed && <span className={cn("shrink-0", pnlTone(r.v.pnl))}>{r.v.hasPrice ? formatPercent(r.v.pnlPct) : ""}</span>}
                       </span>
                       <span className="mt-1 block text-xs text-muted-foreground tabular-nums">
-                        rata-rata {formatMoney(r.h.avgPrice, r.h.currency)}, sekarang {priceCell(r)} {changeText(r)}
+                        {tr("rata-rata")} {formatMoney(r.h.avgPrice, r.h.currency)}{tr(", sekarang")} {priceCell(r)} {changeText(r)}
                       </span>
                     </button>
-                    <IconButton label={`Ubah ${r.h.symbol}`} onClick={() => onEdit(r.h)} className="shrink-0"><Pencil className="size-4" /></IconButton>
+                    <IconButton label={tr("Ubah {symbol}", { symbol: r.h.symbol })} onClick={() => onEdit(r.h)} className="shrink-0"><Pencil className="size-4" /></IconButton>
                   </li>
                 );
               })}

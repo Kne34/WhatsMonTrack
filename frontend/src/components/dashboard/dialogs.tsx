@@ -5,7 +5,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Alert, Button, PasswordField, SegmentedControl, SelectField, TextField } from "../common/ui";
 import { verifyPassword } from "@/lib/api";
 import { CATEGORIES, categoryLabel, TX_TYPE_LABEL, type TxType } from "@/lib/format";
-
+
+import { tr } from "@/lib/i18n";
 // ---------- Shared shell ----------
 
 export function AppDialog({ open, onClose, title, description, children }: {
@@ -42,7 +43,7 @@ function apiError(err: unknown, fallback: string) {
 export function useSubmit() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const submit = async (action: () => Promise<void>, fallback = "Gagal menyimpan. Coba lagi.") => {
+  const submit = async (action: () => Promise<void>, fallback = tr("Gagal menyimpan. Coba lagi.")) => {
     setBusy(true);
     setError("");
     try {
@@ -68,7 +69,7 @@ export function UnlockDialog({ what, onClose, onUnlocked }: { what: string; onCl
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password) return setError("Masukkan password.");
+    if (!password) return setError(tr("Masukkan password."));
     setBusy(true);
     setError("");
     try {
@@ -77,26 +78,26 @@ export function UnlockDialog({ what, onClose, onUnlocked }: { what: string; onCl
         onUnlocked();
         onClose();
       } else {
-        setError(res.message || "Password salah.");
+        setError(res.message || tr("Password salah."));
       }
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
-      setError(status === 429 ? "Terlalu banyak percobaan. Tunggu 1 menit, lalu coba lagi." : apiError(err, "Gagal memeriksa password. Coba lagi."));
+      setError(status === 429 ? tr("Terlalu banyak percobaan. Tunggu 1 menit, lalu coba lagi.") : apiError(err, tr("Gagal memeriksa password. Coba lagi.")));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <AppDialog open onClose={onClose} title={`Tampilkan ${what}`} description="Masukkan password akun WhatsMonTrack kamu.">
+    <AppDialog open onClose={onClose} title={tr("Tampilkan {what}", { what: what })} description={tr("Masukkan password akun WhatsMonTrack kamu.")}>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {/* Hidden username so password managers know which account this is for */}
         <input type="text" name="username" autoComplete="username" hidden readOnly />
-        <PasswordField label="Password" name="password" autoComplete="current-password" autoFocus
+        <PasswordField label={tr("Password")} name="password" autoComplete="current-password" autoFocus
           value={password} onChange={(e) => { setPassword(e.target.value); setError(""); }} error={error} />
         <DialogActions>
-          <Button variant="secondary" onClick={onClose} disabled={busy}>Batal</Button>
-          <Button type="submit" loading={busy}>Tampilkan</Button>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>{tr("Batal")}</Button>
+          <Button type="submit" loading={busy}>{tr("Tampilkan")}</Button>
         </DialogActions>
       </form>
     </AppDialog>
@@ -139,7 +140,7 @@ export function AmountField({ label, digits, onChange, error, hint, allowNegativ
 
 // ---------- Confirm ----------
 
-export function ConfirmDialog({ open, onClose, onConfirm, title, description, confirmLabel = "Hapus", destructive = true }: {
+export function ConfirmDialog({ open, onClose, onConfirm, title, description, confirmLabel = tr("Hapus"), destructive = true }: {
   open: boolean;
   onClose: () => void;
   onConfirm: () => Promise<void>;
@@ -153,12 +154,12 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, description, co
     <AppDialog open={open} onClose={onClose} title={title} description={description}>
       {error && <Alert>{error}</Alert>}
       <DialogActions>
-        <Button variant="secondary" onClick={onClose} disabled={busy}>Batal</Button>
+        <Button variant="secondary" onClick={onClose} disabled={busy}>{tr("Batal")}</Button>
         <Button
           variant={destructive ? "danger" : "primary"}
           loading={busy}
           onClick={async () => {
-            if (await submit(onConfirm, "Gagal. Coba lagi.")) onClose();
+            if (await submit(onConfirm, tr("Gagal. Coba lagi."))) onClose();
           }}
         >
           {confirmLabel}
@@ -194,7 +195,7 @@ export function AccountDialog({ account, onClose, onSave, onDelete }: {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return setNameError("Beri nama rekening, misalnya BCA atau Tunai.");
+    if (!name.trim()) return setNameError(tr("Beri nama rekening, misalnya BCA atau Tunai."));
     setNameError("");
     if (await submit(() => onSave(name.trim(), Number(balance || 0)))) onClose();
   };
@@ -203,21 +204,21 @@ export function AccountDialog({ account, onClose, onSave, onDelete }: {
     <AppDialog
       open
       onClose={onClose}
-      title={account ? "Ubah rekening" : "Tambah rekening"}
-      description={account ? undefined : "Rekening bank, e-wallet, atau uang tunai yang ingin Anda catat."}
+      title={account ? tr("Ubah rekening") : tr("Tambah rekening")}
+      description={account ? undefined : tr("Rekening bank, e-wallet, atau uang tunai yang ingin Anda catat.")}
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && <Alert>{error}</Alert>}
-        <TextField label="Nama rekening" value={name} onChange={(e) => setName(e.target.value)}
-          placeholder="BCA, GoPay, Tunai" autoFocus error={nameError} maxLength={50} />
-        <AmountField label={account ? "Saldo" : "Saldo awal"} digits={balance} onChange={setBalance} allowNegative
-          hint={account ? "Mengubah saldo langsung tidak membuat transaksi." : "Boleh 0 dan diubah nanti."} />
+        <TextField label={tr("Nama rekening")} value={name} onChange={(e) => setName(e.target.value)}
+          placeholder={tr("BCA, GoPay, Tunai")} autoFocus error={nameError} maxLength={50} />
+        <AmountField label={account ? tr("Saldo") : tr("Saldo awal")} digits={balance} onChange={setBalance} allowNegative
+          hint={account ? tr("Mengubah saldo langsung tidak membuat transaksi.") : tr("Boleh 0 dan diubah nanti.")} />
         <DialogActions>
           {account && onDelete && (
-            <Button variant="danger" onClick={onDelete} className="sm:mr-auto" disabled={busy}>Hapus</Button>
+            <Button variant="danger" onClick={onDelete} className="sm:mr-auto" disabled={busy}>{tr("Hapus")}</Button>
           )}
-          <Button variant="secondary" onClick={onClose} disabled={busy}>Batal</Button>
-          <Button type="submit" loading={busy}>{account ? "Simpan" : "Tambah rekening"}</Button>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>{tr("Batal")}</Button>
+          <Button type="submit" loading={busy}>{account ? tr("Simpan") : tr("Tambah rekening")}</Button>
         </DialogActions>
       </form>
     </AppDialog>
@@ -244,8 +245,8 @@ export function BudgetDialog({ budget, categories, onClose, onSave, onDelete }: 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: typeof errors = {};
-    if (!category) errs.category = "Pilih kategori.";
-    if (!Number(limit)) errs.limit = "Masukkan batas lebih dari 0.";
+    if (!category) errs.category = tr("Pilih kategori.");
+    if (!Number(limit)) errs.limit = tr("Masukkan batas lebih dari 0.");
     setErrors(errs);
     if (Object.keys(errs).length) return;
     if (await submit(() => onSave(category, Number(limit)))) onClose();
@@ -255,25 +256,25 @@ export function BudgetDialog({ budget, categories, onClose, onSave, onDelete }: 
     <AppDialog
       open
       onClose={onClose}
-      title={budget ? `Anggaran ${categoryLabel(budget.categoryName)}` : "Atur anggaran"}
-      description="Batas pengeluaran per bulan untuk satu kategori."
+      title={budget ? tr("Anggaran {categoryName}", { categoryName: categoryLabel(budget.categoryName) }) : tr("Atur anggaran")}
+      description={tr("Batas pengeluaran per bulan untuk satu kategori.")}
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && <Alert>{error}</Alert>}
-        <SelectField label="Kategori" value={category} onValueChange={setCategory}
+        <SelectField label={tr("Kategori")} value={category} onValueChange={setCategory}
           disabled={!!budget} error={errors.category}>
-          <option value="">Pilih kategori</option>
+          <option value="">{tr("Pilih kategori")}</option>
           {categories.filter((c) => c !== "INCOME").map((c) => (
             <option key={c} value={c}>{categoryLabel(c)}</option>
           ))}
         </SelectField>
-        <AmountField label="Batas per bulan" digits={limit} onChange={setLimit} error={errors.limit} />
+        <AmountField label={tr("Batas per bulan")} digits={limit} onChange={setLimit} error={errors.limit} />
         <DialogActions>
           {budget && onDelete && (
-            <Button variant="danger" onClick={onDelete} className="sm:mr-auto" disabled={busy}>Hapus</Button>
+            <Button variant="danger" onClick={onDelete} className="sm:mr-auto" disabled={busy}>{tr("Hapus")}</Button>
           )}
-          <Button variant="secondary" onClick={onClose} disabled={busy}>Batal</Button>
-          <Button type="submit" loading={busy}>Simpan</Button>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>{tr("Batal")}</Button>
+          <Button type="submit" loading={busy}>{tr("Simpan")}</Button>
         </DialogActions>
       </form>
     </AppDialog>
@@ -333,11 +334,11 @@ export function TransactionDialog({ transaction, accounts, categories, onClose, 
 
   if (accounts.length === 0) {
     return (
-      <AppDialog open onClose={onClose} title="Tambah transaksi" description="Transaksi selalu tercatat pada sebuah rekening.">
-        <Alert tone="info">Belum ada rekening. Tambahkan rekening terlebih dahulu, misalnya BCA atau Tunai.</Alert>
+      <AppDialog open onClose={onClose} title={tr("Tambah transaksi")} description={tr("Transaksi selalu tercatat pada sebuah rekening.")}>
+        <Alert tone="info">{tr("Belum ada rekening. Tambahkan rekening terlebih dahulu, misalnya BCA atau Tunai.")}</Alert>
         <DialogActions>
-          <Button variant="secondary" onClick={onClose}>Batal</Button>
-          <Button onClick={onAddAccount}>Tambah rekening</Button>
+          <Button variant="secondary" onClick={onClose}>{tr("Batal")}</Button>
+          <Button onClick={onAddAccount}>{tr("Tambah rekening")}</Button>
         </DialogActions>
       </AppDialog>
     );
@@ -346,11 +347,11 @@ export function TransactionDialog({ transaction, accounts, categories, onClose, 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errs: Record<string, string> = {};
-    if (!Number(amount)) errs.amount = "Masukkan jumlah lebih dari 0.";
-    if (needsFrom && !fromAccountId) errs.from = "Pilih rekening.";
-    if (needsTo && !toAccountId) errs.to = "Pilih rekening.";
-    if (type === "TRANSFER" && fromAccountId && fromAccountId === toAccountId) errs.to = "Rekening tujuan harus berbeda.";
-    if (!when) errs.when = "Pilih tanggal.";
+    if (!Number(amount)) errs.amount = tr("Masukkan jumlah lebih dari 0.");
+    if (needsFrom && !fromAccountId) errs.from = tr("Pilih rekening.");
+    if (needsTo && !toAccountId) errs.to = tr("Pilih rekening.");
+    if (type === "TRANSFER" && fromAccountId && fromAccountId === toAccountId) errs.to = tr("Rekening tujuan harus berbeda.");
+    if (!when) errs.when = tr("Pilih tanggal.");
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
@@ -374,51 +375,51 @@ export function TransactionDialog({ transaction, accounts, categories, onClose, 
     <AppDialog
       open
       onClose={onClose}
-      title={transaction ? "Ubah transaksi" : "Tambah transaksi"}
+      title={transaction ? tr("Ubah transaksi") : tr("Tambah transaksi")}
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {error && <Alert>{error}</Alert>}
         <SegmentedControl<TxType>
-          label="Jenis transaksi"
+          label={tr("Jenis transaksi")}
           value={type}
           onChange={setType}
           className="flex w-full"
           options={(["EXPENSE", "INCOME", "TRANSFER"] as TxType[]).map((t) => ({ value: t, label: TX_TYPE_LABEL[t] }))}
         />
-        <AmountField label="Jumlah" digits={amount} onChange={setAmount} error={errors.amount} />
+        <AmountField label={tr("Jumlah")} digits={amount} onChange={setAmount} error={errors.amount} />
         {type !== "TRANSFER" && (
-          <SelectField label="Kategori" value={category} onValueChange={setCategory}>
-            <option value="">{type === "INCOME" ? "Pemasukan" : "Tanpa kategori"}</option>
+          <SelectField label={tr("Kategori")} value={category} onValueChange={setCategory}>
+            <option value="">{type === "INCOME" ? tr("Pemasukan") : tr("Tanpa kategori")}</option>
             {categories.filter((c) => (type === "INCOME" ? true : c !== "INCOME")).map((c) => (
               <option key={c} value={c}>{categoryLabel(c)}</option>
             ))}
           </SelectField>
         )}
-        <TextField label="Keterangan (opsional)" value={description} onChange={(e) => setDescription(e.target.value)}
-          placeholder="Makan siang, bensin, gaji" maxLength={100} />
+        <TextField label={tr("Keterangan (opsional)")} value={description} onChange={(e) => setDescription(e.target.value)}
+          placeholder={tr("Makan siang, bensin, gaji")} maxLength={100} />
         <div className={type === "TRANSFER" ? "grid gap-4 sm:grid-cols-2" : "space-y-4"}>
           {needsFrom && (
-            <SelectField label={type === "TRANSFER" ? "Dari rekening" : "Rekening"} value={fromAccountId}
+            <SelectField label={type === "TRANSFER" ? tr("Dari rekening") : tr("Rekening")} value={fromAccountId}
               onValueChange={setFromAccountId} error={errors.from}>
-              <option value="">Pilih rekening</option>
+              <option value="">{tr("Pilih rekening")}</option>
               {accountOptions}
             </SelectField>
           )}
           {needsTo && (
-            <SelectField label={type === "TRANSFER" ? "Ke rekening" : "Rekening"} value={toAccountId}
+            <SelectField label={type === "TRANSFER" ? tr("Ke rekening") : tr("Rekening")} value={toAccountId}
               onValueChange={setToAccountId} error={errors.to}>
-              <option value="">Pilih rekening</option>
+              <option value="">{tr("Pilih rekening")}</option>
               {accountOptions}
             </SelectField>
           )}
         </div>
-        <TextField label="Tanggal & waktu" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} error={errors.when} />
+        <TextField label={tr("Tanggal & waktu")} type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} error={errors.when} />
         <DialogActions>
-          <Button variant="secondary" onClick={onClose} disabled={busy}>Batal</Button>
-          <Button type="submit" loading={busy}>{transaction ? "Simpan" : "Tambah transaksi"}</Button>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>{tr("Batal")}</Button>
+          <Button type="submit" loading={busy}>{transaction ? tr("Simpan") : tr("Tambah transaksi")}</Button>
         </DialogActions>
         {!transaction && (
-          <p className="text-xs text-muted-foreground">Menalangi teman atau berutang? Catat di halaman Utang-piutang supaya tidak dihitung sebagai pengeluaran sebelum selesai.</p>
+          <p className="text-xs text-muted-foreground">{tr("Menalangi teman atau berutang? Catat di halaman Utang-piutang supaya tidak dihitung sebagai pengeluaran sebelum selesai.")}</p>
         )}
       </form>
     </AppDialog>
