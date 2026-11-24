@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { formatMonth } from "@/lib/format";
 import { pick, tr } from "@/lib/i18n";
 import { Button, IconButton, Menu, focusRing } from "../../common/ui";
+import { ActiveIndicator } from "../../motion/primitives";
 
 export type Tab = "dashboard" | "transactions" | "debts" | "investments" | "chart" | "chat" | "inbox" | "settings";
 
@@ -94,16 +95,18 @@ interface SidebarProps {
  */
 export function Sidebar({ active, onNavigate, reviewCount, collapsed, onToggle, settingsAlert }: SidebarProps) {
   const row = (current: boolean) => cn(
-    "relative flex items-center rounded-lg text-sm text-foreground transition-colors",
+    "relative isolate flex items-center rounded-lg text-sm text-foreground transition-colors",
     focusRing,
     collapsed ? "size-10 justify-center" : "w-full gap-3 px-3 py-[7px]",
-    current ? "bg-black/[0.07] font-medium dark:bg-white/[0.1]" : "hover:bg-black/[0.035] dark:hover:bg-white/[0.05]",
+    current ? "font-medium" : "hover:bg-black/[0.035] dark:hover:bg-white/[0.05]",
   );
   const item = (id: Tab, label: string, Icon: React.ElementType, extra?: React.ReactNode) => {
     const current = active === id;
     return (
       <button key={id} type="button" onClick={() => onNavigate(id)} aria-current={current ? "page" : undefined}
         aria-label={collapsed ? label : undefined} title={collapsed ? label : undefined} className={row(current)}>
+        {/* The tinted row slides to the chosen page */}
+        {current && <ActiveIndicator layoutId="sidebar-active" className="-z-10 rounded-lg bg-black/[0.07] dark:bg-white/[0.1]" />}
         <Icon className="size-[18px] shrink-0 text-[#0071E3] dark:text-[#0A84FF]" aria-hidden strokeWidth={current ? 2.25 : 1.75} />
         {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{label}</span>}
         {extra}
@@ -126,7 +129,7 @@ export function Sidebar({ active, onNavigate, reviewCount, collapsed, onToggle, 
         </IconButton>
       </div>
 
-      <nav aria-label={tr("Navigasi utama")} className={cn("flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden pt-2", collapsed ? "items-center px-0" : "px-3")}>
+      <nav data-lenis-prevent aria-label={tr("Navigasi utama")} className={cn("flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden pt-2", collapsed ? "items-center px-0" : "px-3")}>
         {NAV_ITEMS.map(({ id, label, icon }) =>
           item(id, tr(label), icon, id === "inbox" && reviewCount > 0
             ? <CountBadge count={reviewCount} className={collapsed ? "absolute -right-1 -top-1" : undefined} />

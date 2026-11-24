@@ -96,7 +96,7 @@ export function Select({ value, onValueChange, options: given, children, id, dis
       </BaseSelect.Trigger>
       <BaseSelect.Portal>
         <BaseSelect.Positioner sideOffset={6} className="z-[100] outline-none" alignItemWithTrigger>
-          <BaseSelect.Popup className={cn(menuSurface, menuMotion, "max-h-[min(24rem,var(--available-height))] min-w-[var(--anchor-width)] overflow-y-auto overscroll-contain")}>
+          <BaseSelect.Popup data-lenis-prevent className={cn(menuSurface, menuMotion, "max-h-[min(24rem,var(--available-height))] min-w-[var(--anchor-width)] overflow-y-auto overscroll-contain")}>
             <BaseSelect.List>
               {options.map((o) => (
                 <BaseSelect.Item key={o.value} value={toBase(o.value)} disabled={o.disabled} className={menuItem}>

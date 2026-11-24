@@ -19,6 +19,10 @@ import { PageSkeleton } from "./dashboard/skeletons";
 import { ALL_TABS, AddMenu, BottomTabs, MonthSwitcher, SettingsButton, Sidebar, setSidebarCollapsed, useSidebarCollapsed, type Tab } from "./dashboard/shared/Navigation";
 import SettingsView from "./dashboard/views/SettingsView";
 import { tr } from "@/lib/i18n";
+import { AnimatePresence, motion } from "motion/react";
+import { SmoothScrollProvider } from "./motion/SmoothScrollProvider";
+import { useReveal } from "./motion/useReveal";
+import { FADE } from "./motion/primitives";
 import HomeView from "./dashboard/views/HomeView";
 import LedgerView, { type LedgerTx } from "./dashboard/views/LedgerView";
 import DebtsView, { DEFAULT_DEBT_FILTERS, type DebtFilters } from "./dashboard/views/DebtsView";
@@ -504,9 +508,16 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
     onAddBudget: () => setDialog({ kind: "budget", budget: null }),
   };
 
+  // Cards rise into view as the page loads and as they scroll in (once each); the key changes whenever
+  // new cards may have appeared
+  const mainRef = useRef<HTMLElement>(null);
+  useReveal(mainRef, [activeTab, loaded, monthPending, listPending, debts ? debts.records.length : -1, holdings ? holdings.length : -1, debtQuery].join("|"));
+
   return (
-    // Phones, Chat tab: exactly the visible screen (dvh, not 100vh which ignores the browser's address bar),
-    // so nothing behind the full-screen chat can scroll the top bar away
+    // Smooth wheel scrolling everywhere but the full-screen chart and chat pages
+    <SmoothScrollProvider enabled={activeTab !== "chart" && activeTab !== "chat"} resetKey={activeTab}>
+    {/* Phones, Chat tab: exactly the visible screen (dvh, not 100vh which ignores the browser's address bar),
+        so nothing behind the full-screen chat can scroll the top bar away */}
     <div className={cn("min-h-screen bg-background text-foreground", activeTab === "chat" && "max-md:h-dvh max-md:min-h-0 max-md:overflow-hidden")}>
       {activeTab === "chart" ? (
         // The chart needs the width: the sidebar starts as icons here
@@ -541,7 +552,7 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
             {activeTab !== "settings" && <SettingsButton onClick={() => navigate("settings")} alert={settingsAlert} />}
           </div>
 
-          <main id="main" className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-8 md:pb-12">
+          <main ref={mainRef} id="main" className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-8 md:pb-12">
             {/* On phones the chat fills the screen like a messaging app, without the page title */}
             <header className={cn("mb-6 flex flex-wrap items-center justify-between gap-3", activeTab === "chat" && "max-md:hidden")}>
               {/* A large title, as at the top of an iOS screen */}
@@ -663,9 +674,13 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
 
       {/* Feedback after actions */}
       <div aria-live="polite" className={cn("pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4 md:bottom-6", contentPad)}>
-        {toast && (
-          <div role="status" className="rounded-xl bg-foreground px-4 py-2.5 text-sm text-background shadow-lg">{toast}</div>
-        )}
+        <AnimatePresence>
+          {toast && (
+            <motion.div key={toast} role="status" initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, transition: { duration: 0.16 } }} transition={FADE}
+              className="rounded-xl bg-foreground px-4 py-2.5 text-sm text-background shadow-lg">{toast}</motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Dialogs (mounted only while open, so their fields always start fresh) */}
@@ -749,5 +764,6 @@ export default function Dashboard({ user, onLogout }: { user: SessionUser; onLog
         <WhatsAppStatusModal onClose={closeDialog} status={waStatus} onChanged={loadData} />
       )}
     </div>
+    </SmoothScrollProvider>
   );
 }

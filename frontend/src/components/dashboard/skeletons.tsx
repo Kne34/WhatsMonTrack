@@ -4,7 +4,7 @@ import React from "react";
 import { Card, Skeleton } from "../common/ui";
 import { useSidebarCollapsed, type Tab } from "./shared/Navigation";
 import { cn } from "@/lib/utils";
-
+
 import { tr } from "@/lib/i18n";
 /**
  * Loading placeholders that mirror the real layout of each page, so nothing jumps when the data
@@ -49,7 +49,7 @@ export function HomeSkeleton() {
     <Loading label={tr("Memuat ringkasan")} className="space-y-6">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[0, 1, 2, 3].map((i) => (
-          <Card key={i} className="p-4">
+          <Card reveal={false} key={i} className="p-4">
             <Skeleton className="h-4 w-20 rounded-md" />
             <Skeleton className="mt-3 h-7 w-32 rounded-md" />
             <Skeleton className="mt-2 h-3 w-16 rounded-md" />
@@ -60,12 +60,12 @@ export function HomeSkeleton() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {[0, 1].map((i) => (
-            <Card key={i}>
+            <Card reveal={false} key={i}>
               <CardHeaderSkeleton />
               <Skeleton className="h-56" />
             </Card>
           ))}
-          <Card>
+          <Card reveal={false}>
             <CardHeaderSkeleton action />
             <div className="space-y-4">
               {[0, 1, 2, 3].map((i) => (
@@ -82,11 +82,11 @@ export function HomeSkeleton() {
         </div>
 
         <div className="space-y-6">
-          <Card>
+          <Card reveal={false}>
             <CardHeaderSkeleton />
             <ListRowsSkeleton rows={4} />
           </Card>
-          <Card>
+          <Card reveal={false}>
             <CardHeaderSkeleton />
             <div className="space-y-4">
               {[0, 1, 2].map((i) => (
@@ -130,14 +130,14 @@ export function LedgerRowsSkeleton({ rows }: { rows: number }) {
 export function LedgerSkeleton() {
   return (
     <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
-      <Card className="p-4" aria-hidden>
+      <Card reveal={false} className="p-4" aria-hidden>
         <Skeleton className="mb-4 h-4 w-24 rounded-md" />
         <div className="grid grid-cols-7 gap-1">
           {Array.from({ length: 35 }, (_, i) => <Skeleton key={i} className="h-11 rounded-lg" />)}
         </div>
         <Skeleton className="mt-3 h-3 w-40 rounded-md" />
       </Card>
-      <Card className="p-0">
+      <Card reveal={false} className="p-0">
         <div className="flex items-center justify-between gap-3 border-b border-border/70 px-5 py-4">
           <div className="space-y-2">
             <Skeleton className="h-4 w-28 rounded-md" />
@@ -156,7 +156,7 @@ export function InboxSkeleton() {
     <Loading label={tr("Memuat transaksi yang perlu ditinjau")} className="space-y-4">
       <Skeleton className="h-4 w-80 max-w-full rounded-md" />
       {[0, 1].map((i) => (
-        <Card key={i} className="p-0">
+        <Card reveal={false} key={i} className="p-0">
           <div className="space-y-2 border-b border-border/70 px-5 py-3">
             <Skeleton className="h-3 w-40 rounded-md" />
             <Skeleton className="h-4 w-56 max-w-full rounded-md" />

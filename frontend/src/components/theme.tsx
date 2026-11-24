@@ -3,9 +3,10 @@
 import React, { useEffect, useSyncExternalStore } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { focusRing } from "./common/ui";
+import { focusRing, SEGMENT_THUMB } from "./common/ui";
 import { DARK_QUERY, THEME_STORAGE_KEY } from "@/lib/theme-script";
 import { tr } from "@/lib/i18n";
+import { ActiveIndicator } from "./motion/primitives";
 
 export type ThemePref = "system" | "light" | "dark";
 
@@ -72,6 +73,7 @@ const OPTIONS: { value: ThemePref; label: string; icon: React.ElementType }[] = 
 /** Three-way theme control. `compact` shows icons only (labels stay available to screen readers). */
 export function ThemeSwitcher({ compact = false, className }: { compact?: boolean; className?: string }) {
   const pref = useThemePref();
+  const thumb = React.useId();
   return (
     // Same iOS segmented control as SegmentedControl (common/ui). Apple HIG: equal-width segments, and text
     // or icons, not both: compact shows icons, otherwise words
@@ -87,12 +89,13 @@ export function ThemeSwitcher({ compact = false, className }: { compact?: boolea
             title={tr(label)}
             onClick={() => setThemePref(value)}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-[7px] text-[13px] font-medium transition-all duration-200",
+              "relative isolate flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-[7px] text-[13px] font-medium transition-colors duration-200",
               compact ? "size-7" : "px-3 py-1.5",
               focusRing,
-              active ? "bg-white text-foreground shadow-[0_3px_8px_rgba(0,0,0,0.12),0_3px_1px_rgba(0,0,0,0.04)] dark:bg-[#636366]" : "text-foreground/80 hover:text-foreground",
+              active ? "text-foreground" : "text-foreground/80 hover:text-foreground",
             )}
           >
+            {active && <ActiveIndicator layoutId={thumb} className={SEGMENT_THUMB} />}
             {compact && <Icon className="size-3.5" aria-hidden />}
             <span className={compact ? "sr-only" : undefined}>{tr(label)}</span>
           </button>

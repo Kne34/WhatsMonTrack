@@ -12,6 +12,10 @@ import { cn } from "@/lib/utils";
 import { Select, menuSurface } from "./select";
 
 import { tr } from "@/lib/i18n";
+import { ActiveIndicator } from "../motion/primitives";
+
+/** The raised thumb of an iOS segmented control (also used by the theme control) */
+export const SEGMENT_THUMB = "-z-10 rounded-[7px] bg-white shadow-[0_3px_8px_rgba(0,0,0,0.12),0_3px_1px_rgba(0,0,0,0.04)] dark:bg-[#636366]";
 export { Select } from "./select";
 
 // ---------- Buttons ----------
@@ -234,9 +238,10 @@ export function Alert({ tone = "error", children, className }: { tone?: "error" 
 
 // ---------- Layout ----------
 
-export function Card({ className, children, ...props }: React.HTMLAttributes<HTMLElement>) {
+/** `reveal`: rises and fades in as it scrolls into view (useReveal on the page); off for skeletons */
+export function Card({ className, children, reveal = true, ...props }: React.HTMLAttributes<HTMLElement> & { reveal?: boolean }) {
   return (
-    <section className={cn("rounded-2xl border border-black/[0.04] bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_16px_-8px_rgba(0,0,0,0.06)] dark:border-white/[0.06] dark:shadow-none", className)} {...props}>
+    <section data-reveal={reveal ? "" : undefined} className={cn("rounded-2xl border border-black/[0.04] bg-card p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_16px_-8px_rgba(0,0,0,0.06)] dark:border-white/[0.06] dark:shadow-none", className)} {...props}>
       {children}
     </section>
   );
@@ -285,8 +290,9 @@ export function SegmentedControl<T extends string>({ label, value, onChange, opt
   options: { value: T; label: string }[];
   className?: string;
 }) {
+  const thumb = useId();
   return (
-    // iOS segmented control: a gray track, the chosen segment a raised white thumb
+    // iOS segmented control: a gray track, the chosen segment a raised white thumb that slides (Motion layoutId)
     // Apple HIG: equal-width segments (the widest label sets the width)
     <div role="group" aria-label={label} className={cn("inline-grid auto-cols-fr grid-flow-col rounded-[9px] bg-[#767680]/[0.12] p-0.5 dark:bg-[#767680]/[0.24]", className)}>
       {options.map((o) => {
@@ -298,11 +304,12 @@ export function SegmentedControl<T extends string>({ label, value, onChange, opt
             aria-pressed={active}
             onClick={() => onChange(o.value)}
             className={cn(
-              "flex-1 whitespace-nowrap rounded-[7px] px-3 py-1.5 text-[13px] font-medium transition-all duration-200",
+              "relative isolate flex-1 whitespace-nowrap rounded-[7px] px-3 py-1.5 text-[13px] font-medium transition-colors duration-200",
               focusRing,
-              active ? "bg-white text-foreground shadow-[0_3px_8px_rgba(0,0,0,0.12),0_3px_1px_rgba(0,0,0,0.04)] dark:bg-[#636366]" : "text-foreground/80 hover:text-foreground",
+              active ? "text-foreground" : "text-foreground/80 hover:text-foreground",
             )}
           >
+            {active && <ActiveIndicator layoutId={thumb} className={SEGMENT_THUMB} />}
             {o.label}
           </button>
         );
