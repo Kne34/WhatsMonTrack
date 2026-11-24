@@ -65,7 +65,9 @@ Quick access to every document in this repository.
 - **Perlu ditinjau (review inbox):** confirm, edit or delete uncertain bot results, or delete them all.
 - **Month switcher**, **Tambah** (add) menu for transactions, accounts and budgets, onboarding checklist for new users.
 - **Light, dark or system theme**, without a flash on page load, in the style of Apple's apps: San Francisco (Inter where it isn't installed), Apple's system colors and grays, the system blue for actions, translucent sidebar and tab bar, pill buttons, iOS segmented controls and Mac-style pop-up menus.
-- Responsive: sidebar on desktop, bottom tabs on mobile. Refreshes automatically every 15 seconds and when you return to the tab.
+- **Bahasa Indonesia or English**, switched in Pengaturan (dates and words follow; amounts keep the Indonesian Rp 1.250.000).
+- **Pengaturan (Settings)** page laid out like iOS Settings: theme, language, compact sidebar, WhatsApp number, WhatsApp bot (admin), hide all amounts, reset the chart layout, account and sign out.
+- Responsive: a sidebar on tablet and desktop that collapses to icons or expands with names, bottom tabs on mobile. Refreshes automatically every 15 seconds and when you return to the tab.
 
 ### Data correctness
 - **Money is stored as whole rupiah (`BIGINT`)**: no floating-point rounding errors and no ~Rp 2.1 billion `INT` limit. Fractional amounts are rejected by the API; amounts from the AI are rounded to whole rupiah.
@@ -216,7 +218,7 @@ To stop: `docker compose stop` (data is kept). To start again: `docker compose u
 The bot is one shared WhatsApp number that all users chat with.
 
 1. Register and log in with an email listed in `ADMIN_EMAILS`.
-2. Open **Bot WhatsApp** in the sidebar (on a phone: the account icon at the top right). A red dot means offline, green means online.
+2. Open **Pengaturan** (Settings, at the foot of the sidebar; on a phone: the gear at the top right), then **Bot WhatsApp**. A red dot on Pengaturan means the bot is offline.
 3. On the bot's phone open WhatsApp → **Perangkat tertaut** (Linked devices) → **Tautkan perangkat** and scan the QR. The QR refreshes automatically about every 20 seconds.
 4. The status changes to **Online** and the dialog shows the bot's number.
 
@@ -257,7 +259,7 @@ An account is anywhere you keep money: a bank (BCA, Mandiri), an e-wallet (GoPay
 Use the names you would type in chat. The bot matches them loosely (`Go-Pay`, `gopay` and `GO PAY` are the same account; `cash` also matches `Tunai`).
 
 ### 4. Link your WhatsApp number
-1. Click **Hubungkan WhatsApp** (sidebar, account menu on phones, or the onboarding checklist).
+1. Click **Nomor WhatsApp** in **Pengaturan**, or **Hubungkan** in the onboarding checklist.
 2. Optionally enter your number (`0812...`, `62812...` or `+62 812...` all work). If you do, only that number can use the code.
 3. Press **Buat QR**.
 4. Scan the QR with your phone camera. WhatsApp opens a chat with the bot with `VERIFIKASI <code>` already typed. Press **Kirim** (Send).
@@ -413,7 +415,7 @@ Menu **Investasi**: your stocks and crypto across platforms, with live prices. B
 
 ### Chart page
 
-**Chart** in the sidebar (on a phone: open an asset from Investasi) shows one of your assets full screen, laid out like TradingView. Without a chosen asset it opens the one you viewed last. The sidebar shrinks to its icons here to leave the chart the width.
+**Chart** in the sidebar (on a phone: open an asset from Investasi) shows one of your assets full screen, laid out like TradingView. Without a chosen asset it opens the one you viewed last. The sidebar starts as icons here to leave the chart the width; its button at the top expands it, and the chart page remembers that separately from the other pages.
 
 - **Top bar**: the ticker (click it to switch to another asset), the interval (**5 menit**, **15 menit**, **1 jam**, **4 jam**, **Harian**, **Mingguan**, **Bulanan**; one pop-up when the window is narrow), the chart type (candles, hollow candles, Heikin Ashi, bars, line, area), **Indikator** (Volume, MA 20/50/200, EMA 20, Bollinger Bands, RSI and MACD in their own panes, and your average buy price), **Gambar** (the drawing tools, on phones and tablets), **USD/IDR** for dollar assets, a screenshot, full screen, the side panel, and **Ubah**.
 - **Chart**: scroll the mouse wheel (or pinch) to zoom, drag to move back in time, drag the price or time axis to stretch it, double-click an axis to reset it. The legend at the top left shows **Buka**, **Tertinggi**, **Terendah** and **Tutup** of the bar under the mouse, the indicator values (the x removes one) and the **JUAL**/**BELI** buttons; the chevron folds it (folded by default on phones). The last bar follows the live price, with a countdown to the bar's close under the price label.
@@ -445,14 +447,20 @@ Messages the bot was not sure about (confidence below 85%) appear here, with a c
 - **Ubah**: correct it first (amount, category, accounts, date).
 - **Hapus**: discard it, or **Hapus semua** to clear the whole list. Drafts never affected any balance.
 
-### 14. Theme and account menu
-- **Tema**: Sistem (follow the device), Terang (light) or Gelap (dark). In the sidebar on desktop, in the account menu on phones.
-- **Keluar**: log out.
+### 14. Pengaturan (Settings) and the sidebar
+**Pengaturan** sits at the foot of the sidebar (on a phone: the gear at the top right). It is grouped like the Settings app on an iPhone:
+- **Tampilan**: **Tema** (Sistem follows the device, Terang, Gelap), **Bahasa** (Bahasa Indonesia or English, for the whole website; the WhatsApp bot and messages from the server stay Indonesian), and **Sidebar ringkas** (icons only).
+- **WhatsApp**: **Nomor WhatsApp** (link, change or unlink your number) and, for admins, **Bot WhatsApp** with its status.
+- **Privasi**: **Sembunyikan semua angka** hides every amount at once; each section's eye shows it again (with your password).
+- **Chart**: **Kembalikan tata letak chart** resets interval, indicators, panels and sizes (drawings stay).
+- **Akun**: your email and **Keluar** (sign out).
+
+The **sidebar** (tablet and desktop) collapses to a rail of icons or expands with the names: the button at its top, or **Sidebar ringkas**. Names show as tooltips while it is narrow. The choice is remembered in the browser.
 
 ### 15. Troubleshooting the bot (admin)
-Everything below is in the **Bot WhatsApp** dialog (sidebar; on a phone: the account icon). What it offers depends on the bot's state:
+Everything below is in the **Bot WhatsApp** dialog (**Pengaturan**, then **Bot WhatsApp**). What it offers depends on the bot's state:
 
-| Bot state | Sidebar | Actions |
+| Bot state | Pengaturan | Actions |
 |---|---|---|
 | Linked | Online (green) | **Ganti nomor bot** (change number): logs the bot out of this number and shows a new QR for another number. **Cabut nomor bot** (unlink): logs out and turns the bot off |
 | Waiting for a scan | Offline (red) | Scan the QR. **Reset sesi** if the QR doesn't appear; **Matikan bot** to turn the bot off instead |
@@ -477,8 +485,10 @@ docker compose stop                   # stop (data is kept)
 
 cd backend/api && npm test            # unit tests
 cd backend/api && npm run test:auth-state   # WhatsApp session store (real Baileys, no database)
-cd frontend && npm run lint && npm run build
+cd frontend && npm run lint && npm run check:i18n && npm run build
 ```
+
+**Translations:** every text in the web app is written in Indonesian and passed through `tr()` from `frontend/src/lib/i18n.tsx`; the English text lives in `frontend/src/lib/i18n-en.ts`, keyed by the Indonesian one (`{name}` placeholders stay as they are). A text without an English entry simply shows in Indonesian. `npm run check:i18n` lists texts that have none, so add one with every new text.
 
 The API is reachable directly on `http://127.0.0.1:3001` for debugging (`API_HOST_PORT`; 3000 is often taken by other tools such as Grafana). Normal traffic goes through Nginx on port 80. The API container has no hot reload; rebuild or restart it after backend changes.
 
@@ -636,3 +646,10 @@ A test with 16 injection messages (fake admin, reading other users' data, leakin
 - **Fixes:** the profit/loss row no longer squeezes the percentage beside the amount, and percentages of 1000% or more drop the decimals.
 - **Deleting Utang-piutang:** settled records have the trash button too and are deleted directly (no reopening first).
 - **Deleting an account deletes its Utang-piutang records:** `DELETE /api/accounts/:id` answers 409 with `transactionCount` and `debtCount`; with `?withTransactions=true` the records go too, every movement undone on whichever account it touched. `GET /api/accounts` reports `debtCount` per account.
+
+### Phase 19: Settings page, English, collapsible sidebar
+- **Pengaturan (Settings) page** (`/?tab=settings`, `frontend/src/components/dashboard/views/SettingsView.tsx`) in the style of iOS Settings: grouped rows with colored icon tiles, an iOS switch, chevrons where a row opens something. Theme, WhatsApp number, the bot (admin) and signing out moved here from the sidebar and the phone's account menu; new are the language, compact sidebar, hide all amounts and reset the chart layout.
+- **Bahasa Indonesia / English** for the whole web app: `tr()` (`frontend/src/lib/i18n.tsx`) with an English dictionary of about 850 texts (`i18n-en.ts`). Tables built when a module loads (labels of intervals, tools, categories) translate through getters, so they follow a change of language. English uses the `en-ID` locale, like an iPhone in English with the region Indonesia: English month names and 4,2K, but Rp 1.250.000 and a 24-hour clock. The server and hydration render Indonesian; the saved language applies right after. `npm run check:i18n` (`frontend/scripts/check-i18n.mjs`) fails when a text has no English entry or the placeholders differ.
+- **Collapsible sidebar** on every page: icons only (64 px) or with names (240 px), from the button at its top; the chart page starts narrow and remembers its own choice. The W logo is gone. A red dot on Pengaturan when the WhatsApp bot is offline (admin); the review count is an iOS-style red badge.
+- **Apple colors** for the remaining tokens: the chart series tokens are Apple's system green, red, orange, blue and purple (light and dark variants), and the browser bar matches the background (#F2F2F7 / #000000). The unused Geist fonts are no longer loaded.
+- **Font:** the app uses San Francisco through the system font stack (`-apple-system`), so Apple devices show SF Pro. Apple's SF fonts from developer.apple.com/fonts are licensed only for mock-ups of interfaces for Apple platforms, which rules out hosting them on a website; other systems therefore get Inter, the closest open font.
